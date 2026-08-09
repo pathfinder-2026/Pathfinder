@@ -1,0 +1,90 @@
+import Fastify, { type FastifyInstance } from "fastify";
+import {
+  AuthError,
+  ConfirmationRequiredError,
+  ConflictError,
+  DomainError,
+  NotFoundError,
+  ValidationError,
+} from "../domain/errors";
+import { buildContext, type AppContext, type BuildContextOptions } from "../context";
+
+/**
+ * Minimal HTTP surface for Milestone 0. It exposes just enough of the core
+ * loop to satisfy the definition of done end-to-end (create a school, invite a
+ * Teacher through the notification service, accept, and log in as that
+ * Teacher). Full REST/UI arrives with later milestones.
+ */
+export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): FastifyInstance {
+  const context = ctx ?? buildContext(options);
+  const app = Fastify({ logger: false });
+
+  app.setErrorHandler((error, _req, reply) => {
+    if (error instanceof ConfirmationRequiredError) {
+      return reply
+        .status(409)
+        .send({ code: error.code, message: error.message, confirmationToken: error.confirmationToken });
+    }
+    if (error instanceof ValidationError) {
+      return reply.status(400).send({ code: error.code, message: error.message });
+    }
+    if (error instanceof AuthError) {
+      return reply.status(401).send({ code: error.code, message: error.message });
+    }
+    if (error instanceof NotFoundError) {
+      return reply.status(404).send({ code: error.code, message: error.message });
+    }
+    if (error instanceof ConflictError) {
+      return reply.status(409).send({ code: error.code, message: error.message });
+    }
+    if (error instanceof DomainError) {
+      return reply.status(400).send({ code: error.code, message: error.message });
+    }
+    return reply.status(500).send({ code: "INTERNAL", message: "Internal error" });
+  });
+
+  app.get("/health", async () => ({ status: "ok" }));
+
+  app.post("/schools", async (req, reply) => {
+    const result = context.schools.createSchool(req.body as never);
+    return reply.status(201).send(result);
+  });
+
+  app.post("/schools/:schoolId/invites/teacher", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const result = await context.invites.inviteTeacher(schoolId, req.body as never);
+    // Never return the raw email; the caller already has it.
+    return reply.status(201).send({
+      inviteId: result.invite.id,
+      token: result.invite.token,
+      userId: result.user.id,
+      notificationId: result.notificationId,
+    });
+  });
+
+  app.post("/invites/accept", async (req, reply) => {
+    const { token, password } = req.body as { token: string; password: string };
+    const result = context.auth.acceptInvite(token, password);
+    return reply.status(200).send({ userId: result.user.id, status: result.user.status });
+  });
+
+  app.post("/auth/login", async (req, reply) => {
+    const { email, password } = req.body as { email: string; password: string };
+    const result = context.auth.login(email, password);
+    return reply.status(200).send(result);
+  });
+
+  app.get("/me", async (req, reply) => {
+    const header = req.headers.authorization ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    const auth = context.auth.authorize(token);
+    return reply.status(200).send({
+      userId: auth.user.id,
+      schoolId: auth.user.schoolId,
+      roles: auth.roles,
+      memberships: auth.memberships.map((m) => ({ role: m.role, classId: m.classId })),
+    });
+  });
+
+  return app;
+}

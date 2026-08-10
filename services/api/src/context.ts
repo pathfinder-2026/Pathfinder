@@ -13,10 +13,12 @@ import {
 } from "./adapters/memory/inMemoryContentStore";
 import { InMemorySkillGraphStore } from "./adapters/memory/inMemorySkillGraphStore";
 import { InMemoryAssessmentStore } from "./adapters/memory/inMemoryAssessmentStore";
+import { InMemoryActivityStore } from "./adapters/memory/inMemoryActivityStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
 import type { AssessmentStore } from "./ports/assessmentStore";
+import type { ActivityStore } from "./ports/activityStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -36,6 +38,7 @@ import { KnowledgeService } from "./services/knowledgeService";
 import { SkillGraphService } from "./services/skillGraphService";
 import { MappingService } from "./services/mappingService";
 import { AssessmentService } from "./services/assessmentService";
+import { SyntheticService } from "./services/syntheticService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -43,6 +46,7 @@ export interface AppContext {
   contentStore: ContentStore;
   skillGraphStore: SkillGraphStore;
   assessmentStore: AssessmentStore;
+  activityStore: ActivityStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -64,6 +68,7 @@ export interface AppContext {
   skillGraph: SkillGraphService;
   mapping: MappingService;
   assessment: AssessmentService;
+  synthetic: SyntheticService;
 }
 
 export interface BuildContextOptions {
@@ -71,6 +76,7 @@ export interface BuildContextOptions {
   contentStore?: ContentStore;
   skillGraphStore?: SkillGraphStore;
   assessmentStore?: AssessmentStore;
+  activityStore?: ActivityStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -94,6 +100,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const contentStore = options.contentStore ?? new InMemoryContentStore();
   const skillGraphStore = options.skillGraphStore ?? new InMemorySkillGraphStore();
   const assessmentStore = options.assessmentStore ?? new InMemoryAssessmentStore();
+  const activityStore = options.activityStore ?? new InMemoryActivityStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -115,6 +122,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     contentStore,
     skillGraphStore,
     assessmentStore,
+    activityStore,
     storage,
     scanner,
     extractor,
@@ -136,5 +144,6 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     skillGraph,
     mapping: new MappingService(skillGraphStore, contentStore, contentService, clock, audit),
     assessment: new AssessmentService(assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit),
+    synthetic: new SyntheticService(store, activityStore, skillGraphStore, clock, audit),
   };
 }

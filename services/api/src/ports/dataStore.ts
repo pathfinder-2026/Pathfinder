@@ -67,6 +67,7 @@ export interface DataStore {
   insertUser(user: User): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   updateUser(user: User): Promise<void>;
+  deleteUser(id: string): Promise<void>;
   listUsersBySchool(schoolId: string): Promise<User[]>;
   upsertPersonalData(data: PersonalData): Promise<void>;
   getPersonalData(userId: string): Promise<PersonalData | undefined>;
@@ -91,6 +92,7 @@ export interface DataStore {
   insertEnrolment(enrolment: Enrolment): Promise<void>;
   getActiveEnrolmentForStudent(studentId: string): Promise<Enrolment | undefined>;
   updateEnrolment(enrolment: Enrolment): Promise<void>;
+  deleteEnrolmentsByStudent(studentId: string): Promise<void>;
   insertEnrolmentHistory(history: EnrolmentHistory): Promise<void>;
   listEnrolmentHistoryByTeacher(teacherId: string): Promise<EnrolmentHistory[]>;
   listEnrolmentHistoryByStudent(studentId: string): Promise<EnrolmentHistory[]>;

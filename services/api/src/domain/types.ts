@@ -75,6 +75,12 @@ export interface User {
   id: string;
   schoolId: string;
   status: UserStatus;
+  /**
+   * Synthetic (seeded) accounts are flagged at the schema level (Milestone 4
+   * quarantine): they are excluded from every real/parent-facing surface and
+   * export, and are deletable before pilot go-live. Real accounts are false.
+   */
+  synthetic: boolean;
   createdAt: string;
 }
 

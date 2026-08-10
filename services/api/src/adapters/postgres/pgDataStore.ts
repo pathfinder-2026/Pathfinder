@@ -83,14 +83,17 @@ export class PgDataStore implements DataStore {
 
   // Users & PII
   async insertUser(u: User): Promise<void> {
-    await this.sql`insert into users (id,school_id,status,created_at)
-      values (${u.id},${u.schoolId},${u.status},${u.createdAt})`;
+    await this.sql`insert into users (id,school_id,status,synthetic,created_at)
+      values (${u.id},${u.schoolId},${u.status},${u.synthetic},${u.createdAt})`;
   }
   async getUser(id: string): Promise<User | undefined> {
     return mapUser((await this.sql`select * from users where id=${id}`)[0]);
   }
   async updateUser(u: User): Promise<void> {
     await this.sql`update users set status=${u.status} where id=${u.id}`;
+  }
+  async deleteUser(id: string): Promise<void> {
+    await this.sql`delete from users where id=${id}`;
   }
   async listUsersBySchool(schoolId: string): Promise<User[]> {
     return (await this.sql`select * from users where school_id=${schoolId}`).map(mapUser) as User[];
@@ -160,6 +163,9 @@ export class PgDataStore implements DataStore {
   }
   async updateEnrolment(e: Enrolment): Promise<void> {
     await this.sql`update enrolments set class_id=${e.classId}, active=${e.active} where id=${e.id}`;
+  }
+  async deleteEnrolmentsByStudent(studentId: string): Promise<void> {
+    await this.sql`delete from enrolments where student_id=${studentId}`;
   }
   async insertEnrolmentHistory(h: EnrolmentHistory): Promise<void> {
     await this.sql`insert into enrolment_history (id,student_id,class_id,teacher_id,ended_at)
@@ -235,7 +241,7 @@ function mapClass(r: Row): ClassRoom | undefined {
   return r && { id: r.id, schoolId: r.school_id, campusId: r.campus_id, name: r.name, createdAt: iso(r.created_at) };
 }
 function mapUser(r: Row): User | undefined {
-  return r && { id: r.id, schoolId: r.school_id, status: r.status, createdAt: iso(r.created_at) };
+  return r && { id: r.id, schoolId: r.school_id, status: r.status, synthetic: r.synthetic, createdAt: iso(r.created_at) };
 }
 function mapPersonal(r: Row): PersonalData | undefined {
   return r && { userId: r.user_id, email: r.email, firstName: r.first_name, lastName: r.last_name };

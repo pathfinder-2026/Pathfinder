@@ -180,3 +180,18 @@ one automated test. Run `npm test`.
 | Edge — publish requires review acknowledgement | "edge — publish without review is blocked until a review acknowledgement" |
 | Edge (NEW v1.4) — direct-link denied at permission layer + logged | "edge (NEW v1.4) — direct-link access… denied at the permission layer and logged" |
 | Edge (NEW v1.4) — connectivity loss preserves work, visible to Teacher | "edge (NEW v1.4) — connectivity loss mid-assessment preserves work…" |
+
+# Milestone 4 traceability — DoD + quarantine → tests  (`m4-synthetic.test.ts`)
+
+M4 has no FR IDs; its tests come from the definition of done and the quarantine
+rules (requirements).
+
+| Property | Test |
+|---|---|
+| ~25 synthetic students, schema-level flag, no PII | "seeds ~25 synthetic students, flagged synthetic at the schema level, holding no PII" |
+| Varied mastery across mapped skills | "produces varied mastery across the mapped skills" |
+| Exercises M5 edges (small-cohort / stale / persistent-misconception / insufficient-data) | "includes the M5 edge cases…" |
+| Quarantine — excluded from real/export/parent surfaces | "quarantine — synthetic students are excluded from any real/export surface" |
+| Quarantine — deletable before go-live; real untouched; audited | "quarantine — synthetic students are deletable before go-live…" |
+| Quarantine — thresholds recorded for post-M7 re-validation | "quarantine — tuning thresholds are recorded for re-validation…" |
+| Seeding refuses without a signed-off skill graph | "refuses to seed without a signed-off skill graph" |

@@ -94,6 +94,26 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0019 — Synthetic student activity + quarantine (M4)
+M4 is an engineering task (no FR IDs), so its tests derive from the DoD and the
+quarantine rules (treated as requirements). Sensible defaults, recorded:
+- **Schema-level flag** `users.synthetic` (migration 0006) — the quarantine
+  boundary lives in the data, not just in code paths.
+- **Mastery/misconception substrate** (`ActivityStore`, `mastery_records` /
+  `misconception_signals`) is what the M5 intelligence layer will read.
+- **Deterministic seeding** — a `mulberry32` PRNG (not `Math.random`) makes the
+  ~25-student seed reproducible; patterns are constructed (not purely random) to
+  guarantee the M5 edges exist: a small cohort (rare skill touched by ≤3), stale
+  activity (first 5 students), persistent misconceptions (students 5–8), and
+  insufficient-data mastery (a few pairs with `dataPoints < min`).
+- **Quarantine enforcement primitives now, ahead of M8/M10**: `exportRealStudents`
+  / `realMastery` exclude synthetic; `deleteSyntheticStudents` cascades + audits;
+  synthetic students hold **no PII** (minimisation, Decision 6).
+- **Thresholds recorded, not frozen** (`SYNTHETIC_THRESHOLDS`, `provisional: true`,
+  `revalidateAfterMilestone: 7`) per the v1.3 rule.
+- Synthetic students seed against the school's signed-off graph skill nodes (the
+  "mapped skills"); seeding refuses without a signed graph.
+
 ## ADR-0018 — Assessment generation: grounded, deterministic, never fabricated (M3)
 Generation is **grounded only in the approved + mapped pool**: capacity is one
 question per grounding chunk, so an over-ask generates fewer questions and reports

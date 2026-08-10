@@ -67,7 +67,7 @@ export class InviteService {
     }
 
     const now = this.clock.isoNow();
-    const user: User = { id: newId(), schoolId, status: "invited", createdAt: now };
+    const user: User = { id: newId(), schoolId, status: "invited", synthetic: false, createdAt: now };
     await this.store.insertUser(user);
     await this.store.upsertPersonalData({
       userId: user.id,

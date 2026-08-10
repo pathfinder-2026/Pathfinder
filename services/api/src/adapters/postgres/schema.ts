@@ -1,6 +1,7 @@
 import {
   boolean,
   date,
+  doublePrecision,
   index,
   jsonb,
   pgTable,
@@ -66,6 +67,8 @@ export const users = pgTable("users", {
   id: text("id").primaryKey(),
   schoolId: text("school_id").notNull().references(() => schools.id),
   status: text("status").notNull(),
+  // Milestone 4 quarantine flag: synthetic (seeded) accounts vs real accounts.
+  synthetic: boolean("synthetic").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 
@@ -441,4 +444,37 @@ export const assessmentAttempts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (t) => ({ byAssessment: index("assessment_attempts_assessment_idx").on(t.assessmentId) }),
+);
+
+// ---- Milestone 4: synthetic student activity ----
+
+export const masteryRecords = pgTable(
+  "mastery_records",
+  {
+    id: text("id").primaryKey(),
+    studentId: text("student_id").notNull().references(() => users.id),
+    schoolId: text("school_id").notNull().references(() => schools.id),
+    nodeId: text("node_id").notNull(),
+    level: text("level").notNull(),
+    score: doublePrecision("score").notNull(),
+    dataPoints: bigint("data_points", { mode: "number" }).notNull(),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }).notNull(),
+    synthetic: boolean("synthetic").notNull().default(false),
+  },
+  (t) => ({ bySchool: index("mastery_records_school_idx").on(t.schoolId), byNode: index("mastery_records_node_idx").on(t.schoolId, t.nodeId) }),
+);
+
+export const misconceptionSignals = pgTable(
+  "misconception_signals",
+  {
+    id: text("id").primaryKey(),
+    studentId: text("student_id").notNull().references(() => users.id),
+    schoolId: text("school_id").notNull().references(() => schools.id),
+    nodeId: text("node_id").notNull(),
+    misconception: text("misconception").notNull(),
+    occurrences: bigint("occurrences", { mode: "number" }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    synthetic: boolean("synthetic").notNull().default(false),
+  },
+  (t) => ({ bySchool: index("misconception_signals_school_idx").on(t.schoolId) }),
 );

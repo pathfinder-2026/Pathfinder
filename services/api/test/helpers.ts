@@ -10,6 +10,7 @@ import { PgDataStore } from "../src/adapters/postgres/pgDataStore";
 import { PgContentStore } from "../src/adapters/postgres/pgContentStore";
 import { PgSkillGraphStore } from "../src/adapters/postgres/pgSkillGraphStore";
 import { PgAssessmentStore } from "../src/adapters/postgres/pgAssessmentStore";
+import { PgActivityStore } from "../src/adapters/postgres/pgActivityStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -37,6 +38,7 @@ export function makeHarness(): TestHarness {
       contentStore: new PgContentStore(sql),
       skillGraphStore: new PgSkillGraphStore(sql),
       assessmentStore: new PgAssessmentStore(sql),
+      activityStore: new PgActivityStore(sql),
     });
     return { ctx, clock };
   }
@@ -71,7 +73,7 @@ export async function seedSchoolWithAdmin(ctx: AppContext, name = "Springfield H
 
 /** Insert a plain user (with PII) and no membership; caller adds memberships. */
 export async function makeUser(ctx: AppContext, schoolId: string, email: string): Promise<User> {
-  const user: User = { id: newId(), schoolId, status: "active", createdAt: ctx.clock.isoNow() };
+  const user: User = { id: newId(), schoolId, status: "active", synthetic: false, createdAt: ctx.clock.isoNow() };
   await ctx.store.insertUser(user);
   await ctx.store.upsertPersonalData({ userId: user.id, email, firstName: "Test", lastName: "User" });
   return user;

@@ -123,6 +123,9 @@ export class InMemoryStore implements DataStore {
   async updateUser(user: User): Promise<void> {
     this.users.set(user.id, InMemoryStore.clone(user));
   }
+  async deleteUser(id: string): Promise<void> {
+    this.users.delete(id);
+  }
   async listUsersBySchool(schoolId: string): Promise<User[]> {
     return [...this.users.values()]
       .filter((u) => u.schoolId === schoolId)
@@ -202,6 +205,9 @@ export class InMemoryStore implements DataStore {
   }
   async updateEnrolment(enrolment: Enrolment): Promise<void> {
     this.enrolments.set(enrolment.id, InMemoryStore.clone(enrolment));
+  }
+  async deleteEnrolmentsByStudent(studentId: string): Promise<void> {
+    for (const [id, e] of this.enrolments) if (e.studentId === studentId) this.enrolments.delete(id);
   }
   async insertEnrolmentHistory(history: EnrolmentHistory): Promise<void> {
     this.enrolmentHistory.set(history.id, InMemoryStore.clone(history));

@@ -82,6 +82,14 @@ No other personal fields are stored in Milestone 0. Student behavioural/social
 data, guardian contacts, etc. are out of scope until the milestones that
 introduce them (each field to be justified when added).
 
+### M4 synthetic-student quarantine
+
+Synthetic (seeded) students carry a schema-level `users.synthetic` flag, hold
+**no PII**, are excluded from every real/export/parent surface
+(`SyntheticService.exportRealStudents` / `realMastery`), and are deletable before
+pilot go-live (`deleteSyntheticStudents`, audited). Tuning thresholds are recorded
+as provisional for re-validation after M7. Tests: `m4-synthetic.test.ts`.
+
 ## 7. Governance gate + approvable inference state
 
 - Governance state machine `src/platform/governance/governanceState.ts`

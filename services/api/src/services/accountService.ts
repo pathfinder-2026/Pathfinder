@@ -15,6 +15,8 @@ export interface CreateAccountInput {
   classId?: string | null;
   department?: string | null;
   status?: User["status"];
+  /** Synthetic (seeded) account (Milestone 4 quarantine). Defaults false. */
+  synthetic?: boolean;
 }
 
 /** FR-ADM-002 — manage teacher/student accounts, roles and permissions. */
@@ -38,6 +40,7 @@ export class AccountService {
       id: newId(),
       schoolId: input.schoolId,
       status: input.status ?? "active",
+      synthetic: input.synthetic ?? false,
       createdAt: this.clock.isoNow(),
     };
     await this.store.insertUser(user);

@@ -1,3 +1,45 @@
+# Handoff — Milestone 4
+
+**Date:** 2026-08-09
+**Milestone:** 4 — Seed synthetic student activity — **COMPLETE**
+**Suite:** `npm test` → **122** (117 `services/api` + 5 `infra`); the same 117
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## What was built (engineering task — no FR IDs)
+
+`SyntheticService.seedClass` seeds ~25 synthetic students in a class with varied
+mastery/misconception patterns across the mapped skills (deterministic PRNG),
+deliberately including the M5 edges: small-cohort (a rare skill touched by ≤3
+students), stale-data (first 5 students), persistent-misconception (students 5–8),
+insufficient-data (a few mastery pairs below the min). New `ActivityStore` port +
+in-memory + Postgres adapter (`mastery_records` / `misconception_signals`),
+migration `0006_synthetic_activity.sql`, `users.synthetic` flag.
+
+## Quarantine (enforced as requirements, tested)
+
+- **Schema-level flag** `users.synthetic`; synthetic students hold **no PII**.
+- **Excluded from real/export/parent surfaces** — `exportRealStudents`,
+  `realMastery`.
+- **Deletable before go-live** — `deleteSyntheticStudents` cascades (activity,
+  enrolments, memberships, user) and audits; real accounts untouched.
+- **Thresholds recorded** (`SYNTHETIC_THRESHOLDS`, `provisional: true`,
+  `revalidateAfterMilestone: 7`) — not frozen.
+
+## Deferred
+
+- Actual dashboards/cohorts that consume this data — Milestone 5a.
+- Re-validating the tuning thresholds against real data — after Milestone 7.
+
+## Next — validation checkpoint
+
+Milestones 0–5 are the validation MVP. **Milestone 5a** (Teacher Dashboard,
+Cohorts, Class-Focus, Adaptive Engine) works against this seeded data; 5b begins
+only after 5a passes. After Milestone 5 there is a formal checkpoint before the
+post-validation expansion (M6–M11).
+
+---
+
 # Handoff — Milestone 3
 
 **Date:** 2026-08-09

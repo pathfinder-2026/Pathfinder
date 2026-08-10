@@ -5,10 +5,11 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 3 complete** — Assessment Builder (plain-language request →
-> draft grounded only in the approved+mapped pool → rubrics/model answers/versions
-> → stays draft until the Teacher publishes), on top of Milestone 2 (Skill Graph),
-> Milestone 1 (Content Studio + Knowledge Engine) and Milestone 0 (foundations).
+> **Status: Milestone 4 complete** — seeded synthetic student activity (~25
+> students with varied mastery/misconception patterns, quarantined at the schema
+> level) so the Milestone 5 intelligence layer has real data to work against, on
+> top of Milestones 0–3 (skeleton, Content Studio, Skill Graph, Assessment
+> Builder).
 
 ## Foundational decisions (locked — never re-litigate)
 
@@ -65,12 +66,12 @@ npm install
 npm test
 ```
 
-Expected: **115 passing tests** — 110 in `services/api` (every M0 FR-ADM/FR-ONB,
-M1 FR-CONT/FR-ING, M2 FR-SKG, and M3 FR-ASM-001–004 acceptance row, plus the
-approved-pool / skill-graph sign-off / draft-until-publish gates, acyclicity
-validation, the AI-service-layer audit path, and the foundations) and 5 in `infra`
-(region pinning). The **same 110 tests also run against Postgres** (see below).
-Type-check with:
+Expected: **122 passing tests** — 117 in `services/api` (every M0 FR-ADM/FR-ONB,
+M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM acceptance row, the M4 synthetic-seed +
+quarantine tests, plus the approved-pool / sign-off / draft-until-publish gates,
+acyclicity validation, the AI-service-layer audit path, and the foundations) and
+5 in `infra` (region pinning). The **same 117 tests also run against Postgres**
+(see below). Type-check with:
 
 ```bash
 npm run typecheck
@@ -83,7 +84,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 110 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 117 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -169,8 +170,21 @@ start, and access to an unpublished assessment is denied **at the permission
 layer** (not merely hidden) and logged; connectivity loss mid-attempt preserves
 work to the last save point (FR-ASM-004).
 
+## Milestone 4 — Synthetic student activity (engineering task, no FR IDs)
+
+Seeds ~25 synthetic students in a class with varied mastery/misconception
+patterns across the mapped skills, deliberately including the M5 edge cases
+(small-cohort, stale-data, persistent-misconception, insufficient-data) so the
+Teacher intelligence layer has real data to work against. **Quarantine rules are
+enforced as requirements:** synthetic accounts are flagged at the schema level
+(`users.synthetic`), hold no PII, are **excluded from every real/export/parent
+surface** (`SyntheticService.exportRealStudents` / `realMastery`), are **deletable
+before pilot go-live** (`deleteSyntheticStudents`, audited), and the tuning
+thresholds are **recorded** (`SYNTHETIC_THRESHOLDS`, `provisional: true`) for
+re-validation against real data after Milestone 7.
+
 ## What is intentionally NOT here yet
 
-Synthetic data (M4), dashboards/cohorts (M5), parent/principal dashboards,
-reporting, live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
-plan-deferred), and the web UI screens. These belong to later milestones.
+Dashboards/cohorts/adaptive engine (M5), parent/principal dashboards, reporting,
+live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001, plan-deferred),
+and the web UI screens. These belong to later milestones.

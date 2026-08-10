@@ -45,9 +45,9 @@ describe("Foundational Decision 3 — append-only, hash-chained audit log", () =
     expect(rec["remove"]).toBeUndefined();
   });
 
-  it("records significant admin actions", () => {
+  it("records significant admin actions", async () => {
     const { ctx } = makeHarness();
-    ctx.schools.createSchool({
+    await ctx.schools.createSchool({
       name: "Audited School",
       campusName: "Main",
       academicYear: { name: "2026", terms: [{ name: "T1", startDate: "2026-01-28", endDate: "2026-04-10" }] },

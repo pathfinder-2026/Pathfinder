@@ -40,8 +40,8 @@ export class MappingService {
   ) {}
 
   /** Configure a school's curriculum (FR-SKG-002). */
-  configureCurriculum(schoolId: string, curriculum: string, customOutcomesDefined = true): void {
-    this.graph.setSchoolCurriculum({ schoolId, curriculum, customOutcomesDefined });
+  async configureCurriculum(schoolId: string, curriculum: string, customOutcomesDefined = true): Promise<void> {
+    await this.graph.setSchoolCurriculum({ schoolId, curriculum, customOutcomesDefined });
   }
 
   /**
@@ -49,19 +49,19 @@ export class MappingService {
    * supported (FR-SKG-001). Nodes with no defined prerequisite are flagged, not
    * blocked.
    */
-  mapContent(contentItemId: string, nodeIds: string[], options: MapOptions = {}): ContentMapping[] {
+  async mapContent(contentItemId: string, nodeIds: string[], options: MapOptions = {}): Promise<ContentMapping[]> {
     if (nodeIds.length === 0) throw new ValidationError("At least one node id is required.");
-    const item = this.contentStore.getContentItem(contentItemId);
+    const item = await this.contentStore.getContentItem(contentItemId);
     if (!item) throw new NotFoundError("Content item not found.");
     // Reads only from the approved pool (M1 gate is load-bearing).
-    if (!this.content.isInApprovedPool(contentItemId)) {
+    if (!(await this.content.isInApprovedPool(contentItemId))) {
       throw new ConflictError("CONTENT_NOT_APPROVED", "Only approved content can be mapped.");
     }
 
-    const version = this.requireSignedOffVersion(item.schoolId);
+    const version = await this.requireSignedOffVersion(item.schoolId);
     const created: ContentMapping[] = [];
     for (const nodeId of nodeIds) {
-      const node = this.graph.getNode(version.id, nodeId);
+      const node = await this.graph.getNode(version.id, nodeId);
       if (!node) throw new NotFoundError(`Node "${nodeId}" not in the signed-off graph.`);
       const mapping: ContentMapping = {
         id: newId(),
@@ -71,10 +71,10 @@ export class MappingService {
         source: options.source ?? "ai",
         difficulty: options.difficulty ?? "developing", // item attribute, never a node
         overriddenFromNodeId: null,
-        flags: this.flagsFor(version.id, node),
+        flags: await this.flagsFor(version.id, node),
         createdAt: this.clock.isoNow(),
       };
-      this.graph.insertMapping(mapping);
+      await this.graph.insertMapping(mapping);
       created.push(mapping);
       this.audit.append({
         action: "skillgraph.content.mapped",
@@ -88,11 +88,15 @@ export class MappingService {
   }
 
   /** Content's mappings, each with its full subject→…→node chain. */
-  mappingViews(contentItemId: string): MappingView[] {
-    return this.graph.listMappingsByContent(contentItemId).map((mapping) => ({
-      mapping,
-      chain: ancestorChain(mapping.nodeId, this.graph.listNodes(mapping.graphVersionId)),
-    }));
+  async mappingViews(contentItemId: string): Promise<MappingView[]> {
+    const views: MappingView[] = [];
+    for (const mapping of await this.graph.listMappingsByContent(contentItemId)) {
+      views.push({
+        mapping,
+        chain: ancestorChain(mapping.nodeId, await this.graph.listNodes(mapping.graphVersionId)),
+      });
+    }
+    return views;
   }
 
   /**
@@ -100,18 +104,18 @@ export class MappingService {
    * is the single source). If historical mastery data exists against the old
    * node, the caller must decide whether to remap it rather than discard it.
    */
-  overrideMapping(
+  async overrideMapping(
     mappingId: string,
     newNodeId: string,
     teacherId: string,
     options: { remapHistorical?: boolean } = {},
-  ): OverrideResult {
-    const mapping = this.graph.getMapping(mappingId);
+  ): Promise<OverrideResult> {
+    const mapping = await this.graph.getMapping(mappingId);
     if (!mapping) throw new NotFoundError("Mapping not found.");
-    const newNode = this.graph.getNode(mapping.graphVersionId, newNodeId);
+    const newNode = await this.graph.getNode(mapping.graphVersionId, newNodeId);
     if (!newNode) throw new NotFoundError(`Node "${newNodeId}" not in the graph.`);
 
-    const hasHistory = this.graph.masteryExists(mapping.contentItemId, mapping.nodeId);
+    const hasHistory = await this.graph.masteryExists(mapping.contentItemId, mapping.nodeId);
     if (hasHistory && options.remapHistorical === undefined) {
       return { requiresDecision: true, prompt: "remap-historical-data", oldNodeId: mapping.nodeId, newNodeId };
     }
@@ -121,9 +125,9 @@ export class MappingService {
       overriddenFromNodeId: mapping.nodeId,
       nodeId: newNodeId,
       source: "teacher",
-      flags: this.flagsFor(mapping.graphVersionId, newNode),
+      flags: await this.flagsFor(mapping.graphVersionId, newNode),
     };
-    this.graph.updateMapping(updated);
+    await this.graph.updateMapping(updated);
     this.audit.append({
       action: "skillgraph.mapping.overridden",
       actorId: teacherId,
@@ -135,27 +139,27 @@ export class MappingService {
   }
 
   /** Bulk override many mappings to one node with a single confirmation. */
-  bulkOverride(
+  async bulkOverride(
     mappingIds: string[],
     newNodeId: string,
     teacherId: string,
     options: { confirm?: boolean } = {},
-  ): BulkOverrideResult {
+  ): Promise<BulkOverrideResult> {
     if (!options.confirm) {
       return { requiresConfirmation: true, count: mappingIds.length };
     }
     let applied = 0;
     for (const id of mappingIds) {
-      const mapping = this.graph.getMapping(id);
+      const mapping = await this.graph.getMapping(id);
       if (!mapping) continue;
-      const newNode = this.graph.getNode(mapping.graphVersionId, newNodeId);
+      const newNode = await this.graph.getNode(mapping.graphVersionId, newNodeId);
       if (!newNode) throw new NotFoundError(`Node "${newNodeId}" not in the graph.`);
-      this.graph.updateMapping({
+      await this.graph.updateMapping({
         ...mapping,
         overriddenFromNodeId: mapping.nodeId,
         nodeId: newNodeId,
         source: "teacher",
-        flags: this.flagsFor(mapping.graphVersionId, newNode),
+        flags: await this.flagsFor(mapping.graphVersionId, newNode),
       });
       applied += 1;
     }
@@ -173,14 +177,14 @@ export class MappingService {
    * Switch a school's curriculum. Previously mapped content (under a different
    * curriculum) is flagged for re-mapping rather than silently left inconsistent.
    */
-  switchCurriculum(schoolId: string, newCurriculum: string): ContentMapping[] {
-    const config = this.graph.getSchoolCurriculum(schoolId);
-    this.graph.setSchoolCurriculum({
+  async switchCurriculum(schoolId: string, newCurriculum: string): Promise<ContentMapping[]> {
+    const config = await this.graph.getSchoolCurriculum(schoolId);
+    await this.graph.setSchoolCurriculum({
       schoolId,
       curriculum: newCurriculum,
       customOutcomesDefined: config?.customOutcomesDefined ?? true,
     });
-    const stale = this.mappingsNeedingRemap(schoolId);
+    const stale = await this.mappingsNeedingRemap(schoolId);
     this.audit.append({
       action: "skillgraph.curriculum.switched",
       actorId: null,
@@ -192,31 +196,34 @@ export class MappingService {
   }
 
   /** Mappings whose graph curriculum differs from the school's current one. */
-  mappingsNeedingRemap(schoolId: string): ContentMapping[] {
-    const config = this.graph.getSchoolCurriculum(schoolId);
+  async mappingsNeedingRemap(schoolId: string): Promise<ContentMapping[]> {
+    const config = await this.graph.getSchoolCurriculum(schoolId);
     if (!config) return [];
-    const items = new Set(this.contentStore.listContentItemsBySchool(schoolId).map((i) => i.id));
-    return this.graph
-      .listGraphVersions()
-      .flatMap((v) => this.graph.listMappingsByVersion(v.id).map((m) => ({ m, curriculum: v.curriculum })))
-      .filter(({ m, curriculum }) => items.has(m.contentItemId) && curriculum !== config.curriculum)
-      .map(({ m }) => m);
+    const items = new Set((await this.contentStore.listContentItemsBySchool(schoolId)).map((i) => i.id));
+    const stale: ContentMapping[] = [];
+    for (const v of await this.graph.listGraphVersions()) {
+      if (v.curriculum === config.curriculum) continue;
+      for (const m of await this.graph.listMappingsByVersion(v.id)) {
+        if (items.has(m.contentItemId)) stale.push(m);
+      }
+    }
+    return stale;
   }
 
   /**
    * Whether outcome mapping is required or pending for a school. A custom
    * curriculum without a defined outcome set makes outcome mapping optional.
    */
-  outcomeMappingPolicy(schoolId: string): "required" | "pending" {
-    const config = this.graph.getSchoolCurriculum(schoolId);
+  async outcomeMappingPolicy(schoolId: string): Promise<"required" | "pending"> {
+    const config = await this.graph.getSchoolCurriculum(schoolId);
     if (config && config.curriculum !== "NSW" && !config.customOutcomesDefined) return "pending";
     return "required";
   }
 
-  private requireSignedOffVersion(schoolId: string) {
-    const config = this.graph.getSchoolCurriculum(schoolId);
+  private async requireSignedOffVersion(schoolId: string) {
+    const config = await this.graph.getSchoolCurriculum(schoolId);
     const curriculum = config?.curriculum ?? "NSW";
-    const version = this.graph.latestSignedOffVersion(curriculum);
+    const version = await this.graph.latestSignedOffVersion(curriculum);
     if (!version) {
       throw new ConflictError(
         "SKILL_GRAPH_NOT_SIGNED_OFF",
@@ -227,9 +234,9 @@ export class MappingService {
   }
 
   /** Flag a skill with no defined prerequisite (and not foundational). */
-  private flagsFor(versionId: string, node: SkillNode): string[] {
+  private async flagsFor(versionId: string, node: SkillNode): Promise<string[]> {
     if (node.type !== "skill" || node.foundational) return [];
-    const hasIncoming = this.graph.listEdges(versionId).some((e) => e.to === node.id);
+    const hasIncoming = (await this.graph.listEdges(versionId)).some((e) => e.to === node.id);
     return hasIncoming ? [] : ["missing_prerequisite"];
   }
 }

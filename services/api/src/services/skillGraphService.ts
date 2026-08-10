@@ -28,7 +28,7 @@ export class SkillGraphService {
   ) {}
 
   /** Import a graph source as a new DRAFT version (validated acyclic). */
-  importGraph(source: SkillGraphSource, actorId: string | null = null): SkillGraphVersion {
+  async importGraph(source: SkillGraphSource, actorId: string | null = null): Promise<SkillGraphVersion> {
     validateGraphSource(source); // throws on cycle / bad refs / difficulty-as-node
 
     const meta = source._meta ?? {};
@@ -42,9 +42,9 @@ export class SkillGraphService {
       signedOffAt: null,
       createdAt: this.clock.isoNow(),
     };
-    this.store.insertGraphVersion(version);
-    for (const node of source.nodes) this.store.insertNode(version.id, node);
-    for (const edge of source.prerequisites) this.store.insertEdge(version.id, edge);
+    await this.store.insertGraphVersion(version);
+    for (const node of source.nodes) await this.store.insertNode(version.id, node);
+    for (const edge of source.prerequisites) await this.store.insertEdge(version.id, edge);
 
     this.audit.append({
       action: "skillgraph.imported",
@@ -61,8 +61,8 @@ export class SkillGraphService {
    * (Decision 4). A human performs this after reviewing the draft; the program
    * only records it.
    */
-  signOff(versionId: string, expertId: string): SkillGraphVersion {
-    const version = this.requireVersion(versionId);
+  async signOff(versionId: string, expertId: string): Promise<SkillGraphVersion> {
+    const version = await this.requireVersion(versionId);
     if (!expertId) throw new ValidationError("Sign-off requires the reviewing expert's id.");
     if (version.status === "signed_off") return version;
     const signed: SkillGraphVersion = {
@@ -71,7 +71,7 @@ export class SkillGraphService {
       signedOffBy: expertId,
       signedOffAt: this.clock.isoNow(),
     };
-    this.store.updateGraphVersion(signed);
+    await this.store.updateGraphVersion(signed);
     this.audit.append({
       action: "skillgraph.signed_off",
       actorId: expertId,
@@ -83,20 +83,20 @@ export class SkillGraphService {
   }
 
   /** Add a prerequisite edge; re-validates acyclicity (structural edit, Decision 4). */
-  addPrerequisite(versionId: string, edge: PrerequisiteEdge, actorId: string | null = null): void {
-    this.requireVersion(versionId);
-    const nodes = this.store.listNodes(versionId);
+  async addPrerequisite(versionId: string, edge: PrerequisiteEdge, actorId: string | null = null): Promise<void> {
+    await this.requireVersion(versionId);
+    const nodes = await this.store.listNodes(versionId);
     const ids = new Set(nodes.map((n) => n.id));
     if (!ids.has(edge.from) || !ids.has(edge.to)) {
       throw new ValidationError(`Prerequisite edge ${edge.from}->${edge.to} references an unknown node.`);
     }
-    const proposed = [...this.store.listEdges(versionId), edge];
+    const proposed = [...(await this.store.listEdges(versionId)), edge];
     const cycle = findPrerequisiteCycle(proposed);
     if (!cycle.acyclic) {
       // Reject the edit — the graph must remain acyclic.
       throw new ValidationError(`Adding ${edge.from}->${edge.to} would create a cycle: ${cycle.cycle?.join(" -> ")}`);
     }
-    this.store.insertEdge(versionId, edge);
+    await this.store.insertEdge(versionId, edge);
     this.audit.append({
       action: "skillgraph.edge.added",
       actorId,
@@ -106,17 +106,17 @@ export class SkillGraphService {
     });
   }
 
-  getVersion(versionId: string): SkillGraphVersion | undefined {
+  getVersion(versionId: string): Promise<SkillGraphVersion | undefined> {
     return this.store.getGraphVersion(versionId);
   }
 
   /** The full subject→…→node chain for a mapped node. */
-  chainFor(versionId: string, nodeId: string): SkillNode[] {
-    return ancestorChain(nodeId, this.store.listNodes(versionId));
+  async chainFor(versionId: string, nodeId: string): Promise<SkillNode[]> {
+    return ancestorChain(nodeId, await this.store.listNodes(versionId));
   }
 
-  private requireVersion(versionId: string): SkillGraphVersion {
-    const version = this.store.getGraphVersion(versionId);
+  private async requireVersion(versionId: string): Promise<SkillGraphVersion> {
+    const version = await this.store.getGraphVersion(versionId);
     if (!version) throw new NotFoundError("Skill graph version not found.");
     return version;
   }

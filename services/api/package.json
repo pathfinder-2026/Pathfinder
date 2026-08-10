@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "vitest run --config vitest.pg.config.ts",
+    "test:pg-suite": "vitest run --config vitest.pg-suite.config.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --import tsx src/adapters/postgres/migrate.ts"

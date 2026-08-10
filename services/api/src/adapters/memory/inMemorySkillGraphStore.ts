@@ -16,62 +16,62 @@ export class InMemorySkillGraphStore implements SkillGraphStore {
   private curricula = new Map<string, SchoolCurriculum>();
   private mastery = new Set<string>(); // `${contentItemId}::${nodeId}`
 
-  insertGraphVersion(version: SkillGraphVersion): void {
+  async insertGraphVersion(version: SkillGraphVersion): Promise<void> {
     this.versions.set(version.id, clone(version));
     if (!this.nodes.has(version.id)) this.nodes.set(version.id, new Map());
     if (!this.edges.has(version.id)) this.edges.set(version.id, []);
   }
-  getGraphVersion(id: string): SkillGraphVersion | undefined {
+  async getGraphVersion(id: string): Promise<SkillGraphVersion | undefined> {
     const v = this.versions.get(id); return v ? clone(v) : undefined;
   }
-  updateGraphVersion(version: SkillGraphVersion): void {
+  async updateGraphVersion(version: SkillGraphVersion): Promise<void> {
     this.versions.set(version.id, clone(version));
   }
-  listGraphVersions(): SkillGraphVersion[] {
+  async listGraphVersions(): Promise<SkillGraphVersion[]> {
     return [...this.versions.values()].map(clone);
   }
-  latestSignedOffVersion(curriculum: string): SkillGraphVersion | undefined {
+  async latestSignedOffVersion(curriculum: string): Promise<SkillGraphVersion | undefined> {
     const signed = [...this.versions.values()]
       .filter((v) => v.curriculum === curriculum && v.status === "signed_off")
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     return signed[0] ? clone(signed[0]) : undefined;
   }
 
-  insertNode(versionId: string, node: SkillNode): void {
+  async insertNode(versionId: string, node: SkillNode): Promise<void> {
     if (!this.nodes.has(versionId)) this.nodes.set(versionId, new Map());
     this.nodes.get(versionId)!.set(node.id, clone(node));
   }
-  getNode(versionId: string, nodeId: string): SkillNode | undefined {
+  async getNode(versionId: string, nodeId: string): Promise<SkillNode | undefined> {
     const n = this.nodes.get(versionId)?.get(nodeId); return n ? clone(n) : undefined;
   }
-  listNodes(versionId: string): SkillNode[] {
+  async listNodes(versionId: string): Promise<SkillNode[]> {
     return [...(this.nodes.get(versionId)?.values() ?? [])].map(clone);
   }
-  insertEdge(versionId: string, edge: PrerequisiteEdge): void {
+  async insertEdge(versionId: string, edge: PrerequisiteEdge): Promise<void> {
     if (!this.edges.has(versionId)) this.edges.set(versionId, []);
     this.edges.get(versionId)!.push(clone(edge));
   }
-  listEdges(versionId: string): PrerequisiteEdge[] {
+  async listEdges(versionId: string): Promise<PrerequisiteEdge[]> {
     return [...(this.edges.get(versionId) ?? [])].map(clone);
   }
 
-  insertMapping(mapping: ContentMapping): void { this.mappings.set(mapping.id, clone(mapping)); }
-  getMapping(id: string): ContentMapping | undefined {
+  async insertMapping(mapping: ContentMapping): Promise<void> { this.mappings.set(mapping.id, clone(mapping)); }
+  async getMapping(id: string): Promise<ContentMapping | undefined> {
     const m = this.mappings.get(id); return m ? clone(m) : undefined;
   }
-  updateMapping(mapping: ContentMapping): void { this.mappings.set(mapping.id, clone(mapping)); }
-  listMappingsByContent(contentItemId: string): ContentMapping[] {
+  async updateMapping(mapping: ContentMapping): Promise<void> { this.mappings.set(mapping.id, clone(mapping)); }
+  async listMappingsByContent(contentItemId: string): Promise<ContentMapping[]> {
     return [...this.mappings.values()].filter((m) => m.contentItemId === contentItemId).map(clone);
   }
-  listMappingsByVersion(versionId: string): ContentMapping[] {
+  async listMappingsByVersion(versionId: string): Promise<ContentMapping[]> {
     return [...this.mappings.values()].filter((m) => m.graphVersionId === versionId).map(clone);
   }
 
-  setSchoolCurriculum(config: SchoolCurriculum): void { this.curricula.set(config.schoolId, clone(config)); }
-  getSchoolCurriculum(schoolId: string): SchoolCurriculum | undefined {
+  async setSchoolCurriculum(config: SchoolCurriculum): Promise<void> { this.curricula.set(config.schoolId, clone(config)); }
+  async getSchoolCurriculum(schoolId: string): Promise<SchoolCurriculum | undefined> {
     const c = this.curricula.get(schoolId); return c ? clone(c) : undefined;
   }
 
-  recordMastery(contentItemId: string, nodeId: string): void { this.mastery.add(`${contentItemId}::${nodeId}`); }
-  masteryExists(contentItemId: string, nodeId: string): boolean { return this.mastery.has(`${contentItemId}::${nodeId}`); }
+  async recordMastery(contentItemId: string, nodeId: string): Promise<void> { this.mastery.add(`${contentItemId}::${nodeId}`); }
+  async masteryExists(contentItemId: string, nodeId: string): Promise<boolean> { return this.mastery.has(`${contentItemId}::${nodeId}`); }
 }

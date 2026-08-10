@@ -24,9 +24,9 @@ export class ClassificationService {
   ) {}
 
   async classify(contentItemId: string, actorId: string | null = null): Promise<Classification> {
-    const item = this.content.getContentItem(contentItemId);
+    const item = await this.content.getContentItem(contentItemId);
     if (!item) throw new NotFoundError("Content item not found.");
-    const version = this.content.getContentVersion(item.currentVersionId);
+    const version = await this.content.getContentVersion(item.currentVersionId);
     const text = version ? this.storage.get(version.storageKey)?.text ?? "" : "";
 
     // The ONLY path to an LLM — the service layer guards residency and audits.
@@ -54,7 +54,7 @@ export class ClassificationService {
       status: "suggested",
       reviewedByTeacherId: null,
     };
-    this.content.upsertClassification(classification);
+    await this.content.upsertClassification(classification);
     this.audit.append({
       action: "content.classified",
       actorId,
@@ -66,12 +66,12 @@ export class ClassificationService {
   }
 
   /** A Teacher edits the suggestion; the correction is stored as approved. */
-  editClassification(
+  async editClassification(
     contentItemId: string,
     teacherId: string,
     changes: Partial<Pick<Classification, "subject" | "year" | "topic" | "outcome" | "difficulty">>,
-  ): Classification {
-    const current = this.content.getClassificationByItem(contentItemId);
+  ): Promise<Classification> {
+    const current = await this.content.getClassificationByItem(contentItemId);
     if (!current) throw new NotFoundError("No classification to edit.");
     const updated: Classification = {
       ...current,
@@ -79,7 +79,7 @@ export class ClassificationService {
       status: "approved",
       reviewedByTeacherId: teacherId,
     };
-    this.content.upsertClassification(updated);
+    await this.content.upsertClassification(updated);
     this.audit.append({
       action: "content.classification.edited",
       actorId: teacherId,
@@ -91,11 +91,11 @@ export class ClassificationService {
   }
 
   /** A Teacher accepts the suggestion as-is. */
-  approveClassification(contentItemId: string, teacherId: string): Classification {
-    const current = this.content.getClassificationByItem(contentItemId);
+  async approveClassification(contentItemId: string, teacherId: string): Promise<Classification> {
+    const current = await this.content.getClassificationByItem(contentItemId);
     if (!current) throw new NotFoundError("No classification to approve.");
     const updated: Classification = { ...current, status: "approved", reviewedByTeacherId: teacherId };
-    this.content.upsertClassification(updated);
+    await this.content.upsertClassification(updated);
     this.audit.append({
       action: "content.classification.approved",
       actorId: teacherId,
@@ -106,7 +106,7 @@ export class ClassificationService {
     return updated;
   }
 
-  getClassification(contentItemId: string): Classification | undefined {
+  getClassification(contentItemId: string): Promise<Classification | undefined> {
     return this.content.getClassificationByItem(contentItemId);
   }
 }

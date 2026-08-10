@@ -8,10 +8,10 @@ import { makeHarness, seedSchoolWithAdmin } from "./helpers";
  * immutable record of the action").
  */
 describe("Foundation — minimised data model & per-student erasure", () => {
-  it("erasing a student removes PII but keeps the user record and audited facts", () => {
+  it("erasing a student removes PII but keeps the user record and audited facts", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    const student = ctx.accounts.createAccount({
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const student = await ctx.accounts.createAccount({
       schoolId: school.id,
       role: "student",
       email: "erase.me@springfield.edu",
@@ -27,31 +27,31 @@ describe("Foundation — minimised data model & per-student erasure", () => {
       subjectId: student.user.id,
       metadata: {},
     });
-    expect(ctx.store.getPersonalData(student.user.id)).toBeDefined();
+    expect(await ctx.store.getPersonalData(student.user.id)).toBeDefined();
 
-    ctx.accounts.erasePersonalData(student.user.id);
+    await ctx.accounts.erasePersonalData(student.user.id);
 
     // PII is gone...
-    expect(ctx.store.getPersonalData(student.user.id)).toBeUndefined();
-    expect(ctx.store.findUserIdByEmail("erase.me@springfield.edu")).toBeUndefined();
+    expect(await ctx.store.getPersonalData(student.user.id)).toBeUndefined();
+    expect(await ctx.store.findUserIdByEmail("erase.me@springfield.edu")).toBeUndefined();
     // ...but the structural record remains (tombstoned) and facts are retained.
-    expect(ctx.store.getUser(student.user.id)?.status).toBe("erased");
+    expect((await ctx.store.getUser(student.user.id))?.status).toBe("erased");
     const facts = ctx.audit.find((e) => e.subjectId === student.user.id);
     expect(facts.length).toBeGreaterThanOrEqual(2); // enrolled + erased
     expect(ctx.audit.verifyChain()).toBe(true);
   });
 
-  it("PII lives only in personal_data, not on the structural user record", () => {
+  it("PII lives only in personal_data, not on the structural user record", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    const student = ctx.accounts.createAccount({
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const student = await ctx.accounts.createAccount({
       schoolId: school.id,
       role: "student",
       email: "pii@springfield.edu",
       firstName: "Pia",
       lastName: "Ai",
     });
-    const user = ctx.store.getUser(student.user.id)!;
+    const user = (await ctx.store.getUser(student.user.id))!;
     expect(JSON.stringify(user)).not.toContain("pii@springfield.edu");
     expect(JSON.stringify(user)).not.toContain("Pia");
   });

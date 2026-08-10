@@ -94,6 +94,29 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0017 — Async persistence ports + full Postgres adapters
+The synchronous persistence ports (see ADR-0007/0016) were converted to
+**async** (Promise-returning) across `DataStore`/`ContentStore`/`SkillGraphStore`,
+cascading `async`/`await` through every service, the HTTP layer, the test helpers
+and all 27 test files. Full **Postgres adapters** (`src/adapters/postgres/pg*.ts`,
+postgres-js) now implement the ports, and the **same 96 acceptance tests run
+against a real embedded PostgreSQL** (`npm run test:pg-suite`) as well as the
+in-memory store — a backend switch in the test harness (`PATHFINDER_TEST_BACKEND`)
+with a truncate-before-each for isolation. This resolves the ADR-0007/0016
+deferral: the DB path is exercised by the whole suite, not just DDL + governance
+checks.
+
+Running against real Postgres immediately caught a latent bug the in-memory
+adapter had masked: `content_versions` has a foreign key to `content_items`, but
+`uploadOne` inserted the version *before* the item — an ordering error with no
+consequence in memory but an FK violation in Postgres. Fixed by inserting the
+item first. (This is exactly the value of the pg run.)
+
+Audit and notifications remain the in-memory `AuditRecorder` / channel in both
+modes; only the three data stores swap to Postgres. The AWS-provisioned RDS/
+Aurora deployment is still a later step (ADR-0007 timing), but the adapter code
+is now real, type-checked and test-covered.
+
 ## ADR-0016 — Validate migrations + DB governance against embedded Postgres (pre-M3)
 Before building M3, the SQL migrations (`0001–0004`) were run against a **real**
 PostgreSQL — the `embedded-postgres` package (a real engine downloaded as a dev

@@ -57,26 +57,26 @@ export class InviteService {
     input: InviteInput,
     actorId: string | null = null,
   ): Promise<InviteResult> {
-    const school = this.store.getSchool(schoolId);
+    const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
     const notificationType = INVITE_NOTIFICATION[role];
     if (!notificationType) throw new ValidationError(`Role "${role}" is not invitable.`);
     if (!input.email?.trim()) throw new ValidationError("Email is required.");
-    if (this.store.findUserIdByEmail(input.email)) {
+    if (await this.store.findUserIdByEmail(input.email)) {
       throw new ConflictError("EMAIL_IN_USE", "An account with this email already exists.");
     }
 
     const now = this.clock.isoNow();
     const user: User = { id: newId(), schoolId, status: "invited", createdAt: now };
-    this.store.insertUser(user);
-    this.store.upsertPersonalData({
+    await this.store.insertUser(user);
+    await this.store.upsertPersonalData({
       userId: user.id,
       email: input.email.trim(),
       firstName: input.firstName,
       lastName: input.lastName,
     });
     // The invited person holds their role from creation, scoped to the school.
-    this.store.insertMembership({
+    await this.store.insertMembership({
       id: newId(),
       userId: user.id,
       schoolId,
@@ -94,7 +94,7 @@ export class InviteService {
       status: "pending",
       createdAt: now,
     };
-    this.store.insertInvite(invite);
+    await this.store.insertInvite(invite);
 
     // Deliver the invite THROUGH the notification service.
     const message = await this.notifications.send({

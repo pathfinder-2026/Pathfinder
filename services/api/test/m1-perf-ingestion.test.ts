@@ -8,18 +8,19 @@ import type { AppContext } from "../src/context";
  * hanging — no silent spinner. Ingestion always reaches a terminal state, fast.
  */
 describe("NFR-PERF-001 ingestion always resolves to a terminal status", () => {
-  function ingestSource(ctx: AppContext, schoolId: string, teacherId: string, source: { text?: string; scanned?: boolean; corrupt?: boolean }) {
-    const up = ctx.content.uploadOne(schoolId, teacherId, {
+  async function ingestSource(ctx: AppContext, schoolId: string, teacherId: string, source: { text?: string; scanned?: boolean; corrupt?: boolean }) {
+    const up = await ctx.content.uploadOne(schoolId, teacherId, {
       title: "Doc", fileType: "pdf", sizeBytes: 1000, contentHash: testHash("perf"), source,
     });
     if (up.status !== "accepted") throw new Error("unreachable");
-    return ctx.ingestion.ingest(ctx.contentStore.getContentItem(up.contentItemId)!.currentVersionId, teacherId);
+    const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+    return ctx.ingestion.ingest(item.currentVersionId, teacherId);
   }
 
-  it("every ingestion input lands on a terminal status well within target", () => {
+  it("every ingestion input lands on a terminal status well within target", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    const teacher = makeTeacher(ctx, school.id, "teacher@springfield.edu");
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "teacher@springfield.edu");
     const t = teacher.user.id;
 
     const cases: Array<{ text?: string; scanned?: boolean; corrupt?: boolean }> = [
@@ -29,7 +30,7 @@ describe("NFR-PERF-001 ingestion always resolves to a terminal status", () => {
     ];
     const NFR_UPLOAD_STATUS_TARGET_MS = 5000;
     for (const source of cases) {
-      const result = ingestSource(ctx, school.id, t, source);
+      const result = await ingestSource(ctx, school.id, t, source);
       const status: IngestionStatus = result.status;
       expect(TERMINAL_INGESTION.has(status)).toBe(true); // never left "processing"
       expect(result.elapsedMs).toBeLessThan(NFR_UPLOAD_STATUS_TARGET_MS);

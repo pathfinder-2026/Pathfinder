@@ -20,8 +20,8 @@ import type {
 } from "../../ports/dataStore";
 
 /**
- * In-memory DataStore. Backs dev and the full Milestone 0 test suite. Every
- * method returns copies so callers cannot mutate stored state by reference.
+ * In-memory DataStore. Backs dev and the full test suite. Methods are async to
+ * match the port; each returns copies so callers cannot mutate stored state.
  */
 export class InMemoryStore implements DataStore {
   private schools = new Map<string, School>();
@@ -45,100 +45,100 @@ export class InMemoryStore implements DataStore {
   }
 
   // Schools
-  insertSchool(school: School): void {
+  async insertSchool(school: School): Promise<void> {
     this.schools.set(school.id, InMemoryStore.clone(school));
   }
-  getSchool(id: string): School | undefined {
+  async getSchool(id: string): Promise<School | undefined> {
     const s = this.schools.get(id);
     return s ? InMemoryStore.clone(s) : undefined;
   }
-  findSchoolByName(name: string): School | undefined {
+  async findSchoolByName(name: string): Promise<School | undefined> {
     const norm = name.trim().toLowerCase();
     for (const s of this.schools.values()) {
       if (s.name.trim().toLowerCase() === norm) return InMemoryStore.clone(s);
     }
     return undefined;
   }
-  updateSchool(school: School): void {
+  async updateSchool(school: School): Promise<void> {
     this.schools.set(school.id, InMemoryStore.clone(school));
   }
 
   // Campuses
-  insertCampus(campus: Campus): void {
+  async insertCampus(campus: Campus): Promise<void> {
     this.campuses.set(campus.id, InMemoryStore.clone(campus));
   }
-  getCampus(id: string): Campus | undefined {
+  async getCampus(id: string): Promise<Campus | undefined> {
     const c = this.campuses.get(id);
     return c ? InMemoryStore.clone(c) : undefined;
   }
-  listCampusesBySchool(schoolId: string): Campus[] {
+  async listCampusesBySchool(schoolId: string): Promise<Campus[]> {
     return [...this.campuses.values()]
       .filter((c) => c.schoolId === schoolId)
       .map(InMemoryStore.clone);
   }
-  updateCampus(campus: Campus): void {
+  async updateCampus(campus: Campus): Promise<void> {
     this.campuses.set(campus.id, InMemoryStore.clone(campus));
   }
 
   // Academic years & terms
-  insertAcademicYear(year: AcademicYear): void {
+  async insertAcademicYear(year: AcademicYear): Promise<void> {
     this.academicYears.set(year.id, InMemoryStore.clone(year));
   }
-  listAcademicYearsBySchool(schoolId: string): AcademicYear[] {
+  async listAcademicYearsBySchool(schoolId: string): Promise<AcademicYear[]> {
     return [...this.academicYears.values()]
       .filter((y) => y.schoolId === schoolId)
       .map(InMemoryStore.clone);
   }
-  insertTerm(term: Term): void {
+  async insertTerm(term: Term): Promise<void> {
     this.terms.set(term.id, InMemoryStore.clone(term));
   }
-  listTermsByYear(academicYearId: string): Term[] {
+  async listTermsByYear(academicYearId: string): Promise<Term[]> {
     return [...this.terms.values()]
       .filter((t) => t.academicYearId === academicYearId)
       .map(InMemoryStore.clone);
   }
 
   // Classes
-  insertClass(klass: ClassRoom): void {
+  async insertClass(klass: ClassRoom): Promise<void> {
     this.classes.set(klass.id, InMemoryStore.clone(klass));
   }
-  getClass(id: string): ClassRoom | undefined {
+  async getClass(id: string): Promise<ClassRoom | undefined> {
     const c = this.classes.get(id);
     return c ? InMemoryStore.clone(c) : undefined;
   }
-  listClassesBySchool(schoolId: string): ClassRoom[] {
+  async listClassesBySchool(schoolId: string): Promise<ClassRoom[]> {
     return [...this.classes.values()]
       .filter((c) => c.schoolId === schoolId)
       .map(InMemoryStore.clone);
   }
 
   // Users & PII
-  insertUser(user: User): void {
+  async insertUser(user: User): Promise<void> {
     this.users.set(user.id, InMemoryStore.clone(user));
   }
-  getUser(id: string): User | undefined {
+  async getUser(id: string): Promise<User | undefined> {
     const u = this.users.get(id);
     return u ? InMemoryStore.clone(u) : undefined;
   }
-  updateUser(user: User): void {
+  async updateUser(user: User): Promise<void> {
     this.users.set(user.id, InMemoryStore.clone(user));
   }
-  listUsersBySchool(schoolId: string): User[] {
+  async listUsersBySchool(schoolId: string): Promise<User[]> {
     return [...this.users.values()]
       .filter((u) => u.schoolId === schoolId)
       .map(InMemoryStore.clone);
   }
-  upsertPersonalData(data: PersonalData): void {
+  async upsertPersonalData(data: PersonalData): Promise<void> {
     this.personalData.set(data.userId, InMemoryStore.clone(data));
   }
-  getPersonalData(userId: string): PersonalData | undefined {
+  async getPersonalData(userId: string): Promise<PersonalData | undefined> {
     const d = this.personalData.get(userId);
     return d ? InMemoryStore.clone(d) : undefined;
   }
-  deletePersonalData(userId: string): void {
+  async deletePersonalData(userId: string): Promise<void> {
     this.personalData.delete(userId);
   }
-  findUserIdByEmail(email: string): string | undefined {
+  async findUserIdByEmail(email: string): Promise<string | undefined> {
     const norm = email.trim().toLowerCase();
     for (const d of this.personalData.values()) {
       if (d.email.trim().toLowerCase() === norm) return d.userId;
@@ -147,112 +147,112 @@ export class InMemoryStore implements DataStore {
   }
 
   // Memberships
-  insertMembership(membership: Membership): void {
+  async insertMembership(membership: Membership): Promise<void> {
     this.memberships.set(membership.id, InMemoryStore.clone(membership));
   }
-  getMembership(id: string): Membership | undefined {
+  async getMembership(id: string): Promise<Membership | undefined> {
     const m = this.memberships.get(id);
     return m ? InMemoryStore.clone(m) : undefined;
   }
-  listMembershipsByUser(userId: string): Membership[] {
+  async listMembershipsByUser(userId: string): Promise<Membership[]> {
     return [...this.memberships.values()]
       .filter((m) => m.userId === userId)
       .map(InMemoryStore.clone);
   }
-  listMembershipsBySchool(schoolId: string): Membership[] {
+  async listMembershipsBySchool(schoolId: string): Promise<Membership[]> {
     return [...this.memberships.values()]
       .filter((m) => m.schoolId === schoolId)
       .map(InMemoryStore.clone);
   }
-  updateMembership(membership: Membership): void {
+  async updateMembership(membership: Membership): Promise<void> {
     this.memberships.set(membership.id, InMemoryStore.clone(membership));
   }
-  deleteMembership(id: string): void {
+  async deleteMembership(id: string): Promise<void> {
     this.memberships.delete(id);
   }
 
   // Invites
-  insertInvite(invite: Invite): void {
+  async insertInvite(invite: Invite): Promise<void> {
     this.invites.set(invite.id, InMemoryStore.clone(invite));
   }
-  getInviteByToken(token: string): Invite | undefined {
+  async getInviteByToken(token: string): Promise<Invite | undefined> {
     for (const i of this.invites.values()) {
       if (i.token === token) return InMemoryStore.clone(i);
     }
     return undefined;
   }
-  updateInvite(invite: Invite): void {
+  async updateInvite(invite: Invite): Promise<void> {
     this.invites.set(invite.id, InMemoryStore.clone(invite));
   }
-  listInvitesBySchool(schoolId: string): Invite[] {
+  async listInvitesBySchool(schoolId: string): Promise<Invite[]> {
     return [...this.invites.values()]
       .filter((i) => i.schoolId === schoolId)
       .map(InMemoryStore.clone);
   }
 
   // Enrolments
-  insertEnrolment(enrolment: Enrolment): void {
+  async insertEnrolment(enrolment: Enrolment): Promise<void> {
     this.enrolments.set(enrolment.id, InMemoryStore.clone(enrolment));
   }
-  getActiveEnrolmentForStudent(studentId: string): Enrolment | undefined {
+  async getActiveEnrolmentForStudent(studentId: string): Promise<Enrolment | undefined> {
     for (const e of this.enrolments.values()) {
       if (e.studentId === studentId && e.active) return InMemoryStore.clone(e);
     }
     return undefined;
   }
-  updateEnrolment(enrolment: Enrolment): void {
+  async updateEnrolment(enrolment: Enrolment): Promise<void> {
     this.enrolments.set(enrolment.id, InMemoryStore.clone(enrolment));
   }
-  insertEnrolmentHistory(history: EnrolmentHistory): void {
+  async insertEnrolmentHistory(history: EnrolmentHistory): Promise<void> {
     this.enrolmentHistory.set(history.id, InMemoryStore.clone(history));
   }
-  listEnrolmentHistoryByTeacher(teacherId: string): EnrolmentHistory[] {
+  async listEnrolmentHistoryByTeacher(teacherId: string): Promise<EnrolmentHistory[]> {
     return [...this.enrolmentHistory.values()]
       .filter((h) => h.teacherId === teacherId)
       .map(InMemoryStore.clone);
   }
-  listEnrolmentHistoryByStudent(studentId: string): EnrolmentHistory[] {
+  async listEnrolmentHistoryByStudent(studentId: string): Promise<EnrolmentHistory[]> {
     return [...this.enrolmentHistory.values()]
       .filter((h) => h.studentId === studentId)
       .map(InMemoryStore.clone);
   }
 
   // Inference records
-  insertInferenceRecord(record: InferenceRecord): void {
+  async insertInferenceRecord(record: InferenceRecord): Promise<void> {
     this.inferenceRecords.set(record.id, InMemoryStore.clone(record));
   }
-  getInferenceRecord(id: string): InferenceRecord | undefined {
+  async getInferenceRecord(id: string): Promise<InferenceRecord | undefined> {
     const r = this.inferenceRecords.get(id);
     return r ? InMemoryStore.clone(r) : undefined;
   }
-  listInferenceRecordsByStudent(studentId: string): InferenceRecord[] {
+  async listInferenceRecordsByStudent(studentId: string): Promise<InferenceRecord[]> {
     return [...this.inferenceRecords.values()]
       .filter((r) => r.studentId === studentId)
       .map(InMemoryStore.clone);
   }
 
   // Auth
-  setCredential(credential: Credential): void {
+  async setCredential(credential: Credential): Promise<void> {
     this.credentials.set(credential.userId, InMemoryStore.clone(credential));
   }
-  getCredential(userId: string): Credential | undefined {
+  async getCredential(userId: string): Promise<Credential | undefined> {
     const c = this.credentials.get(userId);
     return c ? InMemoryStore.clone(c) : undefined;
   }
-  insertSession(session: Session): void {
+  async insertSession(session: Session): Promise<void> {
     this.sessions.set(session.token, InMemoryStore.clone(session));
   }
-  getSession(token: string): Session | undefined {
+  async getSession(token: string): Promise<Session | undefined> {
     const s = this.sessions.get(token);
     return s ? InMemoryStore.clone(s) : undefined;
   }
 
   // Onboarding
-  getOnboarding(schoolId: string): OnboardingProgress | undefined {
+  async getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined> {
     const o = this.onboarding.get(schoolId);
     return o ? InMemoryStore.clone(o) : undefined;
   }
-  saveOnboarding(progress: OnboardingProgress): void {
+  async saveOnboarding(progress: OnboardingProgress): Promise<void> {
     this.onboarding.set(progress.schoolId, InMemoryStore.clone(progress));
   }
 }

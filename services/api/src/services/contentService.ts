@@ -57,15 +57,20 @@ export class ContentService {
   ) {}
 
   /** Upload one or more files; each is validated, scanned and de-duplicated. */
-  uploadMany(
+  async uploadMany(
     schoolId: string,
     teacherId: string,
     inputs: UploadInput[],
-  ): UploadResult[] {
-    return inputs.map((input) => this.uploadOne(schoolId, teacherId, input));
+  ): Promise<UploadResult[]> {
+    const results: UploadResult[] = [];
+    // Sequential: each upload affects duplicate detection for the next.
+    for (const input of inputs) {
+      results.push(await this.uploadOne(schoolId, teacherId, input));
+    }
+    return results;
   }
 
-  uploadOne(schoolId: string, teacherId: string, input: UploadInput): UploadResult {
+  async uploadOne(schoolId: string, teacherId: string, input: UploadInput): Promise<UploadResult> {
     // 1. Unsupported file type — reject listing supported formats.
     if (!isSupportedFileType(input.fileType)) {
       this.audit.append({
@@ -131,7 +136,7 @@ export class ContentService {
     }
 
     // 4. Duplicate detection — flags, never blocks (FR-CONT-001 / FR-CONT-003).
-    const duplicateOfId = this.findDuplicate(schoolId, input.contentHash, input.source?.text);
+    const duplicateOfId = await this.findDuplicate(schoolId, input.contentHash, input.source?.text);
     const flags = duplicateOfId ? ["likely_duplicate"] : [];
 
     // 5. Create the content item + its first version (draft governance).
@@ -162,8 +167,10 @@ export class ContentService {
       share: input.share ?? { type: "private" },
       createdAt: now,
     };
-    this.content.insertContentVersion(version);
-    this.content.insertContentItem(item);
+    // Insert the item BEFORE the version: content_versions.content_item_id has a
+    // FK to content_items (current_version_id carries no FK, so this order is safe).
+    await this.content.insertContentItem(item);
+    await this.content.insertContentVersion(version);
     this.audit.append({
       action: "content.uploaded",
       actorId: teacherId,
@@ -178,10 +185,10 @@ export class ContentService {
   }
 
   /** Third-party-copyright attestation (FR-CONT-001, NEW v1.4). */
-  attestRights(contentItemId: string, teacherId: string): ContentItem {
-    const item = this.requireItem(contentItemId);
+  async attestRights(contentItemId: string, teacherId: string): Promise<ContentItem> {
+    const item = await this.requireItem(contentItemId);
     const updated = { ...item, rightsAttested: true };
-    this.content.updateContentItem(updated);
+    await this.content.updateContentItem(updated);
     this.audit.append({
       action: "content.rights.attested",
       actorId: teacherId,
@@ -197,13 +204,13 @@ export class ContentService {
    * and the new one becomes current. Concurrent saves each become a new version
    * — the later save never silently overwrites the earlier one (FR-CONT-003).
    */
-  addVersion(contentItemId: string, teacherId: string, input: UploadInput): ContentVersion {
-    const item = this.requireItem(contentItemId);
+  async addVersion(contentItemId: string, teacherId: string, input: UploadInput): Promise<ContentVersion> {
+    const item = await this.requireItem(contentItemId);
     if (!isSupportedFileType(input.fileType)) {
       throw new ValidationError(`Unsupported file type "${input.fileType}".`);
     }
     const fileType = input.fileType as ContentFileType;
-    const existing = this.content.listVersionsByItem(contentItemId);
+    const existing = await this.content.listVersionsByItem(contentItemId);
     const nextNumber = Math.max(...existing.map((v) => v.versionNumber), 0) + 1;
 
     const storageKey = newId();
@@ -231,9 +238,9 @@ export class ContentService {
       ingestionStatus: "pending",
       createdAt: this.clock.isoNow(),
     };
-    this.content.insertContentVersion(version);
+    await this.content.insertContentVersion(version);
     // A revision returns the item to draft until it is re-approved.
-    this.content.updateContentItem({ ...item, currentVersionId: version.id, governance: newDraft() });
+    await this.content.updateContentItem({ ...item, currentVersionId: version.id, governance: newDraft() });
     this.audit.append({
       action: "content.version.added",
       actorId: teacherId,
@@ -248,17 +255,16 @@ export class ContentService {
    * Archive an item. If it is referenced by something in active use (e.g. an
    * assignment), the caller is warned and must confirm first.
    */
-  archive(
+  async archive(
     contentItemId: string,
     teacherId: string,
     options: { confirm?: boolean } = {},
-  ):
+  ): Promise<
     | { archived: true }
-    | { archived: false; warning: "in-use"; requiresConfirmation: true; references: string[] } {
-    const item = this.requireItem(contentItemId);
-    const activeRefs = this.content
-      .listReferencesByItem(contentItemId)
-      .filter((r) => r.active);
+    | { archived: false; warning: "in-use"; requiresConfirmation: true; references: string[] }
+  > {
+    const item = await this.requireItem(contentItemId);
+    const activeRefs = (await this.content.listReferencesByItem(contentItemId)).filter((r) => r.active);
     if (activeRefs.length > 0 && !options.confirm) {
       return {
         archived: false,
@@ -267,7 +273,7 @@ export class ContentService {
         references: activeRefs.map((r) => `${r.refType}:${r.refId}`),
       };
     }
-    this.content.updateContentItem({ ...item, archived: true });
+    await this.content.updateContentItem({ ...item, archived: true });
     this.audit.append({
       action: "content.archived",
       actorId: teacherId,
@@ -279,10 +285,10 @@ export class ContentService {
   }
 
   /** Share or restrict an item by class or department. */
-  setShare(contentItemId: string, teacherId: string, share: ShareScope): ContentItem {
-    const item = this.requireItem(contentItemId);
+  async setShare(contentItemId: string, teacherId: string, share: ShareScope): Promise<ContentItem> {
+    const item = await this.requireItem(contentItemId);
     const updated = { ...item, share };
-    this.content.updateContentItem(updated);
+    await this.content.updateContentItem(updated);
     this.audit.append({
       action: "content.share.changed",
       actorId: teacherId,
@@ -294,14 +300,17 @@ export class ContentService {
   }
 
   /** Items in the shared library visible to a given viewer (not archived). */
-  browseSharedLibrary(viewerId: string, schoolId: string): ContentItem[] {
-    return this.content
-      .listContentItemsBySchool(schoolId)
-      .filter((item) => !item.archived && this.canView(item, viewerId));
+  async browseSharedLibrary(viewerId: string, schoolId: string): Promise<ContentItem[]> {
+    const items = await this.content.listContentItemsBySchool(schoolId);
+    const visible: ContentItem[] = [];
+    for (const item of items) {
+      if (!item.archived && (await this.canView(item, viewerId))) visible.push(item);
+    }
+    return visible;
   }
 
   /** Whether a viewer may see a content item under its current sharing scope. */
-  canView(item: ContentItem, viewerId: string): boolean {
+  async canView(item: ContentItem, viewerId: string): Promise<boolean> {
     if (item.ownerTeacherId === viewerId) return true;
     switch (item.share.type) {
       case "private":
@@ -319,14 +328,14 @@ export class ContentService {
    * Approve a content item into the pool. Requires: scan-clean current version,
    * rights attested, successful ingestion, and an approved classification.
    */
-  approveContent(contentItemId: string, teacherId: string): ContentItem {
-    const item = this.requireItem(contentItemId);
-    const reason = this.prerequisiteBlockReason(item);
+  async approveContent(contentItemId: string, teacherId: string): Promise<ContentItem> {
+    const item = await this.requireItem(contentItemId);
+    const reason = await this.prerequisiteBlockReason(item);
     if (reason) {
       throw new ConflictError("CONTENT_NOT_APPROVABLE", `Cannot approve content: ${reason}.`);
     }
     const updated = { ...item, governance: govApprove(item.governance, teacherId, this.clock.isoNow()) };
-    this.content.updateContentItem(updated);
+    await this.content.updateContentItem(updated);
     this.audit.append({
       action: "content.approved",
       actorId: teacherId,
@@ -342,24 +351,27 @@ export class ContentService {
    * Builder, Skill Graph mapping, Teacher Agent) may read. Pending, unattested,
    * unreviewed, un-ingested, quarantined or archived items never appear here.
    */
-  approvedPool(schoolId: string): ContentItem[] {
-    return this.content
-      .listContentItemsBySchool(schoolId)
-      .filter((item) => this.poolBlockReason(item) === null);
+  async approvedPool(schoolId: string): Promise<ContentItem[]> {
+    const items = await this.content.listContentItemsBySchool(schoolId);
+    const pool: ContentItem[] = [];
+    for (const item of items) {
+      if ((await this.poolBlockReason(item)) === null) pool.push(item);
+    }
+    return pool;
   }
 
   /**
    * Reasons an item cannot yet be APPROVED into the pool — everything except the
    * governance-approved state itself (which approveContent is about to set).
    */
-  prerequisiteBlockReason(item: ContentItem): string | null {
+  async prerequisiteBlockReason(item: ContentItem): Promise<string | null> {
     if (item.archived) return "archived";
     if (!item.rightsAttested) return "rights not attested";
-    const version = this.content.getContentVersion(item.currentVersionId);
+    const version = await this.content.getContentVersion(item.currentVersionId);
     if (!version) return "no current version";
     if (version.scanStatus !== "clean") return "current version not scan-clean";
     if (version.ingestionStatus !== "ingested") return "current version not ingested";
-    const classification = this.content.getClassificationByItem(item.id);
+    const classification = await this.content.getClassificationByItem(item.id);
     if (!classification || classification.status !== "approved") {
       return "classification not approved";
     }
@@ -367,14 +379,14 @@ export class ContentService {
   }
 
   /** Whether a content item is currently in the approved pool. */
-  isInApprovedPool(contentItemId: string): boolean {
-    const item = this.content.getContentItem(contentItemId);
-    return item ? this.poolBlockReason(item) === null : false;
+  async isInApprovedPool(contentItemId: string): Promise<boolean> {
+    const item = await this.content.getContentItem(contentItemId);
+    return item ? (await this.poolBlockReason(item)) === null : false;
   }
 
   /** null => eligible for the approved pool; otherwise the blocking reason. */
-  poolBlockReason(item: ContentItem): string | null {
-    const prerequisite = this.prerequisiteBlockReason(item);
+  async poolBlockReason(item: ContentItem): Promise<string | null> {
+    const prerequisite = await this.prerequisiteBlockReason(item);
     if (prerequisite) return prerequisite;
     if (item.governance.status !== "approved" && item.governance.status !== "published") {
       return "not approved by a teacher";
@@ -384,19 +396,19 @@ export class ContentService {
 
   // ---- helpers ----
 
-  private requireItem(contentItemId: string): ContentItem {
-    const item = this.content.getContentItem(contentItemId);
+  private async requireItem(contentItemId: string): Promise<ContentItem> {
+    const item = await this.content.getContentItem(contentItemId);
     if (!item) throw new NotFoundError("Content item not found.");
     return item;
   }
 
-  private findDuplicate(schoolId: string, contentHash: string, text?: string): string | undefined {
-    for (const item of this.content.listContentItemsBySchool(schoolId)) {
-      for (const version of this.content.listVersionsByItem(item.id)) {
+  private async findDuplicate(schoolId: string, contentHash: string, text?: string): Promise<string | undefined> {
+    for (const item of await this.content.listContentItemsBySchool(schoolId)) {
+      for (const version of await this.content.listVersionsByItem(item.id)) {
         if (version.contentHash === contentHash) return item.id; // exact
       }
       if (text) {
-        const current = this.content.getContentVersion(item.currentVersionId);
+        const current = await this.content.getContentVersion(item.currentVersionId);
         const other = current ? this.storage.get(current.storageKey)?.text : undefined;
         if (other && jaccardSimilarity(text, other) >= NEAR_DUPLICATE_THRESHOLD) return item.id;
       }
@@ -404,18 +416,14 @@ export class ContentService {
     return undefined;
   }
 
-  private viewerInClass(viewerId: string, classId: string): boolean {
-    const byMembership = this.data
-      .listMembershipsByUser(viewerId)
-      .some((m) => m.classId === classId);
+  private async viewerInClass(viewerId: string, classId: string): Promise<boolean> {
+    const byMembership = (await this.data.listMembershipsByUser(viewerId)).some((m) => m.classId === classId);
     if (byMembership) return true;
-    const enrolment = this.data.getActiveEnrolmentForStudent(viewerId);
+    const enrolment = await this.data.getActiveEnrolmentForStudent(viewerId);
     return enrolment?.classId === classId;
   }
 
-  private viewerInDepartment(viewerId: string, department: string): boolean {
-    return this.data
-      .listMembershipsByUser(viewerId)
-      .some((m) => m.department === department);
+  private async viewerInDepartment(viewerId: string, department: string): Promise<boolean> {
+    return (await this.data.listMembershipsByUser(viewerId)).some((m) => m.department === department);
   }
 }

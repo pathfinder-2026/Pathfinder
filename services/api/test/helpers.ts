@@ -1,19 +1,43 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import postgres, { type Sql } from "postgres";
 import { buildContext, type AppContext } from "../src/context";
 import { FixedClock } from "../src/platform/clock";
 import { newId } from "../src/platform/ids";
 import type { User } from "../src/domain/types";
 import type { SkillGraphSource } from "../src/domain/skillGraph";
+import { PgDataStore } from "../src/adapters/postgres/pgDataStore";
+import { PgContentStore } from "../src/adapters/postgres/pgContentStore";
+import { PgSkillGraphStore } from "../src/adapters/postgres/pgSkillGraphStore";
 
 export interface TestHarness {
   ctx: AppContext;
   clock: FixedClock;
 }
 
-/** Build an app context backed by the in-memory store and a deterministic clock. */
+let sharedSql: Sql | undefined;
+function getSql(): Sql {
+  sharedSql ??= postgres(process.env.DATABASE_URL!, { onnotice: () => {} });
+  return sharedSql;
+}
+
+/**
+ * Build an app context and a deterministic clock. Backed by the in-memory store
+ * by default; when PATHFINDER_TEST_BACKEND=pg, the same tests run against the
+ * PostgreSQL adapters (see vitest.pg-suite.config.ts).
+ */
 export function makeHarness(): TestHarness {
   const clock = new FixedClock();
+  if (process.env.PATHFINDER_TEST_BACKEND === "pg") {
+    const sql = getSql();
+    const ctx = buildContext({
+      clock,
+      store: new PgDataStore(sql),
+      contentStore: new PgContentStore(sql),
+      skillGraphStore: new PgSkillGraphStore(sql),
+    });
+    return { ctx, clock };
+  }
   const ctx = buildContext({ clock });
   return { ctx, clock };
 }
@@ -27,13 +51,13 @@ export const VALID_YEAR = {
 };
 
 /** Seed a school + one Admin. Returns the created entities. */
-export function seedSchoolWithAdmin(ctx: AppContext, name = "Springfield High") {
-  const created = ctx.schools.createSchool({
+export async function seedSchoolWithAdmin(ctx: AppContext, name = "Springfield High") {
+  const created = await ctx.schools.createSchool({
     name,
     campusName: "Main Campus",
     academicYear: VALID_YEAR,
   });
-  const admin = ctx.accounts.createAccount({
+  const admin = await ctx.accounts.createAccount({
     schoolId: created.school.id,
     role: "admin",
     email: `admin@${slug(name)}.edu`,
@@ -44,10 +68,10 @@ export function seedSchoolWithAdmin(ctx: AppContext, name = "Springfield High") 
 }
 
 /** Insert a plain user (with PII) and no membership; caller adds memberships. */
-export function makeUser(ctx: AppContext, schoolId: string, email: string): User {
+export async function makeUser(ctx: AppContext, schoolId: string, email: string): Promise<User> {
   const user: User = { id: newId(), schoolId, status: "active", createdAt: ctx.clock.isoNow() };
-  ctx.store.insertUser(user);
-  ctx.store.upsertPersonalData({ userId: user.id, email, firstName: "Test", lastName: "User" });
+  await ctx.store.insertUser(user);
+  await ctx.store.upsertPersonalData({ userId: user.id, email, firstName: "Test", lastName: "User" });
   return user;
 }
 
@@ -69,14 +93,14 @@ export function readSeedGraph(): SkillGraphSource {
  * Import the seed graph, sign it off (simulating the curriculum expert), and
  * configure the school on NSW. Returns the signed-off graph version id.
  */
-export function setupSignedGraph(
+export async function setupSignedGraph(
   ctx: AppContext,
   schoolId: string,
   expertId = "expert-1",
-): string {
-  const version = ctx.skillGraph.importGraph(readSeedGraph());
-  ctx.skillGraph.signOff(version.id, expertId);
-  ctx.mapping.configureCurriculum(schoolId, "NSW");
+): Promise<string> {
+  const version = await ctx.skillGraph.importGraph(readSeedGraph());
+  await ctx.skillGraph.signOff(version.id, expertId);
+  await ctx.mapping.configureCurriculum(schoolId, "NSW");
   return version.id;
 }
 
@@ -95,6 +119,7 @@ export function makeTeacher(
   email: string,
   opts: { classId?: string | null; department?: string | null } = {},
 ) {
+  // Returns a Promise (createAccount is async); callers await.
   return ctx.accounts.createAccount({
     schoolId,
     role: "teacher",
@@ -116,7 +141,7 @@ export async function makeApprovedContent(
   teacherId: string,
   opts: { title?: string; text?: string; share?: import("../src/domain/content").ShareScope } = {},
 ): Promise<string> {
-  const up = ctx.content.uploadOne(schoolId, teacherId, {
+  const up = await ctx.content.uploadOne(schoolId, teacherId, {
     title: opts.title ?? "Year 8 Algebra worksheet",
     fileType: "pdf",
     sizeBytes: 2048,
@@ -125,11 +150,11 @@ export async function makeApprovedContent(
     share: opts.share,
   });
   if (up.status !== "accepted") throw new Error(`upload not accepted: ${up.reason}`);
-  const item = ctx.contentStore.getContentItem(up.contentItemId)!;
-  ctx.ingestion.ingest(item.currentVersionId, teacherId);
+  const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+  await ctx.ingestion.ingest(item.currentVersionId, teacherId);
   await ctx.classification.classify(up.contentItemId, teacherId);
-  ctx.classification.approveClassification(up.contentItemId, teacherId);
-  ctx.content.attestRights(up.contentItemId, teacherId);
-  ctx.content.approveContent(up.contentItemId, teacherId);
+  await ctx.classification.approveClassification(up.contentItemId, teacherId);
+  await ctx.content.attestRights(up.contentItemId, teacherId);
+  await ctx.content.approveContent(up.contentItemId, teacherId);
   return up.contentItemId;
 }

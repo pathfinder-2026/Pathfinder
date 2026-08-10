@@ -366,3 +366,12 @@ export const schoolCurricula = pgTable("school_curricula", {
   curriculum: text("curriculum").notNull(),
   customOutcomesDefined: boolean("custom_outcomes_defined").notNull().default(true),
 });
+
+export const skillMasteryRefs = pgTable(
+  "skill_mastery_refs",
+  {
+    contentItemId: text("content_item_id").notNull(),
+    nodeId: text("node_id").notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.contentItemId, t.nodeId] }) }),
+);

@@ -26,12 +26,12 @@ export class AccountService {
   ) {}
 
   /** Create an account with one role membership and its (erasable) PII. */
-  createAccount(input: CreateAccountInput, actorId: string | null = null): {
-    user: User;
-    membership: Membership;
-  } {
+  async createAccount(
+    input: CreateAccountInput,
+    actorId: string | null = null,
+  ): Promise<{ user: User; membership: Membership }> {
     if (!input.email?.trim()) throw new ValidationError("Email is required.");
-    if (this.store.findUserIdByEmail(input.email)) {
+    if (await this.store.findUserIdByEmail(input.email)) {
       throw new ConflictError("EMAIL_IN_USE", "An account with this email already exists.");
     }
     const user: User = {
@@ -40,8 +40,8 @@ export class AccountService {
       status: input.status ?? "active",
       createdAt: this.clock.isoNow(),
     };
-    this.store.insertUser(user);
-    this.store.upsertPersonalData({
+    await this.store.insertUser(user);
+    await this.store.upsertPersonalData({
       userId: user.id,
       email: input.email.trim(),
       firstName: input.firstName,
@@ -56,7 +56,7 @@ export class AccountService {
       classId: input.classId ?? null,
       department: input.department ?? null,
     };
-    this.store.insertMembership(membership);
+    await this.store.insertMembership(membership);
 
     this.audit.append({
       action: "account.created",
@@ -73,7 +73,7 @@ export class AccountService {
    * authorization is evaluated live from memberships on every request, so no
    * re-login is required (see AuthService.authorize).
    */
-  changeMembership(
+  async changeMembership(
     membershipId: string,
     changes: {
       role?: Role;
@@ -82,13 +82,13 @@ export class AccountService {
       department?: string | null;
     },
     actorId: string | null = null,
-  ): Membership {
-    const membership = this.store.getMembership(membershipId);
+  ): Promise<Membership> {
+    const membership = await this.store.getMembership(membershipId);
     if (!membership) throw new NotFoundError("Membership not found.");
 
     // Guard: do not silently strip the last admin via a role change.
     if (membership.role === "admin" && changes.role && changes.role !== "admin") {
-      this.assertNotLastAdmin(membership.schoolId, membership.userId);
+      await this.assertNotLastAdmin(membership.schoolId, membership.userId);
     }
 
     const updated: Membership = {
@@ -98,7 +98,7 @@ export class AccountService {
       classId: changes.classId === undefined ? membership.classId : changes.classId,
       department: changes.department === undefined ? membership.department : changes.department,
     };
-    this.store.updateMembership(updated);
+    await this.store.updateMembership(updated);
     this.audit.append({
       action: "account.membership.changed",
       actorId,
@@ -113,20 +113,20 @@ export class AccountService {
    * Remove or downgrade an Admin. Blocked if it is the school's only Admin
    * unless another Admin has already been designated.
    */
-  removeOrDowngradeAdmin(
+  async removeOrDowngradeAdmin(
     membershipId: string,
     mode: { downgradeTo: Role } | { remove: true },
     actorId: string | null = null,
-  ): void {
-    const membership = this.store.getMembership(membershipId);
+  ): Promise<void> {
+    const membership = await this.store.getMembership(membershipId);
     if (!membership) throw new NotFoundError("Membership not found.");
     if (membership.role !== "admin") {
       throw new ValidationError("Target membership is not an Admin.");
     }
-    this.assertNotLastAdmin(membership.schoolId, membership.userId);
+    await this.assertNotLastAdmin(membership.schoolId, membership.userId);
 
     if ("remove" in mode) {
-      this.store.deleteMembership(membershipId);
+      await this.store.deleteMembership(membershipId);
       this.audit.append({
         action: "account.admin.removed",
         actorId,
@@ -135,7 +135,7 @@ export class AccountService {
         metadata: { membershipId },
       });
     } else {
-      this.store.updateMembership({ ...membership, role: mode.downgradeTo });
+      await this.store.updateMembership({ ...membership, role: mode.downgradeTo });
       this.audit.append({
         action: "account.admin.downgraded",
         actorId,
@@ -151,21 +151,21 @@ export class AccountService {
    * workspace reflects the new class; the closed enrolment is retained so the
    * original class Teacher can still see the student's history.
    */
-  transferStudent(studentId: string, toClassId: string, actorId: string | null = null): Enrolment {
-    const current = this.store.getActiveEnrolmentForStudent(studentId);
+  async transferStudent(studentId: string, toClassId: string, actorId: string | null = null): Promise<Enrolment> {
+    const current = await this.store.getActiveEnrolmentForStudent(studentId);
     if (!current) throw new NotFoundError("Student has no active enrolment.");
-    const toClass = this.store.getClass(toClassId);
+    const toClass = await this.store.getClass(toClassId);
     if (!toClass) throw new NotFoundError("Destination class not found.");
     if (current.classId === toClassId) {
       throw new ValidationError("Student is already enrolled in that class.");
     }
 
-    const originalTeacherId = this.teacherOfClass(current.classId);
+    const originalTeacherId = await this.teacherOfClass(current.classId);
 
     // Close the current enrolment and write it to history (visible to the
     // original Teacher).
-    this.store.updateEnrolment({ ...current, active: false });
-    this.store.insertEnrolmentHistory({
+    await this.store.updateEnrolment({ ...current, active: false });
+    await this.store.insertEnrolmentHistory({
       id: newId(),
       studentId,
       classId: current.classId,
@@ -180,7 +180,7 @@ export class AccountService {
       schoolId: toClass.schoolId,
       active: true,
     };
-    this.store.insertEnrolment(next);
+    await this.store.insertEnrolment(next);
 
     this.audit.append({
       action: "student.transferred",
@@ -193,8 +193,8 @@ export class AccountService {
   }
 
   /** Enrol a student into a class (test/setup helper; active enrolment). */
-  enrolStudent(studentId: string, classId: string): Enrolment {
-    const klass = this.store.getClass(classId);
+  async enrolStudent(studentId: string, classId: string): Promise<Enrolment> {
+    const klass = await this.store.getClass(classId);
     if (!klass) throw new NotFoundError("Class not found.");
     const enrolment: Enrolment = {
       id: newId(),
@@ -203,7 +203,7 @@ export class AccountService {
       schoolId: klass.schoolId,
       active: true,
     };
-    this.store.insertEnrolment(enrolment);
+    await this.store.insertEnrolment(enrolment);
     return enrolment;
   }
 
@@ -213,11 +213,11 @@ export class AccountService {
    * Milestone 0 establishes the CAPABILITY; the full data-subject request
    * workflow (FR-GOV-006) is delivered in Milestone 11.
    */
-  erasePersonalData(userId: string, actorId: string | null = null): void {
-    const user = this.store.getUser(userId);
+  async erasePersonalData(userId: string, actorId: string | null = null): Promise<void> {
+    const user = await this.store.getUser(userId);
     if (!user) throw new NotFoundError("User not found.");
-    this.store.deletePersonalData(userId); // remove the person (PII)
-    this.store.updateUser({ ...user, status: "erased" });
+    await this.store.deletePersonalData(userId); // remove the person (PII)
+    await this.store.updateUser({ ...user, status: "erased" });
     // Retain the immutable record of the action (the audited fact).
     this.audit.append({
       action: "personaldata.erased",
@@ -228,19 +228,19 @@ export class AccountService {
     });
   }
 
-  private teacherOfClass(classId: string): string | null {
-    const klass = this.store.getClass(classId);
+  private async teacherOfClass(classId: string): Promise<string | null> {
+    const klass = await this.store.getClass(classId);
     if (!klass) return null;
-    const teacher = this.store
-      .listMembershipsBySchool(klass.schoolId)
-      .find((m) => m.role === "teacher" && m.classId === classId);
+    const teacher = (await this.store.listMembershipsBySchool(klass.schoolId)).find(
+      (m) => m.role === "teacher" && m.classId === classId,
+    );
     return teacher?.userId ?? null;
   }
 
-  private assertNotLastAdmin(schoolId: string, excludingUserId: string): void {
-    const otherAdmins = this.store
-      .listMembershipsBySchool(schoolId)
-      .filter((m) => m.role === "admin" && m.userId !== excludingUserId);
+  private async assertNotLastAdmin(schoolId: string, excludingUserId: string): Promise<void> {
+    const otherAdmins = (await this.store.listMembershipsBySchool(schoolId)).filter(
+      (m) => m.role === "admin" && m.userId !== excludingUserId,
+    );
     if (otherAdmins.length === 0) {
       throw new ConflictError(
         "LAST_ADMIN",

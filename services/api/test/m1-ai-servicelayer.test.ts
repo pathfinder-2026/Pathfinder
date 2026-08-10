@@ -13,9 +13,9 @@ import { makeHarness, makeTeacher, seedSchoolWithAdmin, testHash } from "./helpe
 describe("M1 AI service layer", () => {
   it("classification runs through the layer and writes an ai.call audit entry", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    const teacher = makeTeacher(ctx, school.id, "teacher@springfield.edu");
-    const up = ctx.content.uploadOne(school.id, teacher.user.id, {
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "teacher@springfield.edu");
+    const up = await ctx.content.uploadOne(school.id, teacher.user.id, {
       title: "W", fileType: "pdf", sizeBytes: 1000, contentHash: testHash("ai"), source: { text: "# Algebra\n2x+3=11" },
     });
     if (up.status !== "accepted") throw new Error("unreachable");

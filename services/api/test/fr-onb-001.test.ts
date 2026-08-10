@@ -4,7 +4,7 @@ import { newId } from "../src/platform/ids";
 import { makeHarness, makeUser, seedSchoolWithAdmin } from "./helpers";
 import type { AppContext } from "../src/context";
 
-function addMembership(ctx: AppContext, userId: string, schoolId: string, role: Role): void {
+async function addMembership(ctx: AppContext, userId: string, schoolId: string, role: Role): Promise<void> {
   const membership: Membership = {
     id: newId(),
     userId,
@@ -13,26 +13,26 @@ function addMembership(ctx: AppContext, userId: string, schoolId: string, role: 
     campusId: null,
     classId: null,
   };
-  ctx.store.insertMembership(membership);
+  await ctx.store.insertMembership(membership);
 }
 
 /** Mark the school configured so invited personas are past the waiting state. */
-function finishSchoolConfig(ctx: AppContext, schoolId: string): void {
-  ctx.onboarding.completeStep(schoolId, "create");
-  ctx.onboarding.completeStep(schoolId, "configure");
+async function finishSchoolConfig(ctx: AppContext, schoolId: string): Promise<void> {
+  await ctx.onboarding.completeStep(schoolId, "create");
+  await ctx.onboarding.completeStep(schoolId, "configure");
 }
 
 /** FR-ONB-001 — Role-appropriate guided onboarding for every persona. */
 describe("FR-ONB-001 role-appropriate onboarding", () => {
-  it("happy path: a newly invited Teacher sees a Teacher-specific flow, not the Admin flow", () => {
+  it("happy path: a newly invited Teacher sees a Teacher-specific flow, not the Admin flow", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    finishSchoolConfig(ctx, school.id);
+    const { school } = await seedSchoolWithAdmin(ctx);
+    await finishSchoolConfig(ctx, school.id);
 
-    const teacher = makeUser(ctx, school.id, "teacher@springfield.edu");
-    addMembership(ctx, teacher.id, school.id, "teacher");
+    const teacher = await makeUser(ctx, school.id, "teacher@springfield.edu");
+    await addMembership(ctx, teacher.id, school.id, "teacher");
 
-    const flow = ctx.onboarding.getUserOnboarding(teacher.id);
+    const flow = await ctx.onboarding.getUserOnboarding(teacher.id);
     expect(flow.state).toBe("ready");
     if (flow.state !== "ready") throw new Error("unreachable");
     expect(flow.roles).toEqual(["teacher"]);
@@ -41,16 +41,16 @@ describe("FR-ONB-001 role-appropriate onboarding", () => {
     expect(flow.steps).not.toContain("invite-teachers");
   });
 
-  it("edge — dual role: onboarding covers both roles without duplicating shared steps", () => {
+  it("edge — dual role: onboarding covers both roles without duplicating shared steps", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    finishSchoolConfig(ctx, school.id);
+    const { school } = await seedSchoolWithAdmin(ctx);
+    await finishSchoolConfig(ctx, school.id);
 
-    const user = makeUser(ctx, school.id, "dual@springfield.edu");
-    addMembership(ctx, user.id, school.id, "teacher");
-    addMembership(ctx, user.id, school.id, "principal");
+    const user = await makeUser(ctx, school.id, "dual@springfield.edu");
+    await addMembership(ctx, user.id, school.id, "teacher");
+    await addMembership(ctx, user.id, school.id, "principal");
 
-    const flow = ctx.onboarding.getUserOnboarding(user.id);
+    const flow = await ctx.onboarding.getUserOnboarding(user.id);
     if (flow.state !== "ready") throw new Error("expected ready state");
     // Shared "profile" step appears exactly once.
     expect(flow.steps.filter((s) => s === "profile")).toHaveLength(1);
@@ -60,15 +60,15 @@ describe("FR-ONB-001 role-appropriate onboarding", () => {
     );
   });
 
-  it("edge — invite accepted early: shows a 'waiting on school setup' state, not an error", () => {
+  it("edge — invite accepted early: shows a 'waiting on school setup' state, not an error", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
     // NB: school configuration is deliberately NOT finished here.
 
-    const teacher = makeUser(ctx, school.id, "early@springfield.edu");
-    addMembership(ctx, teacher.id, school.id, "teacher");
+    const teacher = await makeUser(ctx, school.id, "early@springfield.edu");
+    await addMembership(ctx, teacher.id, school.id, "teacher");
 
-    const flow = ctx.onboarding.getUserOnboarding(teacher.id);
+    const flow = await ctx.onboarding.getUserOnboarding(teacher.id);
     expect(flow.state).toBe("waiting_on_school_setup");
   });
 });

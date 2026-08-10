@@ -30,12 +30,12 @@ export class IngestionService {
     private readonly audit: AuditRecorder,
   ) {}
 
-  ingest(versionId: string, actorId: string | null = null): IngestionOutcome {
+  async ingest(versionId: string, actorId: string | null = null): Promise<IngestionOutcome> {
     const start = this.clock.now().getTime();
-    const version = this.content.getContentVersion(versionId);
+    const version = await this.content.getContentVersion(versionId);
     if (!version) throw new NotFoundError("Content version not found.");
 
-    this.content.updateContentVersion({ ...version, ingestionStatus: "processing" });
+    await this.content.updateContentVersion({ ...version, ingestionStatus: "processing" });
 
     const stored = this.storage.get(version.storageKey);
     let status: IngestionStatus;
@@ -51,28 +51,29 @@ export class IngestionService {
       } else if (extraction.kind === "no_text") {
         status = "needs_ocr"; // scanned/image-only — flag for OCR, never empty chunks
       } else {
-        extraction.sections.forEach((section, index) => {
+        let index = 0;
+        for (const section of extraction.sections) {
           const chunk: Chunk = {
             id: newId(),
             contentVersionId: versionId,
             heading: section.heading,
             text: section.text,
-            order: index,
+            order: index++,
           };
-          this.content.insertChunk(chunk);
+          await this.content.insertChunk(chunk);
           chunks.push(chunk);
-        });
+        }
         // Concepts: distinct section headings (deterministic; no LLM call).
         for (const name of new Set(extraction.sections.map((s) => s.heading))) {
           const concept: Concept = { id: newId(), contentVersionId: versionId, name };
-          this.content.insertConcept(concept);
+          await this.content.insertConcept(concept);
           concepts.push(concept);
         }
         status = "ingested";
       }
     }
 
-    this.content.updateContentVersion({ ...version, ingestionStatus: status });
+    await this.content.updateContentVersion({ ...version, ingestionStatus: status });
     this.audit.append({
       action: `content.ingest.${status}`,
       actorId,

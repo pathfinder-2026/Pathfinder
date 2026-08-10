@@ -46,7 +46,7 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
   app.get("/health", async () => ({ status: "ok" }));
 
   app.post("/schools", async (req, reply) => {
-    const result = context.schools.createSchool(req.body as never);
+    const result = await context.schools.createSchool(req.body as never);
     return reply.status(201).send(result);
   });
 
@@ -64,20 +64,20 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
 
   app.post("/invites/accept", async (req, reply) => {
     const { token, password } = req.body as { token: string; password: string };
-    const result = context.auth.acceptInvite(token, password);
+    const result = await context.auth.acceptInvite(token, password);
     return reply.status(200).send({ userId: result.user.id, status: result.user.status });
   });
 
   app.post("/auth/login", async (req, reply) => {
     const { email, password } = req.body as { email: string; password: string };
-    const result = context.auth.login(email, password);
+    const result = await context.auth.login(email, password);
     return reply.status(200).send(result);
   });
 
   app.get("/me", async (req, reply) => {
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const auth = context.auth.authorize(token);
+    const auth = await context.auth.authorize(token);
     return reply.status(200).send({
       userId: auth.user.id,
       schoolId: auth.user.schoolId,

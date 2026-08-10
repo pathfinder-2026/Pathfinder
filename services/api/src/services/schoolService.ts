@@ -59,7 +59,7 @@ export class SchoolService {
     private readonly audit: AuditRecorder,
   ) {}
 
-  createSchool(input: CreateSchoolInput, actorId: string | null = null): CreateSchoolResult {
+  async createSchool(input: CreateSchoolInput, actorId: string | null = null): Promise<CreateSchoolResult> {
     const name = input.name?.trim();
     if (!name) throw new ValidationError("School name is required.");
     if (!input.campusName?.trim()) {
@@ -69,7 +69,7 @@ export class SchoolService {
     validateTerms(input.academicYear.terms);
 
     // Duplicate school name: warn and require confirmation (not a hard block).
-    const existing = this.store.findSchoolByName(name);
+    const existing = await this.store.findSchoolByName(name);
     if (existing && !input.confirmDuplicate) {
       throw new ConfirmationRequiredError(
         "DUPLICATE_SCHOOL_NAME",
@@ -88,7 +88,7 @@ export class SchoolService {
       configComplete: false,
       createdAt: now,
     };
-    this.store.insertSchool(school);
+    await this.store.insertSchool(school);
 
     const campus: Campus = {
       id: newId(),
@@ -98,7 +98,7 @@ export class SchoolService {
       setupComplete: true,
       createdAt: now,
     };
-    this.store.insertCampus(campus);
+    await this.store.insertCampus(campus);
 
     const year: AcademicYear = {
       id: newId(),
@@ -106,8 +106,8 @@ export class SchoolService {
       campusId: null, // school-global year
       name: input.academicYear.name,
     };
-    this.store.insertAcademicYear(year);
-    const terms = this.persistTerms(year.id, input.academicYear.terms);
+    await this.store.insertAcademicYear(year);
+    const terms = await this.persistTerms(year.id, input.academicYear.terms);
 
     this.audit.append({
       action: "school.created",
@@ -120,12 +120,12 @@ export class SchoolService {
     return { school, campus, academicYear: year, terms };
   }
 
-  addCampus(
+  async addCampus(
     schoolId: string,
     input: AddCampusInput,
     actorId: string | null = null,
-  ): { campus: Campus; academicYear: AcademicYear | null; terms: Term[] } {
-    const school = this.store.getSchool(schoolId);
+  ): Promise<{ campus: Campus; academicYear: AcademicYear | null; terms: Term[] }> {
+    const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
     if (!input.name?.trim()) throw new ValidationError("Campus name is required.");
 
@@ -145,7 +145,7 @@ export class SchoolService {
       setupComplete: Boolean(input.academicYear),
       createdAt: this.clock.isoNow(),
     };
-    this.store.insertCampus(campus);
+    await this.store.insertCampus(campus);
 
     let year: AcademicYear | null = null;
     let terms: Term[] = [];
@@ -156,8 +156,8 @@ export class SchoolService {
         campusId: campus.id,
         name: input.academicYear.name,
       };
-      this.store.insertAcademicYear(year);
-      terms = this.persistTerms(year.id, input.academicYear.terms);
+      await this.store.insertAcademicYear(year);
+      terms = await this.persistTerms(year.id, input.academicYear.terms);
     }
 
     this.audit.append({
@@ -172,15 +172,15 @@ export class SchoolService {
   }
 
   /** Create a class within a campus (the single class of the M0 thin slice). */
-  createClass(
+  async createClass(
     schoolId: string,
     campusId: string,
     name: string,
     actorId: string | null = null,
-  ): ClassRoom {
-    const school = this.store.getSchool(schoolId);
+  ): Promise<ClassRoom> {
+    const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
-    const campus = this.store.getCampus(campusId);
+    const campus = await this.store.getCampus(campusId);
     if (!campus || campus.schoolId !== schoolId) {
       throw new NotFoundError("Campus not found in this school.");
     }
@@ -192,7 +192,7 @@ export class SchoolService {
       name: name.trim(),
       createdAt: this.clock.isoNow(),
     };
-    this.store.insertClass(klass);
+    await this.store.insertClass(klass);
     this.audit.append({
       action: "class.created",
       actorId,
@@ -203,8 +203,9 @@ export class SchoolService {
     return klass;
   }
 
-  private persistTerms(academicYearId: string, inputs: TermInput[]): Term[] {
-    return inputs.map((t) => {
+  private async persistTerms(academicYearId: string, inputs: TermInput[]): Promise<Term[]> {
+    const terms: Term[] = [];
+    for (const t of inputs) {
       const term: Term = {
         id: newId(),
         academicYearId,
@@ -212,9 +213,10 @@ export class SchoolService {
         startDate: t.startDate,
         endDate: t.endDate,
       };
-      this.store.insertTerm(term);
-      return term;
-    });
+      await this.store.insertTerm(term);
+      terms.push(term);
+    }
+    return terms;
   }
 }
 

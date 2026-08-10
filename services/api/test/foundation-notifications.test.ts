@@ -9,7 +9,7 @@ import { makeHarness, seedSchoolWithAdmin } from "./helpers";
 describe("Foundation — notification/event service", () => {
   it("routes the Teacher invite through the notification service", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
 
     const res = await ctx.invites.inviteTeacher(school.id, {
       email: "newteacher@springfield.edu",
@@ -26,7 +26,7 @@ describe("Foundation — notification/event service", () => {
 
   it("delivers events to subscribers of the internal event stream", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
     const spy = vi.fn();
     ctx.notifications.subscribe(spy);
 
@@ -40,7 +40,7 @@ describe("Foundation — notification/event service", () => {
 
   it("keeps PII (the email address) out of the audit log", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
     await ctx.invites.inviteTeacher(school.id, {
       email: "secret@springfield.edu",
       firstName: "Sec",

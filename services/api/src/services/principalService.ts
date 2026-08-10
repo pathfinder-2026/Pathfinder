@@ -1,5 +1,5 @@
 import { NotFoundError, ValidationError } from "../domain/errors";
-import type { Membership } from "../domain/types";
+import type { Campus, Membership } from "../domain/types";
 import type { AuditRecorder } from "../platform/audit/auditLog";
 import { newId } from "../platform/ids";
 import type { DataStore } from "../ports/dataStore";
@@ -24,26 +24,27 @@ export class PrincipalService {
   ) {}
 
   /** Assign a user as Principal of one or more campuses within one school. */
-  assignPrincipal(
+  async assignPrincipal(
     userId: string,
     campusIds: string[],
     actorId: string | null = null,
-  ): Membership[] {
+  ): Promise<Membership[]> {
     if (campusIds.length === 0) throw new ValidationError("At least one campus is required.");
 
-    const campuses = campusIds.map((id) => {
-      const campus = this.store.getCampus(id);
+    const campuses: Campus[] = [];
+    for (const id of campusIds) {
+      const campus = await this.store.getCampus(id);
       if (!campus) throw new NotFoundError(`Campus ${id} not found.`);
-      return campus;
-    });
+      campuses.push(campus);
+    }
     const schoolIds = new Set(campuses.map((c) => c.schoolId));
     if (schoolIds.size > 1) {
       throw new ValidationError("A Principal assignment must stay within a single school.");
     }
 
-    const existing = this.store
-      .listMembershipsByUser(userId)
-      .filter((m) => m.role === "principal");
+    const existing = (await this.store.listMembershipsByUser(userId)).filter(
+      (m) => m.role === "principal",
+    );
 
     const created: Membership[] = [];
     for (const campus of campuses) {
@@ -56,7 +57,7 @@ export class PrincipalService {
         campusId: campus.id,
         classId: null,
       };
-      this.store.insertMembership(membership);
+      await this.store.insertMembership(membership);
       created.push(membership);
       this.audit.append({
         action: "principal.assigned",
@@ -74,19 +75,19 @@ export class PrincipalService {
    * Reassign a Principal from one campus to another. Access to the previous
    * campus is revoked immediately (its membership is deleted).
    */
-  reassignPrincipal(
+  async reassignPrincipal(
     userId: string,
     fromCampusId: string,
     toCampusId: string,
     actorId: string | null = null,
-  ): Membership[] {
-    const toRemove = this.store
-      .listMembershipsByUser(userId)
-      .filter((m) => m.role === "principal" && m.campusId === fromCampusId);
+  ): Promise<Membership[]> {
+    const toRemove = (await this.store.listMembershipsByUser(userId)).filter(
+      (m) => m.role === "principal" && m.campusId === fromCampusId,
+    );
     if (toRemove.length === 0) {
       throw new NotFoundError("Principal is not assigned to the source campus.");
     }
-    for (const m of toRemove) this.store.deleteMembership(m.id);
+    for (const m of toRemove) await this.store.deleteMembership(m.id);
     this.audit.append({
       action: "principal.revoked",
       actorId,
@@ -101,23 +102,23 @@ export class PrincipalService {
    * The Principal's aggregated scope across the campuses they oversee, within
    * this single school. Campuses still being set up are flagged.
    */
-  getPrincipalScope(userId: string): PrincipalScope {
-    const memberships = this.store
-      .listMembershipsByUser(userId)
-      .filter((m) => m.role === "principal");
+  async getPrincipalScope(userId: string): Promise<PrincipalScope> {
+    const memberships = (await this.store.listMembershipsByUser(userId)).filter(
+      (m) => m.role === "principal",
+    );
     if (memberships.length === 0) {
       throw new NotFoundError("User is not a Principal of any campus.");
     }
     const schoolId = memberships[0]!.schoolId;
-    const campuses: PrincipalCampusScope[] = memberships
-      .filter((m) => m.campusId)
-      .map((m) => {
-        const campus = this.store.getCampus(m.campusId!);
-        return {
-          campusId: m.campusId!,
-          status: campus?.setupComplete ? "ready" : "campus setup incomplete",
-        };
+    const campuses: PrincipalCampusScope[] = [];
+    for (const m of memberships) {
+      if (!m.campusId) continue;
+      const campus = await this.store.getCampus(m.campusId);
+      campuses.push({
+        campusId: m.campusId,
+        status: campus?.setupComplete ? "ready" : "campus setup incomplete",
       });
+    }
     return { userId, schoolId, campuses };
   }
 }

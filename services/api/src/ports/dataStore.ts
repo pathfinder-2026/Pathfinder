@@ -34,79 +34,79 @@ export interface OnboardingProgress {
 }
 
 /**
- * Persistence port. The in-memory adapter backs dev and the full test suite in
- * Milestone 0 (no database is provisioned yet); the production adapter is
- * Amazon RDS/Aurora PostgreSQL in ap-southeast-2 (Foundational Decision 1),
- * whose schema of record is src/adapters/postgres/schema.ts + db/migrations.
+ * Persistence port. Every method is async so the same interface is satisfied by
+ * both the in-memory adapter (dev/tests) and the Amazon RDS/Aurora PostgreSQL
+ * adapter in ap-southeast-2 (Foundational Decision 1), whose schema of record is
+ * src/adapters/postgres/schema.ts + db/migrations.
  */
 export interface DataStore {
   // Schools
-  insertSchool(school: School): void;
-  getSchool(id: string): School | undefined;
-  findSchoolByName(name: string): School | undefined;
-  updateSchool(school: School): void;
+  insertSchool(school: School): Promise<void>;
+  getSchool(id: string): Promise<School | undefined>;
+  findSchoolByName(name: string): Promise<School | undefined>;
+  updateSchool(school: School): Promise<void>;
 
   // Campuses
-  insertCampus(campus: Campus): void;
-  getCampus(id: string): Campus | undefined;
-  listCampusesBySchool(schoolId: string): Campus[];
-  updateCampus(campus: Campus): void;
+  insertCampus(campus: Campus): Promise<void>;
+  getCampus(id: string): Promise<Campus | undefined>;
+  listCampusesBySchool(schoolId: string): Promise<Campus[]>;
+  updateCampus(campus: Campus): Promise<void>;
 
   // Academic years & terms
-  insertAcademicYear(year: AcademicYear): void;
-  listAcademicYearsBySchool(schoolId: string): AcademicYear[];
-  insertTerm(term: Term): void;
-  listTermsByYear(academicYearId: string): Term[];
+  insertAcademicYear(year: AcademicYear): Promise<void>;
+  listAcademicYearsBySchool(schoolId: string): Promise<AcademicYear[]>;
+  insertTerm(term: Term): Promise<void>;
+  listTermsByYear(academicYearId: string): Promise<Term[]>;
 
   // Classes
-  insertClass(klass: ClassRoom): void;
-  getClass(id: string): ClassRoom | undefined;
-  listClassesBySchool(schoolId: string): ClassRoom[];
+  insertClass(klass: ClassRoom): Promise<void>;
+  getClass(id: string): Promise<ClassRoom | undefined>;
+  listClassesBySchool(schoolId: string): Promise<ClassRoom[]>;
 
   // Users & PII
-  insertUser(user: User): void;
-  getUser(id: string): User | undefined;
-  updateUser(user: User): void;
-  listUsersBySchool(schoolId: string): User[];
-  upsertPersonalData(data: PersonalData): void;
-  getPersonalData(userId: string): PersonalData | undefined;
-  deletePersonalData(userId: string): void;
-  findUserIdByEmail(email: string): string | undefined;
+  insertUser(user: User): Promise<void>;
+  getUser(id: string): Promise<User | undefined>;
+  updateUser(user: User): Promise<void>;
+  listUsersBySchool(schoolId: string): Promise<User[]>;
+  upsertPersonalData(data: PersonalData): Promise<void>;
+  getPersonalData(userId: string): Promise<PersonalData | undefined>;
+  deletePersonalData(userId: string): Promise<void>;
+  findUserIdByEmail(email: string): Promise<string | undefined>;
 
   // Memberships
-  insertMembership(membership: Membership): void;
-  getMembership(id: string): Membership | undefined;
-  listMembershipsByUser(userId: string): Membership[];
-  listMembershipsBySchool(schoolId: string): Membership[];
-  updateMembership(membership: Membership): void;
-  deleteMembership(id: string): void;
+  insertMembership(membership: Membership): Promise<void>;
+  getMembership(id: string): Promise<Membership | undefined>;
+  listMembershipsByUser(userId: string): Promise<Membership[]>;
+  listMembershipsBySchool(schoolId: string): Promise<Membership[]>;
+  updateMembership(membership: Membership): Promise<void>;
+  deleteMembership(id: string): Promise<void>;
 
   // Invites
-  insertInvite(invite: Invite): void;
-  getInviteByToken(token: string): Invite | undefined;
-  updateInvite(invite: Invite): void;
-  listInvitesBySchool(schoolId: string): Invite[];
+  insertInvite(invite: Invite): Promise<void>;
+  getInviteByToken(token: string): Promise<Invite | undefined>;
+  updateInvite(invite: Invite): Promise<void>;
+  listInvitesBySchool(schoolId: string): Promise<Invite[]>;
 
   // Enrolments
-  insertEnrolment(enrolment: Enrolment): void;
-  getActiveEnrolmentForStudent(studentId: string): Enrolment | undefined;
-  updateEnrolment(enrolment: Enrolment): void;
-  insertEnrolmentHistory(history: EnrolmentHistory): void;
-  listEnrolmentHistoryByTeacher(teacherId: string): EnrolmentHistory[];
-  listEnrolmentHistoryByStudent(studentId: string): EnrolmentHistory[];
+  insertEnrolment(enrolment: Enrolment): Promise<void>;
+  getActiveEnrolmentForStudent(studentId: string): Promise<Enrolment | undefined>;
+  updateEnrolment(enrolment: Enrolment): Promise<void>;
+  insertEnrolmentHistory(history: EnrolmentHistory): Promise<void>;
+  listEnrolmentHistoryByTeacher(teacherId: string): Promise<EnrolmentHistory[]>;
+  listEnrolmentHistoryByStudent(studentId: string): Promise<EnrolmentHistory[]>;
 
   // Inference records (approvable-state scaffold, Decision 7)
-  insertInferenceRecord(record: InferenceRecord): void;
-  getInferenceRecord(id: string): InferenceRecord | undefined;
-  listInferenceRecordsByStudent(studentId: string): InferenceRecord[];
+  insertInferenceRecord(record: InferenceRecord): Promise<void>;
+  getInferenceRecord(id: string): Promise<InferenceRecord | undefined>;
+  listInferenceRecordsByStudent(studentId: string): Promise<InferenceRecord[]>;
 
   // Auth
-  setCredential(credential: Credential): void;
-  getCredential(userId: string): Credential | undefined;
-  insertSession(session: Session): void;
-  getSession(token: string): Session | undefined;
+  setCredential(credential: Credential): Promise<void>;
+  getCredential(userId: string): Promise<Credential | undefined>;
+  insertSession(session: Session): Promise<void>;
+  getSession(token: string): Promise<Session | undefined>;
 
   // Onboarding
-  getOnboarding(schoolId: string): OnboardingProgress | undefined;
-  saveOnboarding(progress: OnboardingProgress): void;
+  getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined>;
+  saveOnboarding(progress: OnboardingProgress): Promise<void>;
 }

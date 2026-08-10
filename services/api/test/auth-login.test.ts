@@ -12,16 +12,16 @@ import { seedSchoolWithAdmin } from "./helpers";
 describe("Milestone 0 DoD — log in as the invited Teacher", () => {
   it("service level: invite -> accept -> login -> authorize", async () => {
     const ctx = buildContext({ clock: new FixedClock() });
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
 
     const invite = await ctx.invites.inviteTeacher(school.id, {
       email: "teacher@springfield.edu",
       firstName: "Tara",
       lastName: "Teach",
     });
-    ctx.auth.acceptInvite(invite.invite.token, "password123");
-    const login = ctx.auth.login("teacher@springfield.edu", "password123");
-    const authz = ctx.auth.authorize(login.token);
+    await ctx.auth.acceptInvite(invite.invite.token, "password123");
+    const login = await ctx.auth.login("teacher@springfield.edu", "password123");
+    const authz = await ctx.auth.authorize(login.token);
 
     expect(authz.user.id).toBe(invite.user.id);
     expect(authz.roles).toContain("teacher");
@@ -79,13 +79,13 @@ describe("Milestone 0 DoD — log in as the invited Teacher", () => {
 
   it("rejects login with a wrong password", async () => {
     const ctx = buildContext({ clock: new FixedClock() });
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
     const invite = await ctx.invites.inviteTeacher(school.id, {
       email: "wrongpw@springfield.edu",
       firstName: "Wanda",
       lastName: "Wrong",
     });
-    ctx.auth.acceptInvite(invite.invite.token, "password123");
-    expect(() => ctx.auth.login("wrongpw@springfield.edu", "nope")).toThrow();
+    await ctx.auth.acceptInvite(invite.invite.token, "password123");
+    await expect(ctx.auth.login("wrongpw@springfield.edu", "nope")).rejects.toThrow();
   });
 });

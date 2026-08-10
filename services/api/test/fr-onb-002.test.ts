@@ -11,9 +11,9 @@ const PRE_WORKSPACE_STEPS = [
   "configure-operations",
 ] as const;
 
-function completeThrough(ctx: AppContext, schoolId: string, upto: number): void {
+async function completeThrough(ctx: AppContext, schoolId: string, upto: number): Promise<void> {
   for (let i = 0; i <= upto; i++) {
-    ctx.onboarding.completeStep(schoolId, PRE_WORKSPACE_STEPS[i]!);
+    await ctx.onboarding.completeStep(schoolId, PRE_WORKSPACE_STEPS[i]!);
   }
 }
 
@@ -21,50 +21,50 @@ function completeThrough(ctx: AppContext, schoolId: string, upto: number): void 
 describe("FR-ONB-002 seven-step Admin onboarding", () => {
   it("happy path: proceeding through all steps in order lands the Admin in the live workspace", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
+    const { school } = await seedSchoolWithAdmin(ctx);
     // A Teacher is actually invited during the invite step (avoids the warning).
     await ctx.invites.inviteTeacher(school.id, {
       email: "t@springfield.edu",
       firstName: "Tom",
       lastName: "Teach",
     });
-    completeThrough(ctx, school.id, 5); // create..configure-operations
+    await completeThrough(ctx, school.id, 5); // create..configure-operations
 
-    const result = ctx.onboarding.enterWorkspace(school.id);
+    const result = await ctx.onboarding.enterWorkspace(school.id);
     expect(result).toEqual({ ok: true, workspaceEntered: true });
-    expect(ctx.onboarding.currentStep(school.id)).toBe("enter-workspace");
+    expect(await ctx.onboarding.currentStep(school.id)).toBe("enter-workspace");
   });
 
-  it("edge — skipping a step: jumping to Enter Workspace is blocked and returns to the first incomplete step", () => {
+  it("edge — skipping a step: jumping to Enter Workspace is blocked and returns to the first incomplete step", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    completeThrough(ctx, school.id, 1); // only create + configure
+    const { school } = await seedSchoolWithAdmin(ctx);
+    await completeThrough(ctx, school.id, 1); // only create + configure
 
-    const nav = ctx.onboarding.goToStep(school.id, "enter-workspace");
+    const nav = await ctx.onboarding.goToStep(school.id, "enter-workspace");
     expect(nav).toEqual({ blocked: true, redirectTo: "invite-teachers" });
   });
 
-  it("edge — resume later: resumes at the first incomplete step, not step one", () => {
+  it("edge — resume later: resumes at the first incomplete step, not step one", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    completeThrough(ctx, school.id, 3); // create..invite-students
+    const { school } = await seedSchoolWithAdmin(ctx);
+    await completeThrough(ctx, school.id, 3); // create..invite-students
 
-    expect(ctx.onboarding.currentStep(school.id)).toBe("invite-parents");
+    expect(await ctx.onboarding.currentStep(school.id)).toBe("invite-parents");
   });
 
-  it("edge — zero teachers invited: warns and requires confirmation before finishing", () => {
+  it("edge — zero teachers invited: warns and requires confirmation before finishing", async () => {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    completeThrough(ctx, school.id, 5); // steps complete, but NO teacher invited
+    const { school } = await seedSchoolWithAdmin(ctx);
+    await completeThrough(ctx, school.id, 5); // steps complete, but NO teacher invited
 
-    const warned = ctx.onboarding.enterWorkspace(school.id);
+    const warned = await ctx.onboarding.enterWorkspace(school.id);
     expect(warned).toEqual({
       ok: false,
       warning: "no-teachers-invited",
       requiresConfirmation: true,
     });
 
-    const confirmed = ctx.onboarding.enterWorkspace(school.id, { confirmNoTeachers: true });
+    const confirmed = await ctx.onboarding.enterWorkspace(school.id, { confirmNoTeachers: true });
     expect(confirmed).toEqual({ ok: true, workspaceEntered: true });
   });
 });

@@ -20,18 +20,18 @@ export class KnowledgeService {
     private readonly audit: AuditRecorder,
   ) {}
 
-  createOutcome(schoolId: string, code: string, description: string): Outcome {
+  async createOutcome(schoolId: string, code: string, description: string): Promise<Outcome> {
     const outcome: Outcome = { id: newId(), schoolId, code, description, deprecated: false };
-    this.content.insertOutcome(outcome);
+    await this.content.insertOutcome(outcome);
     return outcome;
   }
 
   /** Deprecate an outcome (e.g. a later curriculum revision retires it). */
-  deprecateOutcome(outcomeId: string): Outcome {
-    const outcome = this.content.getOutcome(outcomeId);
+  async deprecateOutcome(outcomeId: string): Promise<Outcome> {
+    const outcome = await this.content.getOutcome(outcomeId);
     if (!outcome) throw new NotFoundError("Outcome not found.");
     const updated = { ...outcome, deprecated: true };
-    this.content.updateOutcome(updated);
+    await this.content.updateOutcome(updated);
     this.audit.append({
       action: "outcome.deprecated",
       actorId: null,
@@ -42,51 +42,54 @@ export class KnowledgeService {
     return updated;
   }
 
-  createQuestion(schoolId: string, text: string, outcomeIds: string[] = []): Question {
+  async createQuestion(schoolId: string, text: string, outcomeIds: string[] = []): Promise<Question> {
     const question: Question = { id: newId(), schoolId, text, outcomeIds };
-    this.content.insertQuestion(question);
+    await this.content.insertQuestion(question);
     return question;
   }
 
   /** Link an outcome to a question (used to resolve an orphaned question). */
-  linkQuestionToOutcome(questionId: string, outcomeId: string): Question {
-    const question = this.content.getQuestion(questionId);
+  async linkQuestionToOutcome(questionId: string, outcomeId: string): Promise<Question> {
+    const question = await this.content.getQuestion(questionId);
     if (!question) throw new NotFoundError("Question not found.");
     if (!question.outcomeIds.includes(outcomeId)) question.outcomeIds.push(outcomeId);
-    this.content.updateQuestion(question);
+    await this.content.updateQuestion(question);
     return question;
   }
 
-  createLesson(
+  async createLesson(
     schoolId: string,
     title: string,
     questionIds: string[],
     outcomeIds: string[],
-  ): Lesson {
+  ): Promise<Lesson> {
     const lesson: Lesson = { id: newId(), schoolId, title, questionIds, outcomeIds };
-    this.content.insertLesson(lesson);
+    await this.content.insertLesson(lesson);
     return lesson;
   }
 
   /** A lesson with its linked questions and outcomes, each navigable, with
    * deprecated outcomes flagged "outdated". */
-  getLessonView(lessonId: string): LessonView {
-    const lesson = this.content.getLesson(lessonId);
+  async getLessonView(lessonId: string): Promise<LessonView> {
+    const lesson = await this.content.getLesson(lessonId);
     if (!lesson) throw new NotFoundError("Lesson not found.");
-    const questions = lesson.questionIds
-      .map((id) => this.content.getQuestion(id))
-      .filter((q): q is Question => Boolean(q));
-    const outcomes = lesson.outcomeIds
-      .map((id) => this.content.getOutcome(id))
-      .filter((o): o is Outcome => Boolean(o))
-      .map((outcome) => ({ outcome, outdated: outcome.deprecated }));
+    const questions: Question[] = [];
+    for (const id of lesson.questionIds) {
+      const q = await this.content.getQuestion(id);
+      if (q) questions.push(q);
+    }
+    const outcomes: { outcome: Outcome; outdated: boolean }[] = [];
+    for (const id of lesson.outcomeIds) {
+      const o = await this.content.getOutcome(id);
+      if (o) outcomes.push({ outcome: o, outdated: o.deprecated });
+    }
     return { lesson, questions, outcomes };
   }
 
   /** Questions not linked to any outcome — the "needs linking" view. */
-  needsLinking(schoolId: string): Question[] {
-    return this.content
-      .listQuestionsBySchool(schoolId)
-      .filter((q) => q.outcomeIds.length === 0);
+  async needsLinking(schoolId: string): Promise<Question[]> {
+    return (await this.content.listQuestionsBySchool(schoolId)).filter(
+      (q) => q.outcomeIds.length === 0,
+    );
   }
 }

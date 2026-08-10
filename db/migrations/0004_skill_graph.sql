@@ -62,3 +62,11 @@ CREATE TABLE school_curricula (
   curriculum               text NOT NULL,
   custom_outcomes_defined  boolean NOT NULL DEFAULT true
 );
+
+-- Historical mastery references — stands in for M5 mastery data so the
+-- remap-historical-data prompt (FR-SKG-004) is exercisable now.
+CREATE TABLE skill_mastery_refs (
+  content_item_id text NOT NULL,
+  node_id         text NOT NULL,
+  PRIMARY KEY (content_item_id, node_id)
+);

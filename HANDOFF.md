@@ -1,3 +1,26 @@
+# Interlude — Async ports + full Postgres adapters (post-M2, pre-M3)
+
+The persistence ports were converted to **async**, cascaded through every service
+and all 27 test files, and backed by full **Postgres adapters** (postgres-js).
+The **same 96 acceptance tests now pass against a real embedded PostgreSQL**
+(`npm run test:pg-suite`) as well as in-memory (`npm test`). Running against real
+Postgres caught one latent bug in-memory had hidden — a `content_versions` →
+`content_items` FK ordering error in `uploadOne` (insert item before version),
+now fixed (ADR-0017).
+
+Verify:
+```
+npm run test:pg-suite --workspace services/api   # 96 acceptance tests vs Postgres
+npm run test:db       --workspace services/api   # 8 governance/constraint tests
+npm test                                         # 96 in-memory + 5 infra
+```
+
+Audit/notifications stay in-memory in both modes; only the three data stores swap
+to Postgres. AWS-provisioned RDS/Aurora is still a later step, but the adapters
+are real and test-covered. See ADR-0017.
+
+---
+
 # Interlude — Database validation (post-M2, pre-M3)
 
 Before starting M3, the DB layer was validated against a **real** embedded

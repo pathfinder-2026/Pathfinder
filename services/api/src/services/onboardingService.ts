@@ -47,15 +47,15 @@ export class OnboardingService {
    * "waiting on school setup" state rather than an error. Dual-role users get
    * the union of their roles' steps with shared steps not duplicated.
    */
-  getUserOnboarding(userId: string): UserOnboarding {
-    const user = this.store.getUser(userId);
+  async getUserOnboarding(userId: string): Promise<UserOnboarding> {
+    const user = await this.store.getUser(userId);
     if (!user) throw new NotFoundError("User not found.");
     const roles = [
-      ...new Set(this.store.listMembershipsByUser(userId).map((m) => m.role)),
+      ...new Set((await this.store.listMembershipsByUser(userId)).map((m) => m.role)),
     ] as Role[];
     if (roles.length === 0) throw new ValidationError("User has no role.");
 
-    const school = this.store.getSchool(user.schoolId);
+    const school = await this.store.getSchool(user.schoolId);
     const nonAdmin = roles.filter((r) => r !== "admin");
     if (nonAdmin.length > 0 && school && !school.configComplete) {
       return { state: "waiting_on_school_setup", roles };
@@ -73,23 +73,23 @@ export class OnboardingService {
 
   // ---- FR-ONB-002: the 7-step School-Admin onboarding flow ----
 
-  private ensureProgress(schoolId: string): OnboardingProgress {
-    let progress = this.store.getOnboarding(schoolId);
+  private async ensureProgress(schoolId: string): Promise<OnboardingProgress> {
+    let progress = await this.store.getOnboarding(schoolId);
     if (!progress) {
       progress = { schoolId, completedSteps: [], workspaceEntered: false };
-      this.store.saveOnboarding(progress);
+      await this.store.saveOnboarding(progress);
     }
     return progress;
   }
 
   /** Mark a step complete. All earlier steps must already be complete. */
-  completeStep(schoolId: string, step: AdminStep): void {
-    const school = this.store.getSchool(schoolId);
+  async completeStep(schoolId: string, step: AdminStep): Promise<void> {
+    const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
     const index = ADMIN_STEPS.indexOf(step);
     if (index < 0) throw new ValidationError(`Unknown onboarding step "${step}".`);
 
-    const progress = this.ensureProgress(schoolId);
+    const progress = await this.ensureProgress(schoolId);
     for (let i = 0; i < index; i++) {
       if (!progress.completedSteps.includes(ADMIN_STEPS[i]!)) {
         throw new ValidationError(
@@ -102,9 +102,9 @@ export class OnboardingService {
     // Finishing "configure" means the school is configured enough for invited
     // personas to onboard (drives FR-ONB-001's waiting state).
     if (step === "configure" && !school.configComplete) {
-      this.store.updateSchool({ ...school, configComplete: true });
+      await this.store.updateSchool({ ...school, configComplete: true });
     }
-    this.store.saveOnboarding(progress);
+    await this.store.saveOnboarding(progress);
     this.audit.append({
       action: "onboarding.step.completed",
       actorId: null,
@@ -115,8 +115,8 @@ export class OnboardingService {
   }
 
   /** The step a returning Admin resumes at: the first incomplete step. */
-  currentStep(schoolId: string): AdminStep {
-    const progress = this.ensureProgress(schoolId);
+  async currentStep(schoolId: string): Promise<AdminStep> {
+    const progress = await this.ensureProgress(schoolId);
     return this.firstIncompleteStep(progress.completedSteps);
   }
 
@@ -124,11 +124,11 @@ export class OnboardingService {
    * Attempt to navigate to a step. If any earlier required step is incomplete,
    * the jump is blocked and the Admin is returned to the first incomplete step.
    */
-  goToStep(
+  async goToStep(
     schoolId: string,
     target: AdminStep,
-  ): { blocked: false; step: AdminStep } | { blocked: true; redirectTo: AdminStep } {
-    const progress = this.ensureProgress(schoolId);
+  ): Promise<{ blocked: false; step: AdminStep } | { blocked: true; redirectTo: AdminStep }> {
+    const progress = await this.ensureProgress(schoolId);
     const targetIndex = ADMIN_STEPS.indexOf(target);
     for (let i = 0; i < targetIndex; i++) {
       if (!progress.completedSteps.includes(ADMIN_STEPS[i]!)) {
@@ -143,13 +143,13 @@ export class OnboardingService {
    * prior step is incomplete. If zero Teachers have actually been invited, the
    * Admin is warned and must confirm before proceeding.
    */
-  enterWorkspace(
+  async enterWorkspace(
     schoolId: string,
     options: { confirmNoTeachers?: boolean } = {},
-  ): EnterWorkspaceResult {
-    const school = this.store.getSchool(schoolId);
+  ): Promise<EnterWorkspaceResult> {
+    const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
-    const progress = this.ensureProgress(schoolId);
+    const progress = await this.ensureProgress(schoolId);
 
     // All steps up to (not including) "enter-workspace" must be complete.
     for (let i = 0; i < ADMIN_STEPS.length - 1; i++) {
@@ -158,9 +158,9 @@ export class OnboardingService {
       }
     }
 
-    const teacherCount = this.store
-      .listMembershipsBySchool(schoolId)
-      .filter((m) => m.role === "teacher").length;
+    const teacherCount = (await this.store.listMembershipsBySchool(schoolId)).filter(
+      (m) => m.role === "teacher",
+    ).length;
     if (teacherCount === 0 && !options.confirmNoTeachers) {
       return { ok: false, warning: "no-teachers-invited", requiresConfirmation: true };
     }
@@ -169,9 +169,9 @@ export class OnboardingService {
       progress.completedSteps.push("enter-workspace");
     }
     progress.workspaceEntered = true;
-    this.store.saveOnboarding(progress);
+    await this.store.saveOnboarding(progress);
     if (!school.configComplete) {
-      this.store.updateSchool({ ...school, configComplete: true });
+      await this.store.updateSchool({ ...school, configComplete: true });
     }
     this.audit.append({
       action: "onboarding.workspace.entered",

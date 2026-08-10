@@ -5,9 +5,9 @@ import { makeHarness, makeTeacher, seedSchoolWithAdmin, testHash } from "./helpe
 describe("FR-CONT-002 AI-suggested classification", () => {
   async function setupWithUpload(text: string) {
     const { ctx } = makeHarness();
-    const { school } = seedSchoolWithAdmin(ctx);
-    const teacher = makeTeacher(ctx, school.id, "teacher@springfield.edu");
-    const up = ctx.content.uploadOne(school.id, teacher.user.id, {
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "teacher@springfield.edu");
+    const up = await ctx.content.uploadOne(school.id, teacher.user.id, {
       title: "Worksheet",
       fileType: "pdf",
       sizeBytes: 1000,
@@ -15,7 +15,8 @@ describe("FR-CONT-002 AI-suggested classification", () => {
       source: { text },
     });
     if (up.status !== "accepted") throw new Error("unreachable");
-    ctx.ingestion.ingest(ctx.contentStore.getContentItem(up.contentItemId)!.currentVersionId, teacher.user.id);
+    const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+    await ctx.ingestion.ingest(item.currentVersionId, teacher.user.id);
     return { ctx, schoolId: school.id, teacherId: teacher.user.id, itemId: up.contentItemId };
   }
 
@@ -42,8 +43,8 @@ describe("FR-CONT-002 AI-suggested classification", () => {
   it("edge — teacher edits the classification and it persists (does not revert)", async () => {
     const { ctx, itemId, teacherId } = await setupWithUpload("# Algebra\n2x + 3 = 11");
     await ctx.classification.classify(itemId, teacherId);
-    ctx.classification.editClassification(itemId, teacherId, { topic: "Linear Equations" });
-    const reloaded = ctx.classification.getClassification(itemId);
+    await ctx.classification.editClassification(itemId, teacherId, { topic: "Linear Equations" });
+    const reloaded = await ctx.classification.getClassification(itemId);
     expect(reloaded?.topic).toBe("Linear Equations");
     expect(reloaded?.status).toBe("approved");
     expect(reloaded?.reviewedByTeacherId).toBe(teacherId);
@@ -52,9 +53,9 @@ describe("FR-CONT-002 AI-suggested classification", () => {
   it("edge — never reviewed: content is excluded from the approved-content pool", async () => {
     const { ctx, schoolId, itemId, teacherId } = await setupWithUpload("# Algebra\n2x + 3 = 11");
     await ctx.classification.classify(itemId, teacherId); // suggested, NOT reviewed
-    ctx.content.attestRights(itemId, teacherId);
+    await ctx.content.attestRights(itemId, teacherId);
     // Still suggested-only → not approvable, and absent from the pool.
-    expect(() => ctx.content.approveContent(itemId, teacherId)).toThrow(/classification not approved/);
-    expect(ctx.content.approvedPool(schoolId)).toHaveLength(0);
+    await expect(ctx.content.approveContent(itemId, teacherId)).rejects.toThrow(/classification not approved/);
+    expect(await ctx.content.approvedPool(schoolId)).toHaveLength(0);
   });
 });

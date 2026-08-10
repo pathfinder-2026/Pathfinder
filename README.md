@@ -76,21 +76,28 @@ npm run typecheck
 
 ## Verify the database layer (real Postgres)
 
-The SQL migrations and the DB-enforced governance guarantees (Foundational
-Decision 3 — the append-only audit grants + immutability + hash-chain triggers,
-the things the in-memory adapter only *simulates*) are validated against a real,
-embedded PostgreSQL:
+The persistence ports are async, so the **same acceptance suite runs against a
+real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
+adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:db --workspace services/api
+npm run test:pg-suite --workspace services/api   # 96 acceptance tests vs Postgres
 ```
 
-Expected: **8 passing** — migrations `0001–0004` apply cleanly; the `pathfinder_app`
-role has `INSERT`+`SELECT` only (no `UPDATE`/`DELETE`); the immutability trigger
-blocks `UPDATE` even for a superuser; `DELETE` is refused except for the retention
-role; the hash-chain trigger rejects out-of-order/broken-link inserts; the
-`skill_nodes` type and `terms` date `CHECK`s hold; and core rows (jsonb/timestamptz)
-round-trip. See [docs/decisions.md](docs/decisions.md) ADR-0016.
+And the DB-enforced governance guarantees (Foundational Decision 3 — the
+append-only audit grants + immutability + hash-chain triggers, which the
+in-memory adapter only *simulates*) have their own suite:
+
+```bash
+npm run test:db --workspace services/api         # 8 governance/constraint tests
+```
+
+`test:db` expects **8 passing** — migrations apply cleanly; `pathfinder_app` has
+`INSERT`+`SELECT` only; the immutability trigger blocks `UPDATE` even for a
+superuser; `DELETE` is refused except for the retention role; the hash-chain
+trigger rejects broken-link inserts; the `skill_nodes` type and `terms` date
+`CHECK`s hold; core rows round-trip. Both use `embedded-postgres` (a real engine,
+no install/Docker). See [docs/decisions.md](docs/decisions.md) ADR-0016/0017.
 
 ## Run the API (dev)
 

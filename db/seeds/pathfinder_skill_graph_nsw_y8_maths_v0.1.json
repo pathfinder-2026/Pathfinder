@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "name": "Pathfinder Skill Graph — NSW Year 8 Mathematics",
+    "version": "0.1",
+    "curriculum": "NSW",
+    "stage": "Stage 4 (Year 8)",
+    "syllabus": "NESA Mathematics K–10 Syllabus (2022) — Stage 4 (representative draft subset)",
+    "status": "draft",
+    "signedOff": false,
+    "reviewerNote": "AI-DRAFTED representative subset for build and testing (Foundational Decision 4 flow: AI-draft -> curriculum-expert review -> sign-off -> map). This is NOT the full 96-skill v0.1 and has NOT been signed off by a curriculum expert. A curriculum expert must review, expand and sign this off before any live classroom mapping. 'skill-interpret-data' is intentionally left without a prerequisite to exercise the missing-prerequisite flag.",
+    "difficultyNote": "Difficulty is an item/question attribute, never a graph node (Foundational Decision 4)."
+  },
+  "nodes": [
+    { "id": "subj-maths", "type": "subject", "label": "Mathematics", "parentId": null, "curriculum": "NSW" },
+
+    { "id": "strand-na", "type": "strand", "label": "Number and Algebra", "parentId": "subj-maths", "curriculum": "NSW" },
+    { "id": "strand-ms", "type": "strand", "label": "Measurement and Space", "parentId": "subj-maths", "curriculum": "NSW" },
+    { "id": "strand-sp", "type": "strand", "label": "Statistics and Probability", "parentId": "subj-maths", "curriculum": "NSW" },
+
+    { "id": "out-frc", "type": "outcome", "code": "MA4-FRC-C-01", "label": "Operates with fractions, decimals and percentages", "parentId": "strand-na", "curriculum": "NSW" },
+    { "id": "out-int", "type": "outcome", "code": "MA4-INT-C-01", "label": "Computes with integers", "parentId": "strand-na", "curriculum": "NSW" },
+    { "id": "out-alg", "type": "outcome", "code": "MA4-ALG-C-01", "label": "Generalises number properties to operate with algebraic expressions", "parentId": "strand-na", "curriculum": "NSW" },
+    { "id": "out-are", "type": "outcome", "code": "MA4-ARE-C-01", "label": "Calculates the area of shapes", "parentId": "strand-ms", "curriculum": "NSW" },
+    { "id": "out-dat", "type": "outcome", "code": "MA4-DAT-C-01", "label": "Classifies and displays data", "parentId": "strand-sp", "curriculum": "NSW" },
+
+    { "id": "top-fractions", "type": "topic", "label": "Fractions", "parentId": "out-frc", "curriculum": "NSW" },
+    { "id": "top-fdp", "type": "topic", "label": "Fractions, decimals and percentages", "parentId": "out-frc", "curriculum": "NSW" },
+    { "id": "top-integers", "type": "topic", "label": "Integers", "parentId": "out-int", "curriculum": "NSW" },
+    { "id": "top-algexpr", "type": "topic", "label": "Algebraic expressions", "parentId": "out-alg", "curriculum": "NSW" },
+    { "id": "top-linear", "type": "topic", "label": "Linear relationships", "parentId": "out-alg", "curriculum": "NSW" },
+    { "id": "top-area", "type": "topic", "label": "Perimeter and area", "parentId": "out-are", "curriculum": "NSW" },
+    { "id": "top-data", "type": "topic", "label": "Data classification and visualisation", "parentId": "out-dat", "curriculum": "NSW" },
+
+    { "id": "con-equivfrac", "type": "concept", "label": "Equivalent fractions", "parentId": "top-fractions", "curriculum": "NSW" },
+    { "id": "con-fracops", "type": "concept", "label": "Operations with fractions", "parentId": "top-fractions", "curriculum": "NSW" },
+    { "id": "con-convert", "type": "concept", "label": "Converting between fractions, decimals and percentages", "parentId": "top-fdp", "curriculum": "NSW" },
+    { "id": "con-intops", "type": "concept", "label": "Integer operations", "parentId": "top-integers", "curriculum": "NSW" },
+    { "id": "con-simplify", "type": "concept", "label": "Simplifying expressions", "parentId": "top-algexpr", "curriculum": "NSW" },
+    { "id": "con-lineareq", "type": "concept", "label": "Linear equations", "parentId": "top-linear", "curriculum": "NSW" },
+    { "id": "con-area", "type": "concept", "label": "Area of plane shapes", "parentId": "top-area", "curriculum": "NSW" },
+    { "id": "con-datadisplays", "type": "concept", "label": "Data displays", "parentId": "top-data", "curriculum": "NSW" },
+
+    { "id": "skill-simplify-fractions", "type": "skill", "label": "Simplify fractions", "parentId": "con-equivfrac", "curriculum": "NSW", "foundational": true },
+    { "id": "skill-add-fractions", "type": "skill", "label": "Add and subtract fractions", "parentId": "con-fracops", "curriculum": "NSW" },
+    { "id": "skill-convert-fdp", "type": "skill", "label": "Convert fractions, decimals and percentages", "parentId": "con-convert", "curriculum": "NSW" },
+    { "id": "skill-add-sub-integers", "type": "skill", "label": "Add and subtract integers", "parentId": "con-intops", "curriculum": "NSW", "foundational": true },
+    { "id": "skill-mul-div-integers", "type": "skill", "label": "Multiply and divide integers", "parentId": "con-intops", "curriculum": "NSW", "foundational": true },
+    { "id": "skill-collect-like-terms", "type": "skill", "label": "Collect like terms", "parentId": "con-simplify", "curriculum": "NSW", "foundational": true },
+    { "id": "skill-solve-linear", "type": "skill", "label": "Solve linear equations", "parentId": "con-lineareq", "curriculum": "NSW" },
+    { "id": "skill-area-rectangle", "type": "skill", "label": "Area of a rectangle", "parentId": "con-area", "curriculum": "NSW", "foundational": true },
+    { "id": "skill-area-triangle", "type": "skill", "label": "Area of a triangle", "parentId": "con-area", "curriculum": "NSW" },
+    { "id": "skill-interpret-data", "type": "skill", "label": "Interpret data displays", "parentId": "con-datadisplays", "curriculum": "NSW" },
+
+    { "id": "sub-common-factors", "type": "subskill", "label": "Find common factors", "parentId": "skill-simplify-fractions", "curriculum": "NSW" },
+    { "id": "sub-common-denominator", "type": "subskill", "label": "Find a common denominator", "parentId": "skill-add-fractions", "curriculum": "NSW" },
+    { "id": "sub-inverse-ops", "type": "subskill", "label": "Apply inverse operations", "parentId": "skill-solve-linear", "curriculum": "NSW" }
+  ],
+  "prerequisites": [
+    { "from": "skill-simplify-fractions", "to": "skill-add-fractions" },
+    { "from": "skill-add-fractions", "to": "skill-convert-fdp" },
+    { "from": "skill-simplify-fractions", "to": "skill-convert-fdp" },
+    { "from": "skill-add-sub-integers", "to": "skill-solve-linear" },
+    { "from": "skill-mul-div-integers", "to": "skill-solve-linear" },
+    { "from": "skill-collect-like-terms", "to": "skill-solve-linear" },
+    { "from": "skill-area-rectangle", "to": "skill-area-triangle" }
+  ]
+}

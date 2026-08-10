@@ -11,8 +11,10 @@ import {
   InMemoryContentStore,
   InMemoryStorage,
 } from "./adapters/memory/inMemoryContentStore";
+import { InMemorySkillGraphStore } from "./adapters/memory/inMemorySkillGraphStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
+import type { SkillGraphStore } from "./ports/skillGraphStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -29,11 +31,14 @@ import { ContentService } from "./services/contentService";
 import { ClassificationService } from "./services/classificationService";
 import { IngestionService } from "./services/ingestionService";
 import { KnowledgeService } from "./services/knowledgeService";
+import { SkillGraphService } from "./services/skillGraphService";
+import { MappingService } from "./services/mappingService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
   store: DataStore;
   contentStore: ContentStore;
+  skillGraphStore: SkillGraphStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -52,11 +57,14 @@ export interface AppContext {
   classification: ClassificationService;
   ingestion: IngestionService;
   knowledge: KnowledgeService;
+  skillGraph: SkillGraphService;
+  mapping: MappingService;
 }
 
 export interface BuildContextOptions {
   store?: DataStore;
   contentStore?: ContentStore;
+  skillGraphStore?: SkillGraphStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -78,6 +86,7 @@ export interface BuildContextOptions {
 export function buildContext(options: BuildContextOptions = {}): AppContext {
   const store = options.store ?? new InMemoryStore();
   const contentStore = options.contentStore ?? new InMemoryContentStore();
+  const skillGraphStore = options.skillGraphStore ?? new InMemorySkillGraphStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -91,9 +100,13 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const aiProvider = options.aiProvider ?? new LocalClassifierProvider();
   const ai = new AiServiceLayer(aiProvider, audit);
 
+  const contentService = new ContentService(contentStore, store, storage, scanner, clock, audit);
+  const skillGraph = new SkillGraphService(skillGraphStore, clock, audit);
+
   return {
     store,
     contentStore,
+    skillGraphStore,
     storage,
     scanner,
     extractor,
@@ -108,9 +121,11 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     invites: new InviteService(store, clock, audit, notifications),
     auth: new AuthService(store, clock, audit),
     onboarding: new OnboardingService(store, audit),
-    content: new ContentService(contentStore, store, storage, scanner, clock, audit),
+    content: contentService,
     classification: new ClassificationService(contentStore, storage, ai, audit),
     ingestion: new IngestionService(contentStore, storage, extractor, clock, audit),
     knowledge: new KnowledgeService(contentStore, audit),
+    skillGraph,
+    mapping: new MappingService(skillGraphStore, contentStore, contentService, clock, audit),
   };
 }

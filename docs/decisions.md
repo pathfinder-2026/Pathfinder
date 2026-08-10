@@ -93,3 +93,18 @@ without real binaries, S3 or a live model:
   documents/slides/pdf/txt/md/csv, video (mp4/mov/webm ≤500 MB), audio (≤200 MB),
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
+
+## ADR-0015 — Skill graph is AI-drafted but never self-signed-off (M2)
+The M2 gate requires a signed-off skill graph as a build input, and it wasn't on
+the machine. Rather than block, the **program generates the draft** (the plan
+itself says v0.1 was "AI-drafted"): a representative NSW Stage 4 graph ships as
+`db/seeds/pathfinder_skill_graph_nsw_y8_maths_v0.1.json`. But **sign-off is a
+human governance act** the program must not fake — so it's modeled as an explicit,
+audited state (`draft` → `signed_off` via `SkillGraphService.signOff(expertId)`),
+and **mapping against an unsigned graph is blocked in code**
+(`SKILL_GRAPH_NOT_SIGNED_OFF`). Tests perform the sign-off action to exercise the
+pipeline; the shipped seed stays `draft`, with a reviewer note, pending a real
+curriculum expert. FR-SKG-002: NSW is fully implemented; VIC/AC/custom are
+schema + policy level only (curriculum field, re-map-on-switch flag, outcome
+policy) per the milestone's "schema, not implementation". The seed is a
+representative subset, **not** the full 96-skill v0.1 — labeled as such.

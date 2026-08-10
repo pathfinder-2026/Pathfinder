@@ -1,8 +1,68 @@
+# Handoff — Milestone 2
+
+**Date:** 2026-08-09
+**Milestone:** 2 — Skill Graph — **COMPLETE**
+**Suite:** `npm test` → **101 passing** (96 `services/api`, 5 `infra`). `npm run typecheck` clean.
+
+## Gate note (read first)
+
+The M2 gate named a signed-off graph file that **wasn't on the machine**. Rather
+than fake it, the reconciliation (owner-agreed): the **program AI-drafts** the
+graph — the plan itself says v0.1 was "AI-drafted" — and ships it as a committed
+seed, but **sign-off is modeled as a human governance act the program never
+self-certifies**. The seed imports as `draft`; mapping against an unsigned graph
+is **blocked in code**; a curriculum expert (the owner, after reviewing the
+output) calls `signOff` to flip it to `signed_off`. **Action:** review
+`db/seeds/pathfinder_skill_graph_nsw_y8_maths_v0.1.json` and sign it off before
+any live-classroom mapping. It is a representative subset, **not** the full
+96-skill v0.1.
+
+## What was built (every acceptance row tested)
+
+- **Skill graph as versioned trusted infra** — import + `validateGraphSource`
+  (referential integrity, difficulty-can't-be-a-node, **acyclic**), re-validated
+  on every structural edit (`SkillGraphService`).
+- **Sign-off gate** — `draft` → `signed_off` governance state; audited; mapping
+  refused against an unsigned graph.
+- **FR-SKG-001** — map approved content through the full chain; multi-skill →
+  multiple nodes; missing-prerequisite **flag** (not block). Difficulty is an
+  item attribute on the mapping, never a node.
+- **FR-SKG-002** — NSW fully implemented (NESA `MA4-` codes); VIC/AC/custom at
+  schema+policy level: curriculum-switch flags re-mapping; undefined custom
+  outcomes → outcome mapping pending.
+- **FR-SKG-004** — per-mapping teacher override reflected everywhere;
+  remap-historical-data prompt when mastery data exists; bulk override with a
+  single confirmation (`MappingService`).
+- Mapping reads **only** from the M1 approved pool.
+
+## New this milestone
+
+`src/domain/skillGraph.ts` (types + cycle detection), `SkillGraphStore` port +
+in-memory adapter, `SkillGraphService`, `MappingService`. Postgres schema +
+`db/migrations/0004_skill_graph.sql` (versions/nodes/prereqs/mappings/curricula,
+with node-type + status CHECK constraints). Seed under `db/seeds/`.
+
+## Deferred (M2)
+
+- Real curriculum-expert sign-off of the seed (governance action awaiting the
+  human — ADR-0015).
+- Full 96-skill NSW graph + actual VIC/AC/custom graphs (schema is ready).
+- Postgres adapters still deferred until a DB is provisioned (ADR-0007).
+
+## Next (Milestone 3 — do not start ahead of it)
+
+Assessment Builder: generate assessments from natural-language requests using
+**approved content only**, through the AI service layer; multiple question types;
+rubrics/model answers/versions; **everything stays draft until a teacher
+publishes** (FR-ASM-004). Test the "insufficient approved content" edge first.
+
+---
+
 # Handoff — Milestone 1
 
 **Date:** 2026-08-09
 **Milestone:** 1 — Content Studio + Knowledge Engine — **COMPLETE**
-**Suite:** `npm test` → **85 passing** (80 `services/api`, 5 `infra`). `npm run typecheck` clean.
+**Suite (at M1):** 85 passing (80 `services/api`, 5 `infra`).
 
 ## Gate note (read first)
 

@@ -366,6 +366,12 @@ export class ContentService {
     return null;
   }
 
+  /** Whether a content item is currently in the approved pool. */
+  isInApprovedPool(contentItemId: string): boolean {
+    const item = this.content.getContentItem(contentItemId);
+    return item ? this.poolBlockReason(item) === null : false;
+  }
+
   /** null => eligible for the approved pool; otherwise the blocking reason. */
   poolBlockReason(item: ContentItem): string | null {
     const prerequisite = this.prerequisiteBlockReason(item);

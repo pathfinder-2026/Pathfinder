@@ -119,3 +119,32 @@ one automated test. Run `npm test`.
 | Approved-pool gate (pending never in pool) | `m1-approved-pool.test.ts` |
 | AI call goes through service layer + audited; offshore refused | `m1-ai-servicelayer.test.ts` |
 | NFR-PERF-001 ingestion always terminal, fast | `m1-perf-ingestion.test.ts` |
+
+# Milestone 2 traceability — acceptance rows → tests
+
+## FR-SKG-001 — Map through the hierarchy  (`m2-skg-001-mapping.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — full chain + difficulty attribute | "happy path: content links through the correct chain…" |
+| Edge — multi-skill content maps to multiple nodes | "edge — content spanning multiple skills maps to multiple nodes" |
+| Edge — missing prerequisite flagged, not blocked | "edge — a skill with no defined prerequisite is flagged…" |
+
+## FR-SKG-002 — Curriculum support  (`m2-skg-002-curriculum.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — NSW codes used | "happy path: a NSW school maps to NSW curriculum codes…" |
+| Edge — curriculum switch flags re-mapping | "edge — switching curriculum mid-year flags previously mapped content…" |
+| Edge — undefined custom outcomes → pending | "edge — a custom curriculum with no defined outcomes makes outcome mapping pending" |
+
+## FR-SKG-004 — Teacher overrides  (`m2-skg-004-overrides.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — override reflected everywhere | "happy path: an override is saved and reflected everywhere…" |
+| Edge — mastery data → remap-historical prompt | "edge — overriding with existing mastery data prompts to remap history…" |
+| Edge — bulk override, single confirmation | "edge — a bulk override applies with a single confirmation" |
+
+## M2 cross-cutting (Foundational Decision 4)
+| Property | Test file |
+|---|---|
+| Import validates acyclic; difficulty-as-node rejected; edit re-validates | `m2-skillgraph-import.test.ts` |
+| Sign-off gate: no mapping against an unsigned graph; sign-off audited | `m2-signoff-gate.test.ts` |

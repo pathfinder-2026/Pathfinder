@@ -5,9 +5,10 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 1 complete** — Content Studio + Knowledge Engine (upload →
-> ingest → AI classification → teacher approve/edit → approved pool), on top of
-> Milestone 0 (project skeleton + minimal School-Admin onboarding + foundations).
+> **Status: Milestone 2 complete** — Skill Graph (versioned trusted
+> infrastructure: import → validate acyclic → expert sign-off → map approved
+> content through the full chain, with teacher overrides), on top of Milestone 1
+> (Content Studio + Knowledge Engine) and Milestone 0 (skeleton + foundations).
 
 ## Foundational decisions (locked — never re-litigate)
 
@@ -64,10 +65,10 @@ npm install
 npm test
 ```
 
-Expected: **85 passing tests** — 80 in `services/api` (every M0 FR-ADM/FR-ONB and
-M1 FR-CONT-001–004 / FR-ING-001–004 acceptance row, the approved-pool gate, the
-AI-service-layer audit path, NFR-PERF-001 ingestion, plus the foundations) and 5
-in `infra` (region pinning). Type-check everything with:
+Expected: **101 passing tests** — 96 in `services/api` (every M0 FR-ADM/FR-ONB,
+M1 FR-CONT/FR-ING, and M2 FR-SKG-001/002/004 acceptance row, plus the approved-pool
+and skill-graph sign-off gates, acyclicity validation, the AI-service-layer audit
+path, and the foundations) and 5 in `infra` (region pinning). Type-check with:
 
 ```bash
 npm run typecheck
@@ -108,9 +109,26 @@ an `AiProvider`. The production `BedrockProvider` targets `ap-southeast-2`
 deterministic provider (no network egress) backs dev and the test suite. **Live
 Bedrock verification is deferred** — see docs/decisions.md ADR-0013.
 
+## Milestone 2 — Skill Graph
+
+The skill graph is **versioned trusted infrastructure** (Foundational Decision 4).
+An AI-drafted NSW Year 8 Maths graph ships as a committed seed
+(`db/seeds/pathfinder_skill_graph_nsw_y8_maths_v0.1.json`) and imports as a
+**draft**. The prerequisite graph is validated **acyclic on import and on every
+structural edit**; **difficulty is an item attribute, never a node**. A graph
+version must be **curriculum-expert signed off** (an explicit, audited governance
+action — the program never self-certifies) before any content is mapped against
+it. Then approved content maps through subject → strand → outcome → topic →
+concept → skill → subskill (multi-skill supported; missing prerequisites flagged,
+not blocked), and a Teacher can override any mapping — reflected everywhere, with
+the remap-historical-data prompt and single-confirmation bulk override.
+
+> The shipped seed is a representative **draft, not signed off**. A curriculum
+> expert reviews and signs it off (`SkillGraphService.signOff`) before live use.
+
 ## What is intentionally NOT here yet
 
-The skill graph (M2), assessments (M3), synthetic data (M4), dashboards/cohorts
-(M5), parent/principal dashboards, reporting, live Bedrock calls, CSV import and
-SSO (FR-ADM-003 / FR-INT-001, explicitly deferred by the plan), and the web UI
-screens. These belong to later milestones.
+Assessments (M3), synthetic data (M4), dashboards/cohorts (M5), parent/principal
+dashboards, reporting, live Bedrock calls, CSV import and SSO (FR-ADM-003 /
+FR-INT-001, plan-deferred), and the web UI screens. These belong to later
+milestones.

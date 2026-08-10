@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { buildContext, type AppContext } from "../src/context";
 import { FixedClock } from "../src/platform/clock";
 import { newId } from "../src/platform/ids";
 import type { User } from "../src/domain/types";
+import type { SkillGraphSource } from "../src/domain/skillGraph";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -50,6 +53,31 @@ export function makeUser(ctx: AppContext, schoolId: string, email: string): User
 
 function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+// ---- Milestone 2 skill-graph helpers ----
+
+/** Read the AI-drafted NSW Y8 Maths seed graph (the committed build input). */
+export function readSeedGraph(): SkillGraphSource {
+  const path = fileURLToPath(
+    new URL("../../../db/seeds/pathfinder_skill_graph_nsw_y8_maths_v0.1.json", import.meta.url),
+  );
+  return JSON.parse(readFileSync(path, "utf8")) as SkillGraphSource;
+}
+
+/**
+ * Import the seed graph, sign it off (simulating the curriculum expert), and
+ * configure the school on NSW. Returns the signed-off graph version id.
+ */
+export function setupSignedGraph(
+  ctx: AppContext,
+  schoolId: string,
+  expertId = "expert-1",
+): string {
+  const version = ctx.skillGraph.importGraph(readSeedGraph());
+  ctx.skillGraph.signOff(version.id, expertId);
+  ctx.mapping.configureCurriculum(schoolId, "NSW");
+  return version.id;
 }
 
 // ---- Milestone 1 content helpers ----

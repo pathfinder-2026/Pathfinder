@@ -43,9 +43,17 @@ live in the code and how they are tested.
 
 ## 4. Skill graph (versioned trusted infrastructure)
 
-- Not built in M0 (Milestone 2). No schema shortcuts were taken that would block
-  representing prerequisites as a validated acyclic graph with difficulty as an
-  item attribute.
+- **Built in M2.** `src/domain/skillGraph.ts` — prerequisite cycle detection
+  (`findPrerequisiteCycle`) + `validateGraphSource` runs on import and every
+  structural edit (`SkillGraphService.addPrerequisite` rejects cycle-creating
+  edges). Difficulty is an item attribute on `ContentMapping`, and the node-type
+  union / SQL `CHECK` make 'difficulty' impossible as a node.
+- **Sign-off gate:** graph versions carry a `draft` → `signed_off` governance
+  state; `MappingService` refuses to map against an unsigned graph. The program
+  never self-signs — a human expert calls `signOff(expertId)` (audited).
+- AI-drafted seed: `db/seeds/pathfinder_skill_graph_nsw_y8_maths_v0.1.json`
+  (ships `draft`/unsigned).
+- Tests: `m2-skillgraph-import`, `m2-signoff-gate`, `m2-skg-001/002/004`.
 
 ## 5. Design-system token separation
 

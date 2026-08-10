@@ -4,6 +4,7 @@ import {
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -304,3 +305,64 @@ export const contentReferences = pgTable(
   },
   (t) => ({ byItem: index("content_references_item_idx").on(t.contentItemId) }),
 );
+
+// ---- Milestone 2: Skill Graph (versioned trusted infrastructure) ----
+
+export const skillGraphVersions = pgTable("skill_graph_versions", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  curriculum: text("curriculum").notNull(),
+  version: text("version").notNull(),
+  // Governance sign-off state — draft until a curriculum expert signs off.
+  status: text("status").notNull().default("draft"),
+  signedOffBy: text("signed_off_by"),
+  signedOffAt: timestamp("signed_off_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+export const skillNodes = pgTable(
+  "skill_nodes",
+  {
+    graphVersionId: text("graph_version_id").notNull().references(() => skillGraphVersions.id),
+    id: text("id").notNull(),
+    type: text("type").notNull(), // subject|strand|outcome|topic|concept|skill|subskill — never 'difficulty'
+    label: text("label").notNull(),
+    code: text("code"),
+    parentId: text("parent_id"),
+    curriculum: text("curriculum").notNull(),
+    foundational: boolean("foundational").notNull().default(false),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.graphVersionId, t.id] }) }),
+);
+
+export const skillPrerequisites = pgTable(
+  "skill_prerequisites",
+  {
+    graphVersionId: text("graph_version_id").notNull().references(() => skillGraphVersions.id),
+    fromNode: text("from_node").notNull(),
+    toNode: text("to_node").notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.graphVersionId, t.fromNode, t.toNode] }) }),
+);
+
+export const contentMappings = pgTable(
+  "content_mappings",
+  {
+    id: text("id").primaryKey(),
+    graphVersionId: text("graph_version_id").notNull().references(() => skillGraphVersions.id),
+    contentItemId: text("content_item_id").notNull().references(() => contentItems.id),
+    nodeId: text("node_id").notNull(),
+    source: text("source").notNull(), // 'ai' | 'teacher'
+    difficulty: text("difficulty").notNull(), // item attribute, never a node
+    overriddenFromNodeId: text("overridden_from_node_id"),
+    flags: jsonb("flags").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({ byContent: index("content_mappings_content_idx").on(t.contentItemId) }),
+);
+
+export const schoolCurricula = pgTable("school_curricula", {
+  schoolId: text("school_id").primaryKey().references(() => schools.id),
+  curriculum: text("curriculum").notNull(),
+  customOutcomesDefined: boolean("custom_outcomes_defined").notNull().default(true),
+});

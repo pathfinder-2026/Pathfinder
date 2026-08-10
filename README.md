@@ -13,6 +13,30 @@ of the current milestone.
 > is blocked by design. **Milestone 5b (peer benchmarking/review/testing) is not
 > started**; a formal validation checkpoint follows Milestone 5.
 
+## See it running — the preview console
+
+A **preview / validation console** renders the already‑tested Milestones 0–5a as
+clickable browser screens (a deliberately rough validation aid — *not* the
+production design system; see ADR‑0021). It boots a seeded demo school so every
+screen shows real service output.
+
+Run the API and the web app in two terminals:
+
+```bash
+npm run dev:api
+```
+
+```bash
+npm run dev:web
+```
+
+Then open **http://localhost:5173**. The web app proxies `/api` to the API on
+`:3000`, which lazily bootstraps the demo world on first load. Start at
+**Overview**, then open the **Teacher Dashboard** for the M5a intelligence layer
+(mastery heatmap with trends, class focus areas, suggested cohorts, and the
+adaptive engine — escalations, conflicting‑signal reasoning, and deferred
+spaced‑revision reminders).
+
 ## Foundational decisions (locked — never re-litigate)
 
 These are fixed constraints from the plan. See

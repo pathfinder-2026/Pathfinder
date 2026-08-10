@@ -94,6 +94,31 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0021 — Preview / validation console (post-M5a UI)
+The plan defers production web screens (ADR-0012), but the post-M5 checkpoint is
+defined as *pilot teachers using the product* — impossible against a headless
+service layer. So, at the product owner's explicit direction, a **preview /
+validation console** was built to render the already-tested M0–M5a services in a
+browser. Boundaries, recorded so this doesn't drift into "the UI is done":
+- **It renders validated milestones — it is not a new feature and satisfies no
+  FR.** Clearly labelled "preview / validation build, not the production design
+  system" in the UI itself.
+- **Thin, additive HTTP surface** (`services/api/src/http/preview.ts`,
+  `registerPreview`): read endpoints + the signature governance actions (approve
+  is pre-done in the demo; publish, dismiss-focus are wired). Routes register on
+  the existing Fastify app; a demo world **bootstraps lazily on first `/api`
+  call**, so the 132-test suite is untouched (verified green).
+- **One seeded in-memory demo school** (signed graph, approved+mapped content, a
+  published assessment, the M4 synthetic class) so every screen has real data.
+  Synthetic students hold no PII → the UI shows positional labels ("Student 03"),
+  never personal data (Decision 6 preserved).
+- **React SPA** (`apps/web`) over a Vite dev proxy to the API. Governance states
+  reuse the fixed design tokens' semantics (draft/approved/published/computed);
+  brand colour comes from the brand tokens (Decision 5 preserved — the UI layer
+  maps fixed roles to colours, it does not let brand override governance).
+- **Run:** `npm run dev:api` (:3000) + `npm run dev:web` (:5173). The production,
+  design-system-faithful UI is still built later, milestone by milestone.
+
 ## ADR-0020 — Teacher intelligence layer + additive substrate extension (M5a)
 Milestone 5a (Teacher Dashboard, Class-Focus, Cohorts, Adaptive Engine) reads the
 M4 synthetic substrate. Verifying that substrate against every 5a Given/When/Then

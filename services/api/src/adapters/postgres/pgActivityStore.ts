@@ -8,8 +8,9 @@ export class PgActivityStore implements ActivityStore {
 
   async insertMastery(r: MasteryRecord): Promise<void> {
     await this.sql`insert into mastery_records
-      (id,student_id,school_id,node_id,level,score,data_points,last_activity_at,synthetic)
-      values (${r.id},${r.studentId},${r.schoolId},${r.nodeId},${r.level},${r.score},${r.dataPoints},${r.lastActivityAt},${r.synthetic})`;
+      (id,student_id,school_id,node_id,level,score,data_points,last_activity_at,history,assisted_score,synthetic)
+      values (${r.id},${r.studentId},${r.schoolId},${r.nodeId},${r.level},${r.score},${r.dataPoints},${r.lastActivityAt},
+        ${r.history && r.history.length ? this.sql.json(r.history) : null},${r.assistedScore ?? null},${r.synthetic})`;
   }
   async listMasteryBySchool(schoolId: string): Promise<MasteryRecord[]> {
     return (await this.sql`select * from mastery_records where school_id=${schoolId}`).map(mapMastery);
@@ -38,7 +39,10 @@ function mapMastery(r: Row): MasteryRecord {
   return {
     id: r.id, studentId: r.student_id, schoolId: r.school_id, nodeId: r.node_id,
     level: r.level, score: Number(r.score), dataPoints: Number(r.data_points),
-    lastActivityAt: iso(r.last_activity_at), synthetic: r.synthetic,
+    lastActivityAt: iso(r.last_activity_at),
+    history: r.history ? (r.history as number[]) : [],
+    assistedScore: r.assisted_score === null || r.assisted_score === undefined ? null : Number(r.assisted_score),
+    synthetic: r.synthetic,
   };
 }
 function mapMisc(r: Row): MisconceptionSignal {

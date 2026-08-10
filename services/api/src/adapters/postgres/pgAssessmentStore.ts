@@ -79,6 +79,9 @@ export class PgAssessmentStore implements AssessmentStore {
   async listAttemptsByAssessment(assessmentId: string): Promise<AssessmentAttempt[]> {
     return (await this.sql`select * from assessment_attempts where assessment_id=${assessmentId}`).map(mapAttempt) as AssessmentAttempt[];
   }
+  async listAttemptsByStudent(studentId: string): Promise<AssessmentAttempt[]> {
+    return (await this.sql`select * from assessment_attempts where student_id=${studentId}`).map(mapAttempt) as AssessmentAttempt[];
+  }
 }
 
 type Row = Record<string, any> | undefined;

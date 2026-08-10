@@ -15,12 +15,32 @@ export interface MasteryRecord {
   /** The skill-graph node (skill) this mastery is against. */
   nodeId: string;
   level: MasteryLevel;
-  /** 0..1 mastery estimate. */
+  /** 0..1 mastery estimate (the LATEST signal). */
   score: number;
   /** Number of activity data points behind the estimate. */
   dataPoints: number;
   lastActivityAt: string;
+  /**
+   * Prior mastery scores oldest→newest (excluding the current `score`), from
+   * earlier assessments. Lets the dashboard show a TREND rather than only the
+   * latest point (FR-TDB-001). Empty/undefined when there is no prior signal.
+   */
+  history?: number[];
+  /**
+   * Performance on ASSISTED/scaffolded work, when it diverges from the
+   * independent `score`. Lets the adaptive engine reconcile conflicting signals
+   * (FR-ADP-001) instead of trusting only the most recent score. Null when there
+   * is no distinct assisted signal.
+   */
+  assistedScore?: number | null;
   synthetic: boolean;
+}
+
+/** The mastery band for a 0..1 score. Single source of truth (M4 seed + M5). */
+export function masteryLevel(score: number): MasteryLevel {
+  if (score < 0.34) return "low";
+  if (score < 0.67) return "developing";
+  return "secure";
 }
 
 export interface MisconceptionSignal {

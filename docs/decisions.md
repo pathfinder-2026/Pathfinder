@@ -94,6 +94,43 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0020 — Teacher intelligence layer + additive substrate extension (M5a)
+Milestone 5a (Teacher Dashboard, Class-Focus, Cohorts, Adaptive Engine) reads the
+M4 synthetic substrate. Verifying that substrate against every 5a Given/When/Then
+row before building surfaced a genuine **data gap** (the recurring "gate"): the M4
+seed as committed did not exercise four scenarios — the *trend* row (one snapshot
+per pair, no series), the *conflicting-signals* row (no independent-vs-assisted
+dimension), the *class focus area* happy path + *content gap* (random scores,
+never a deterministic class-weak skill), and the *misconception group of 5* (the
+seed made **4**). Resolution, recorded:
+- **Extend the substrate additively, never fabricate a passing test.** Two
+  nullable columns on `mastery_records` (migration 0007): `history` (prior scores,
+  for a real trend) and `assisted_score` (for the conflicting-signals row). M4's
+  quarantine schema and provisional thresholds are untouched; **all M4 tests stay
+  green** (still exactly 25 students, same small-cohort/stale/insufficient edges).
+- **The seed plants each 5a edge deterministically**, the same way M4 plants its
+  edges: two class-weak "focus" skills (one gets material mapped in tests → a real
+  focus area; its sibling gets none → the content-gap edge), a fluctuating student
+  (downward `history`), a conflicting-signals student, **5** students sharing a
+  misconception, and a student who fits two groups. Landmarks are returned in
+  `SeedSummary` so tests target them without guessing.
+- **Every suggestion is a draft; auto-assign is blocked at the platform level.**
+  `assignFocusMaterial` requires a real Teacher actor (membership check); a call
+  with no Teacher (a future/automated feature) is refused with
+  `AUTO_ASSIGN_BLOCKED` (Foundational Decision 7). Group work is assigned only
+  from the final, teacher-edited membership.
+- **New analysis thresholds are provisional** (`DASHBOARD_THRESHOLDS`,
+  `provisional: true`, `revalidateAfterMilestone: 7`) and inherit the M4 staleness
+  / insufficient-data cut-offs — one source of truth.
+- **New persistence** behind a `DashboardStore` port (in-memory + Postgres):
+  `focus_dismissals` (records the below-mastery fraction at dismissal, so a
+  suggestion stays hidden next session yet reappears if the data worsens) and
+  `group_assignments` (student ids as jsonb, not a FK, so synthetic-student
+  deletion never breaks assignment history). Escalations reuse the single
+  notification service (`alert.teacher` — its first Milestone 5 consumer).
+- **5b is NOT started** — peer benchmarking/review/testing (a separate
+  publish-or-withhold governance path) begins only after 5a passes.
+
 ## ADR-0019 — Synthetic student activity + quarantine (M4)
 M4 is an engineering task (no FR IDs), so its tests derive from the DoD and the
 quarantine rules (treated as requirements). Sensible defaults, recorded:

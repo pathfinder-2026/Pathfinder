@@ -18,7 +18,11 @@ import { newId } from "../ids";
 export type NotificationType =
   | "invite.teacher"
   | "invite.student"
-  | "invite.parent";
+  | "invite.parent"
+  // Milestone 5a — Teacher-facing alerts (the first non-invite consumer of the
+  // single notification/event service). Escalations surface on the dashboard AND
+  // notify the class Teacher rather than the engine looping remediation forever.
+  | "alert.teacher";
 
 export interface NotificationMessage {
   id: string;

@@ -1,3 +1,75 @@
+# Handoff — Milestone 5a
+
+**Date:** 2026-08-10
+**Milestone:** 5a — Teacher Dashboard, Class-Focus, Cohorts, Adaptive Engine — **COMPLETE**
+**Suite:** `npm test` → **137** (132 `services/api` + 5 `infra`); the same 132
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The gate (verify-don't-fabricate, again)
+
+No false *external* precondition this time — but verifying the M4 seed against
+every 5a Given/When/Then row surfaced a real **substrate gap**: as committed the
+seed didn't exercise four scenarios — *trend* (one snapshot per pair, no series),
+*conflicting signals* (no independent-vs-assisted dimension), the *class focus
+area* happy path + *content gap* (random scores, no deterministic weak skill), and
+the *5-student misconception group* (the seed made 4). Rather than fake a passing
+test, the M4 substrate was **extended additively** (ADR-0020) and each 5a edge was
+**planted deterministically** in the seed, the same way M4 plants its edges. M4's
+quarantine schema/thresholds are untouched and **all M4 tests stay green** (still
+25 students, same small-cohort/stale/insufficient edges).
+
+## What was built (every acceptance row tested)
+
+- **FR-TDB-001 / FR-CAP-001** (`m5a-tdb-001-dashboard.test.ts`) — per-student,
+  per-skill heatmap + intervention/extension flags; brand-new class → explicit
+  "not enough data yet"; fluctuating student → **down trend** (not just the latest
+  point). `TeacherDashboardService.heatmap`.
+- **FR-TDB-002** (`m5a-tdb-002-focus.test.ts`) — class focus area with suggested
+  approved material; **content-gap** prompt when none mapped; dismissed suggestion
+  hidden next session but **reappears when data worsens**; **auto-assign blocked**
+  at the platform level (`AUTO_ASSIGN_BLOCKED`) — assignment needs a real Teacher
+  actor + is audited.
+- **FR-COH-001 / FR-COH-002** (`m5a-coh-groups.test.ts`) — 5-student shared-
+  misconception group; a student in **both** extension + peer-learning; removing a
+  student before assigning excludes them; **stale-data** group labelled.
+- **FR-ADP-001 / FR-ADP-002** (`m5a-adp-adaptive.test.ts`) — strong mastery →
+  extension; **persistent misconception → escalate** to the Teacher (dashboard +
+  `alert.teacher` notification) instead of looping remediation; **conflicting
+  signals** → reassessment weighing both, not the latest score; **spaced-revision
+  deferred** while an assessment is in progress.
+
+## New this milestone
+
+Domain: `domain/insights.ts` (types + `DASHBOARD_THRESHOLDS`, provisional), two
+additive nullable fields on `MasteryRecord` (`history`, `assistedScore`). Ports:
+`DashboardStore` (in-memory + Postgres). Services: `TeacherDashboardService`,
+`CohortService`, `AdaptiveEngine`. Migration `0007_dashboard.sql` (alters
+`mastery_records`; adds `focus_dismissals`, `group_assignments`).
+`AssessmentStore.listAttemptsByStudent` added. Seed (`SyntheticService.seedClass`)
+extended with M5a landmarks in `SeedSummary`. `alert.teacher` notification type
+(first Milestone 5 consumer of the single notification service).
+
+## Deferred (M5a)
+
+- **Milestone 5b** — peer benchmarking/review/testing (separate publish-or-withhold
+  path); begins only now that 5a passes.
+- Re-validating the provisional dashboard/tuning thresholds against real data
+  (after Milestone 7).
+- Audit/notifications persisted to Postgres (still in-memory in both modes).
+- Web UI screens for these surfaces.
+
+## Next — Milestone 5b, then the checkpoint
+
+5b completes Milestone 5. After Milestone 5 there is a **formal validation
+checkpoint** (evidence pilot teachers publish AI-drafted assessments with real
+edit rates and act on class-focus/cohort suggestions) before the M6–M11 expansion.
+Do not build ahead. Pattern to keep: read the plan section, verify any asserted
+gate is real, one test per Given/When/Then row, keep both backends green, then
+docs + commit + push.
+
+---
+
 # Handoff — Milestone 4
 
 **Date:** 2026-08-09

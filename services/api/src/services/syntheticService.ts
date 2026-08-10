@@ -1,6 +1,6 @@
 import { ConflictError, NotFoundError } from "../domain/errors";
-import type { MasteryLevel, MasteryRecord, MisconceptionSignal } from "../domain/mastery";
-import { SYNTHETIC_THRESHOLDS } from "../domain/mastery";
+import type { MasteryRecord } from "../domain/mastery";
+import { masteryLevel, SYNTHETIC_THRESHOLDS } from "../domain/mastery";
 import type { Enrolment, Membership, User } from "../domain/types";
 import type { AuditRecorder } from "../platform/audit/auditLog";
 import type { Clock } from "../platform/clock";
@@ -16,6 +16,22 @@ export interface SeedSummary {
   masteryCount: number;
   misconceptionCount: number;
   skillCount: number;
+  /**
+   * Landmarks the Milestone 5a scenarios need to be deterministic. The seed
+   * deliberately plants each M5a edge — a class focus area (with a sibling that
+   * has no material → content gap), a fluctuating student (downward trend), a
+   * conflicting-signals student, a 5-strong shared misconception, and a student
+   * who fits two groups — the same way M4 plants the small-cohort/stale edges.
+   */
+  focusNodeId: string;
+  contentGapNodeId: string;
+  misconceptionNodeId: string;
+  misconceptionStudentIds: string[];
+  fluctuatingStudentId: string;
+  conflictingStudentId: string;
+  conflictingNodeId: string;
+  multiGroupStudentId: string;
+  staleStudentIds: string[];
 }
 
 /**
@@ -62,24 +78,65 @@ export class SyntheticService {
     const staleAt = new Date(now - (t.stalenessDays + 16) * DAY_MS).toISOString();
     const recentAt = new Date(now - 1 * DAY_MS).toISOString();
 
+    const commonSkills = skills.slice(0, skills.length - 1);
+    const rareSkill = skills[skills.length - 1]!; // covered by only a few students (small cohort)
+    // Two skills the class is deliberately weak on: one gets material mapped in
+    // tests (a real focus area), its sibling gets none (the content-gap edge).
+    const misconceptionNodeId = commonSkills[0]!;
+    const focusNodeId = commonSkills[1] ?? commonSkills[0]!;
+    const contentGapNodeId = commonSkills[2] ?? focusNodeId;
+    const weakOn = new Set([focusNodeId, contentGapNodeId]);
+    const WEAK_BELOW = Math.ceil(count * 0.64); // ~64% below mastery → a focus area
+
+    // Deliberately-planted individuals (indices chosen to avoid overlap).
+    const MISCONCEPTION_RANGE = { from: 4, to: 8 }; // 5 students share a misconception
+    const FLUCTUATING = 18; // downward trend on the focus skill
+    const CONFLICTING = 19; // independent≫assisted on the misconception skill
+    const MULTI_GROUP = 24; // secure overall AND on the focus skill → extension + peer-learning
+
     const studentIds: string[] = [];
+    const misconceptionStudentIds: string[] = [];
     let masteryCount = 0;
     let misconceptionCount = 0;
-    const rareSkill = skills[skills.length - 1]!; // covered by only a few students (small cohort)
+    let fluctuatingStudentId = "";
+    let conflictingStudentId = "";
+    let multiGroupStudentId = "";
 
     for (let i = 0; i < count; i++) {
       const student = await this.createSyntheticStudent(schoolId, classId);
       studentIds.push(student.id);
+      const stale = i < 5; // the first five students are stale
+      if (i === FLUCTUATING) fluctuatingStudentId = student.id;
+      if (i === CONFLICTING) conflictingStudentId = student.id;
+      if (i === MULTI_GROUP) multiGroupStudentId = student.id;
 
-      // Every student has mastery on the common skills (varied levels).
-      for (const nodeId of skills.slice(0, skills.length - 1)) {
-        const score = round2(rand());
+      for (const nodeId of commonSkills) {
+        // Score: weak skills push most of the class below mastery; the
+        // multi-group student is secure everywhere so it qualifies for extension.
+        let score: number;
+        if (i === MULTI_GROUP) score = secureBand(rand);
+        else if (weakOn.has(nodeId)) score = i < WEAK_BELOW ? belowBand(rand) : secureBand(rand);
+        else score = round2(rand());
+        let history: number[] | undefined;
+        let assistedScore: number | null | undefined;
+
+        // Fluctuating student: a clear downward trend on the focus skill, so the
+        // dashboard must show the trend rather than only the latest point.
+        if (i === FLUCTUATING && nodeId === focusNodeId) {
+          history = [0.85, 0.6];
+          score = 0.35;
+        }
+        // Conflicting-signals student: strong independently, weak when assisted.
+        if (i === CONFLICTING && nodeId === misconceptionNodeId) {
+          score = 0.85;
+          assistedScore = 0.3;
+        }
+
         // A few (student, skill) pairs are deliberately insufficient-data.
-        const dataPoints = i >= 9 && i <= 12 && nodeId === skills[1] ? 1 : 3 + Math.floor(rand() * 8);
-        const stale = i < 5; // the first five students are stale
+        const dataPoints = i >= 9 && i <= 12 && nodeId === focusNodeId ? 1 : 3 + Math.floor(rand() * 8);
         await this.putMastery({
           studentId: student.id, schoolId, nodeId, score, dataPoints,
-          lastActivityAt: stale ? staleAt : recentAt,
+          lastActivityAt: stale ? staleAt : recentAt, history, assistedScore,
         });
         masteryCount++;
       }
@@ -93,10 +150,11 @@ export class SyntheticService {
         masteryCount++;
       }
 
-      // Students 5–8 carry a persistent misconception (escalation signal).
-      if (i >= 5 && i <= 8) {
+      // Students 4–8 (five of them) share a persistent misconception → escalation.
+      if (i >= MISCONCEPTION_RANGE.from && i <= MISCONCEPTION_RANGE.to) {
+        misconceptionStudentIds.push(student.id);
         await this.activity.insertMisconception({
-          id: newId(), studentId: student.id, schoolId, nodeId: skills[0]!,
+          id: newId(), studentId: student.id, schoolId, nodeId: misconceptionNodeId,
           misconception: "adds numerators and denominators separately",
           occurrences: t.misconceptionEscalationMin + 1,
           lastSeenAt: recentAt, synthetic: true,
@@ -112,7 +170,12 @@ export class SyntheticService {
       subjectId: classId,
       metadata: { students: count, masteryCount, misconceptionCount, thresholds: t },
     });
-    return { studentIds, masteryCount, misconceptionCount, skillCount: skills.length };
+    return {
+      studentIds, masteryCount, misconceptionCount, skillCount: skills.length,
+      focusNodeId, contentGapNodeId, misconceptionNodeId, misconceptionStudentIds,
+      fluctuatingStudentId, conflictingStudentId, conflictingNodeId: misconceptionNodeId,
+      multiGroupStudentId, staleStudentIds: studentIds.slice(0, 5),
+    };
   }
 
   // ---- quarantine queries ----
@@ -173,10 +236,11 @@ export class SyntheticService {
   }
 
   private async putMastery(input: {
-    studentId: string; schoolId: string; nodeId: string; score: number; dataPoints: number; lastActivityAt: string;
+    studentId: string; schoolId: string; nodeId: string; score: number; dataPoints: number;
+    lastActivityAt: string; history?: number[]; assistedScore?: number | null;
   }): Promise<void> {
     const record: MasteryRecord = {
-      id: newId(), ...input, level: levelFor(input.score), synthetic: true,
+      id: newId(), ...input, level: masteryLevel(input.score), synthetic: true,
     };
     await this.activity.insertMastery(record);
   }
@@ -202,13 +266,16 @@ export class SyntheticService {
   }
 }
 
-function levelFor(score: number): MasteryLevel {
-  if (score < 0.34) return "low";
-  if (score < 0.67) return "developing";
-  return "secure";
-}
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+/** Below the mastery threshold: [0.15, 0.50). */
+function belowBand(rand: () => number): number {
+  return round2(0.15 + rand() * 0.35);
+}
+/** Securely above the mastery threshold: [0.70, 0.95). */
+function secureBand(rand: () => number): number {
+  return round2(0.7 + rand() * 0.25);
 }
 
 /** Deterministic PRNG so seeding is reproducible in tests. */

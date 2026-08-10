@@ -25,4 +25,5 @@ export interface AssessmentStore {
   getAttempt(id: string): Promise<AssessmentAttempt | undefined>;
   updateAttempt(a: AssessmentAttempt): Promise<void>;
   listAttemptsByAssessment(assessmentId: string): Promise<AssessmentAttempt[]>;
+  listAttemptsByStudent(studentId: string): Promise<AssessmentAttempt[]>;
 }

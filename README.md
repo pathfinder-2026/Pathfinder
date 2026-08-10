@@ -5,11 +5,13 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 4 complete** — seeded synthetic student activity (~25
-> students with varied mastery/misconception patterns, quarantined at the schema
-> level) so the Milestone 5 intelligence layer has real data to work against, on
-> top of Milestones 0–3 (skeleton, Content Studio, Skill Graph, Assessment
-> Builder).
+> **Status: Milestone 5a complete** — the Teacher-facing intelligence layer
+> (mastery heatmaps + flags, class-level focus areas, suggested cohorts, and the
+> adaptive engine) built against the M4 seeded data, on top of Milestones 0–4
+> (skeleton, Content Studio, Skill Graph, Assessment Builder, synthetic activity).
+> Every suggestion is a draft requiring an explicit teacher action — auto-assign
+> is blocked by design. **Milestone 5b (peer benchmarking/review/testing) is not
+> started**; a formal validation checkpoint follows Milestone 5.
 
 ## Foundational decisions (locked — never re-litigate)
 
@@ -66,11 +68,12 @@ npm install
 npm test
 ```
 
-Expected: **122 passing tests** — 117 in `services/api` (every M0 FR-ADM/FR-ONB,
-M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM acceptance row, the M4 synthetic-seed +
-quarantine tests, plus the approved-pool / sign-off / draft-until-publish gates,
-acyclicity validation, the AI-service-layer audit path, and the foundations) and
-5 in `infra` (region pinning). The **same 117 tests also run against Postgres**
+Expected: **137 passing tests** — 132 in `services/api` (every M0 FR-ADM/FR-ONB,
+M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP
+acceptance row, the M4 synthetic-seed + quarantine tests, plus the approved-pool
+/ sign-off / draft-until-publish / auto-assign-blocked gates, acyclicity
+validation, the AI-service-layer audit path, and the foundations) and 5 in
+`infra` (region pinning). The **same 132 tests also run against Postgres**
 (see below). Type-check with:
 
 ```bash
@@ -84,7 +87,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 117 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 132 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -183,8 +186,40 @@ before pilot go-live** (`deleteSyntheticStudents`, audited), and the tuning
 thresholds are **recorded** (`SYNTHETIC_THRESHOLDS`, `provisional: true`) for
 re-validation against real data after Milestone 7.
 
+## Milestone 5a — Teacher Dashboard, Class-Focus, Cohorts, Adaptive Engine
+
+The Teacher-facing intelligence layer, reading the M4 seeded activity:
+
+- **FR-TDB-001 / FR-CAP-001** — a per-student, per-skill mastery **heatmap** with
+  intervention/extension flags; a clear **"not enough data yet"** state for a
+  class with no completed work; and cells that show a **trend** (e.g. a downward
+  signal) rather than only the latest point (`TeacherDashboardService.heatmap`).
+- **FR-TDB-002** — class-level **focus areas** (skills most of the class is weak
+  on) with **suggested approved material** to reteach, or a **content-gap** prompt
+  when none is mapped; a dismissed suggestion stays hidden **until the data
+  worsens again**; and **auto-assign is blocked by design** — assigning material
+  always requires an explicit teacher action (`classFocusAreas`,
+  `dismissFocusArea`, `assignFocusMaterial`).
+- **FR-COH-001 / FR-COH-002** — suggested **groups** (support, misconception,
+  extension, review, peer-learning), all **editable before assigning**; a student
+  may appear in **multiple** groups (the Teacher chooses); groups from **stale**
+  data are labelled; and work is assigned only to the final, teacher-edited
+  membership (`CohortService`).
+- **FR-ADP-001 / FR-ADP-002** — the **adaptive engine** recommends the next best
+  action (progression/extension, revision, hints, remediation, reassessment) and
+  **escalates a persistent misconception to the Teacher** instead of looping
+  remediation; it weighs **independent vs assisted** signals rather than the
+  latest score alone; and a **spaced-revision reminder is deferred** while a
+  student has an assessment in progress (`AdaptiveEngine`).
+
+Everything here is a **draft requiring explicit teacher action** (Foundational
+Decision 7). The M4 substrate was extended **additively** to carry a mastery
+`history` (trend) and an `assisted_score` (conflicting signals) — see ADR-0020;
+all M4 tests remain green.
+
 ## What is intentionally NOT here yet
 
-Dashboards/cohorts/adaptive engine (M5), parent/principal dashboards, reporting,
-live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001, plan-deferred),
-and the web UI screens. These belong to later milestones.
+Milestone **5b** (peer benchmarking / peer review / peer testing — a separate
+publish-or-withhold governance path), the post-M5 validation checkpoint, then M6
+onward: parent/principal dashboards, reporting, live Bedrock calls, CSV import and
+SSO (FR-ADM-003 / FR-INT-001, plan-deferred), and the web UI screens.

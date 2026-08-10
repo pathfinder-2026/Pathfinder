@@ -195,3 +195,39 @@ rules (requirements).
 | Quarantine — deletable before go-live; real untouched; audited | "quarantine — synthetic students are deletable before go-live…" |
 | Quarantine — thresholds recorded for post-M7 re-validation | "quarantine — tuning thresholds are recorded for re-validation…" |
 | Seeding refuses without a signed-off skill graph | "refuses to seed without a signed-off skill graph" |
+
+# Milestone 5a traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 5a section maps to exactly one
+automated test. All run against both the in-memory and the Postgres backend.
+
+### FR-TDB-001 / FR-CAP-001 — mastery heatmap  (`m5a-tdb-001-dashboard.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — per-student/per-skill heatmap with intervention/extension flags | "happy path — a per-student, per-skill heatmap with intervention/extension flags" |
+| Edge — insufficient data → clear "not enough data yet" state | "edge — insufficient data: a brand-new class shows a clear 'not enough data yet' state" |
+| Edge — inconsistent performance → trend, not only the latest point | "edge — inconsistent performance: the heatmap reflects the TREND, not only the latest point" |
+
+### FR-TDB-002 — class focus areas  (`m5a-tdb-002-focus.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — weak skill surfaced with suggested approved material | "happy path — a weak skill is surfaced with suggested approved material to reteach it" |
+| Edge — no suitable material → content-gap prompt | "edge — no suitable material: a focus area with no approved content is flagged as a content gap" |
+| Edge — dismissed suggestion doesn't reappear identically, returns if data worsens | "edge — dismissed suggestion: doesn't reappear next session, but does if the data worsens again" |
+| Edge — auto-assign attempted → blocked by design (explicit teacher click) | "edge — auto-assign attempted: blocked by design, requiring an explicit teacher action" |
+
+### FR-COH-001 / FR-COH-002 — cohorts  (`m5a-coh-groups.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — shared-misconception group, editable before assigning | "happy path — students sharing a misconception are suggested as an editable group" |
+| Edge — student fits multiple groups → shown in both, not forced | "edge — a student who fits multiple groups is shown in both, not forced into one" |
+| Edge — teacher edits membership → only remaining students receive work | "edge — a student removed before assigning does not receive the work" |
+| Edge — stale data → group labelled as based on older data | "edge — a group built from stale data is labelled as based on older data" |
+
+### FR-ADP-001 / FR-ADP-002 — adaptive engine  (`m5a-adp-adaptive.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — strong mastery → progression/extension, not repetition | "happy path — strong mastery recommends progression/extension, not repeating content" |
+| Edge — persistent misconception → escalate to Teacher, not loop remediation | "edge — a persistent misconception escalates to the Teacher instead of auto-remediating" |
+| Edge — conflicting signals → weigh both, not only the latest score | "edge — conflicting signals: the recommendation weighs both, not only the latest score" |
+| Edge — spaced revision during assessment → deferred, not interrupting | "edge — a spaced-revision reminder is deferred while an assessment is in progress" |

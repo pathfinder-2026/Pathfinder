@@ -14,11 +14,13 @@ import {
 import { InMemorySkillGraphStore } from "./adapters/memory/inMemorySkillGraphStore";
 import { InMemoryAssessmentStore } from "./adapters/memory/inMemoryAssessmentStore";
 import { InMemoryActivityStore } from "./adapters/memory/inMemoryActivityStore";
+import { InMemoryDashboardStore } from "./adapters/memory/inMemoryDashboardStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
 import type { AssessmentStore } from "./ports/assessmentStore";
 import type { ActivityStore } from "./ports/activityStore";
+import type { DashboardStore } from "./ports/dashboardStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -39,6 +41,9 @@ import { SkillGraphService } from "./services/skillGraphService";
 import { MappingService } from "./services/mappingService";
 import { AssessmentService } from "./services/assessmentService";
 import { SyntheticService } from "./services/syntheticService";
+import { TeacherDashboardService } from "./services/teacherDashboardService";
+import { CohortService } from "./services/cohortService";
+import { AdaptiveEngine } from "./services/adaptiveEngine";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -47,6 +52,7 @@ export interface AppContext {
   skillGraphStore: SkillGraphStore;
   assessmentStore: AssessmentStore;
   activityStore: ActivityStore;
+  dashboardStore: DashboardStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -69,6 +75,9 @@ export interface AppContext {
   mapping: MappingService;
   assessment: AssessmentService;
   synthetic: SyntheticService;
+  dashboard: TeacherDashboardService;
+  cohorts: CohortService;
+  adaptive: AdaptiveEngine;
 }
 
 export interface BuildContextOptions {
@@ -77,6 +86,7 @@ export interface BuildContextOptions {
   skillGraphStore?: SkillGraphStore;
   assessmentStore?: AssessmentStore;
   activityStore?: ActivityStore;
+  dashboardStore?: DashboardStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -101,6 +111,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const skillGraphStore = options.skillGraphStore ?? new InMemorySkillGraphStore();
   const assessmentStore = options.assessmentStore ?? new InMemoryAssessmentStore();
   const activityStore = options.activityStore ?? new InMemoryActivityStore();
+  const dashboardStore = options.dashboardStore ?? new InMemoryDashboardStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -123,6 +134,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     skillGraphStore,
     assessmentStore,
     activityStore,
+    dashboardStore,
     storage,
     scanner,
     extractor,
@@ -145,5 +157,8 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     mapping: new MappingService(skillGraphStore, contentStore, contentService, clock, audit),
     assessment: new AssessmentService(assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit),
     synthetic: new SyntheticService(store, activityStore, skillGraphStore, clock, audit),
+    dashboard: new TeacherDashboardService(activityStore, dashboardStore, skillGraphStore, contentService, store, clock, audit),
+    cohorts: new CohortService(activityStore, dashboardStore, store, clock, audit),
+    adaptive: new AdaptiveEngine(activityStore, assessmentStore, store, clock, audit, notifications),
   };
 }

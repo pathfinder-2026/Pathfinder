@@ -43,4 +43,7 @@ export class InMemoryAssessmentStore implements AssessmentStore {
   async listAttemptsByAssessment(assessmentId: string): Promise<AssessmentAttempt[]> {
     return [...this.attempts.values()].filter((a) => a.assessmentId === assessmentId).map(clone);
   }
+  async listAttemptsByStudent(studentId: string): Promise<AssessmentAttempt[]> {
+    return [...this.attempts.values()].filter((a) => a.studentId === studentId).map(clone);
+  }
 }

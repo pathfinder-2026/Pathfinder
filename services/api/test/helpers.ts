@@ -11,6 +11,7 @@ import { PgContentStore } from "../src/adapters/postgres/pgContentStore";
 import { PgSkillGraphStore } from "../src/adapters/postgres/pgSkillGraphStore";
 import { PgAssessmentStore } from "../src/adapters/postgres/pgAssessmentStore";
 import { PgActivityStore } from "../src/adapters/postgres/pgActivityStore";
+import { PgDashboardStore } from "../src/adapters/postgres/pgDashboardStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -39,6 +40,7 @@ export function makeHarness(): TestHarness {
       skillGraphStore: new PgSkillGraphStore(sql),
       assessmentStore: new PgAssessmentStore(sql),
       activityStore: new PgActivityStore(sql),
+      dashboardStore: new PgDashboardStore(sql),
     });
     return { ctx, clock };
   }
@@ -199,4 +201,25 @@ export async function makeMappedContent(
   await ctx.content.approveContent(up.contentItemId, teacherId);
   await ctx.mapping.mapContent(up.contentItemId, [nodeId], { difficulty: opts.difficulty ?? "developing" });
   return up.contentItemId;
+}
+
+// ---- Milestone 5a intelligence-layer helper ----
+
+/**
+ * Stand up a school with a signed-off graph and a class seeded with synthetic
+ * activity (the M4 substrate the M5a dashboard/cohort/adaptive layers read).
+ * Returns the seed summary, whose landmarks make each 5a scenario deterministic.
+ */
+export async function seedActivityClass(
+  ctx: AppContext,
+  opts: { count?: number; seed?: number } = {},
+) {
+  const { school, campus, admin } = await seedSchoolWithAdmin(ctx);
+  const klass = await ctx.schools.createClass(school.id, campus.id, "8A");
+  await setupSignedGraph(ctx, school.id);
+  const summary = await ctx.synthetic.seedClass(school.id, klass.id, {
+    count: opts.count ?? 25,
+    seed: opts.seed ?? 42,
+  });
+  return { ctx, schoolId: school.id, classId: klass.id, adminId: admin.user.id, summary };
 }

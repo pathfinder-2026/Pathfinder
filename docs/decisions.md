@@ -94,6 +94,25 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0018 — Assessment generation: grounded, deterministic, never fabricated (M3)
+Generation is **grounded only in the approved + mapped pool**: capacity is one
+question per grounding chunk, so an over-ask generates fewer questions and reports
+a `shortfall` rather than inventing ungrounded ones (the plan's first-tested edge).
+Every question is drafted through the **single AI service layer** (audited,
+Decision 2) via the deterministic `LocalClassifierProvider` (`assessment.generate`
+purpose) — live Bedrock stays deferred (ADR-0013), same as classification.
+Sensible defaults, recorded: unsuitable type = `numerical` requested against
+grounding with no digits → flagged, not forced; difficulty imbalance = `hard`
+requested with no hard-mapped grounding → flagged; multiple versions reuse the
+same grounding/difficulty with version-seeded wording. Mid-run AI failure is
+caught **before any persistence**, so no partial draft is saved, and the failure
+is audit-logged (FR-GOV-002). Student access is enforced in `getForStudent`
+(the permission layer), not the UI, and denials are logged. Attempts carry a
+resume window + interruption flag for the connectivity-loss row; full
+student-workspace assessment-taking is M7 — M3 models just enough to satisfy
+FR-ASM-004. New assessment tables have a Postgres adapter, so the pg-suite runs
+all 110 acceptance tests (migration 0005).
+
 ## ADR-0017 — Async persistence ports + full Postgres adapters
 The synchronous persistence ports (see ADR-0007/0016) were converted to
 **async** (Promise-returning) across `DataStore`/`ContentStore`/`SkillGraphStore`,

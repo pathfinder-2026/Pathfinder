@@ -148,3 +148,35 @@ one automated test. Run `npm test`.
 |---|---|
 | Import validates acyclic; difficulty-as-node rejected; edit re-validates | `m2-skillgraph-import.test.ts` |
 | Sign-off gate: no mapping against an unsigned graph; sign-off audited | `m2-signoff-gate.test.ts` |
+
+# Milestone 3 traceability — acceptance rows → tests
+
+## FR-ASM-001 — Grounded generation  (`m3-asm-001-generation.test.ts`)
+| Row | Test |
+|---|---|
+| Edge — insufficient content → fewer + shortfall (tested FIRST) | "edge — insufficient approved content: generates fewer well-grounded questions…" |
+| Happy — draft from approved content only | "happy path: a draft is generated using only the approved content" |
+| Edge — unapproved content excluded + notified | "edge — unapproved content referenced: the generator excludes it and notifies why" |
+| Edge (NEW v1.4) — mid-run failure, no partial, audited | "edge (NEW v1.4) — generation fails mid-run: clear failed state, no partial draft…" |
+
+## FR-ASM-002 — Question types  (`m3-asm-002-types.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — exact requested mix | "happy path: the draft contains exactly the requested mix of types" |
+| Edge — unsuitable type flagged, not forced | "edge — unsuitable question type is flagged, not forced" |
+
+## FR-ASM-003 — Rubrics / model answers / versions  (`m3-asm-003-rubrics-versions.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — extended-response gets rubric + model answer | "happy path: an extended-response question gets a matching rubric and model answer" |
+| Edge — multiple versions, same outcomes/difficulty, different wording | "edge — multiple versions test the same outcomes at matched difficulty…" |
+| Edge — imbalanced difficulty flagged | "edge — imbalanced difficulty: generates what it can and flags it couldn't be met" |
+
+## FR-ASM-004 — Draft-until-publish  (`m3-asm-004-publish.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — unpublished not accessible to students | "happy path: an unpublished assessment cannot be accessed by students" |
+| Edge — accidental publish reversible before start | "edge — accidental publish is reversible before the scheduled start time" |
+| Edge — publish requires review acknowledgement | "edge — publish without review is blocked until a review acknowledgement" |
+| Edge (NEW v1.4) — direct-link denied at permission layer + logged | "edge (NEW v1.4) — direct-link access… denied at the permission layer and logged" |
+| Edge (NEW v1.4) — connectivity loss preserves work, visible to Teacher | "edge (NEW v1.4) — connectivity loss mid-assessment preserves work…" |

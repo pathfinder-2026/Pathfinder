@@ -375,3 +375,70 @@ export const skillMasteryRefs = pgTable(
   },
   (t) => ({ pk: primaryKey({ columns: [t.contentItemId, t.nodeId] }) }),
 );
+
+// ---- Milestone 3: Assessment Builder ----
+
+export const assessments = pgTable(
+  "assessments",
+  {
+    id: text("id").primaryKey(),
+    schoolId: text("school_id").notNull().references(() => schools.id),
+    teacherId: text("teacher_id").notNull().references(() => users.id),
+    title: text("title").notNull(),
+    request: jsonb("request").notNull(),
+    status: text("status").notNull().default("draft"),
+    generationStatus: text("generation_status").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    scheduledStart: timestamp("scheduled_start", { withTimezone: true }),
+    reviewAcknowledged: boolean("review_acknowledged").notNull().default(false),
+    shortfall: jsonb("shortfall"),
+    flags: jsonb("flags").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({ byTeacher: index("assessments_teacher_idx").on(t.teacherId) }),
+);
+
+export const assessmentVersions = pgTable(
+  "assessment_versions",
+  {
+    id: text("id").primaryKey(),
+    assessmentId: text("assessment_id").notNull().references(() => assessments.id),
+    label: text("label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({ byAssessment: index("assessment_versions_assessment_idx").on(t.assessmentId) }),
+);
+
+export const assessmentQuestions = pgTable(
+  "assessment_questions",
+  {
+    id: text("id").primaryKey(),
+    versionId: text("version_id").notNull().references(() => assessmentVersions.id),
+    order: bigint("order", { mode: "number" }).notNull(),
+    type: text("type").notNull(),
+    prompt: text("prompt").notNull(),
+    options: jsonb("options"),
+    modelAnswer: text("model_answer"),
+    rubric: text("rubric"),
+    difficulty: text("difficulty").notNull(),
+    groundingContentIds: jsonb("grounding_content_ids").notNull(),
+    reviewed: boolean("reviewed").notNull().default(false),
+  },
+  (t) => ({ byVersion: index("assessment_questions_version_idx").on(t.versionId) }),
+);
+
+export const assessmentAttempts = pgTable(
+  "assessment_attempts",
+  {
+    id: text("id").primaryKey(),
+    assessmentId: text("assessment_id").notNull().references(() => assessments.id),
+    studentId: text("student_id").notNull().references(() => users.id),
+    status: text("status").notNull(),
+    savedAnswers: jsonb("saved_answers").notNull(),
+    lastSavedAt: timestamp("last_saved_at", { withTimezone: true }).notNull(),
+    interrupted: boolean("interrupted").notNull().default(false),
+    resumeDeadline: timestamp("resume_deadline", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({ byAssessment: index("assessment_attempts_assessment_idx").on(t.assessmentId) }),
+);

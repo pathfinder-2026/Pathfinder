@@ -9,6 +9,7 @@ import type { SkillGraphSource } from "../src/domain/skillGraph";
 import { PgDataStore } from "../src/adapters/postgres/pgDataStore";
 import { PgContentStore } from "../src/adapters/postgres/pgContentStore";
 import { PgSkillGraphStore } from "../src/adapters/postgres/pgSkillGraphStore";
+import { PgAssessmentStore } from "../src/adapters/postgres/pgAssessmentStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -35,6 +36,7 @@ export function makeHarness(): TestHarness {
       store: new PgDataStore(sql),
       contentStore: new PgContentStore(sql),
       skillGraphStore: new PgSkillGraphStore(sql),
+      assessmentStore: new PgAssessmentStore(sql),
     });
     return { ctx, clock };
   }
@@ -156,5 +158,43 @@ export async function makeApprovedContent(
   await ctx.classification.approveClassification(up.contentItemId, teacherId);
   await ctx.content.attestRights(up.contentItemId, teacherId);
   await ctx.content.approveContent(up.contentItemId, teacherId);
+  return up.contentItemId;
+}
+
+// ---- Milestone 3 assessment helpers ----
+
+/**
+ * Approved content with `sections` groundable chunks, mapped to `nodeId` at a
+ * given difficulty. Grounding capacity for generation == number of sections.
+ */
+export async function makeMappedContent(
+  ctx: AppContext,
+  schoolId: string,
+  teacherId: string,
+  nodeId: string,
+  opts: { sections?: number; numeric?: boolean; difficulty?: string; title?: string } = {},
+): Promise<string> {
+  const n = opts.sections ?? 1;
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const heading = `# Topic ${String.fromCharCode(65 + i)}`; // "Topic A" — no digits
+    const body = opts.numeric ? `The sum equals ${i + 2} and ${i + 5}.` : `Explain the idea clearly in prose.`;
+    parts.push(`${heading}\n${body}`);
+  }
+  const up = await ctx.content.uploadOne(schoolId, teacherId, {
+    title: opts.title ?? "Grounded content",
+    fileType: "pdf",
+    sizeBytes: 1000,
+    contentHash: testHash("grounded"),
+    source: { text: parts.join("\n") },
+  });
+  if (up.status !== "accepted") throw new Error("upload not accepted");
+  const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+  await ctx.ingestion.ingest(item.currentVersionId, teacherId);
+  await ctx.classification.classify(up.contentItemId, teacherId);
+  await ctx.classification.approveClassification(up.contentItemId, teacherId);
+  await ctx.content.attestRights(up.contentItemId, teacherId);
+  await ctx.content.approveContent(up.contentItemId, teacherId);
+  await ctx.mapping.mapContent(up.contentItemId, [nodeId], { difficulty: opts.difficulty ?? "developing" });
   return up.contentItemId;
 }

@@ -91,4 +91,10 @@ introduce them (each field to be justified when added).
   `unreviewed`); `src/domain/inference.ts` gates surfacing with
   `canSurfaceToStakeholder`. No records are produced in M0 — the gate can be
   switched on later without a schema migration.
-- Tests: `foundation-governance.test.ts`, `foundation-inference-approvable.test.ts`.
+- **M3 extends the gate to assessments:** AI-generated assessments stay `draft`
+  until a teacher publishes; publish requires a review acknowledgement; access to
+  an unpublished assessment is denied at the permission layer (`getForStudent`)
+  and logged — nothing AI-generated reaches a student without explicit teacher
+  action.
+- Tests: `foundation-governance.test.ts`, `foundation-inference-approvable.test.ts`,
+  `m3-asm-004-publish.test.ts`.

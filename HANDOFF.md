@@ -1,3 +1,56 @@
+# Handoff — Milestone 3
+
+**Date:** 2026-08-09
+**Milestone:** 3 — Assessment Builder — **COMPLETE**
+**Suite:** `npm test` → **115** (110 `services/api` + 5 `infra`); the same 110
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## No new gate
+
+M3 has no external precondition — generation runs through the AI service layer,
+operational via the deterministic local provider since M1 (live Bedrock still
+deferred, ADR-0013). Nothing was asserted-but-absent this time.
+
+## What was built (every acceptance row tested)
+
+- **FR-ASM-001** grounded generation — capacity = 1 question per approved+mapped
+  grounding chunk; over-ask → fewer questions + `shortfall` (never fabricated,
+  tested first); unapproved content excluded + flagged; **mid-run AI failure →
+  failed state, no partial draft saved, audited** (`AssessmentService.generate`).
+- **FR-ASM-002** five question types; unsuitable type (numerical on non-numeric
+  content) flagged, not forced.
+- **FR-ASM-003** rubrics + model answers for extended-response; multiple versions
+  (same grounding/difficulty, seeded wording); difficulty-imbalance flag.
+- **FR-ASM-004** draft-until-publish; review-acknowledgement required; accidental
+  publish reversible before scheduled start; **unpublished access denied at the
+  permission layer + logged**; connectivity-loss preserves work to last save,
+  resume within window, interruption visible to the Teacher.
+
+## New this milestone
+
+`domain/assessment.ts`, `AssessmentStore` port + in-memory + **Postgres** adapter,
+`AssessmentService`, `LocalClassifierProvider` extended for `assessment.generate`.
+Migration `db/migrations/0005_assessments.sql` (assessments / versions / questions
+/ attempts). The pg-suite truncate list + harness updated so all 110 tests run vs
+Postgres.
+
+## Deferred (M3)
+
+- Live Bedrock for generation (ADR-0013).
+- Full student assessment-taking UX (M7) — M3 models just enough of attempts for
+  the connectivity-loss row.
+
+## Next (Milestone 4 — do not start ahead of it)
+
+Seed synthetic student activity: ~25 synthetic students with varied
+mastery/misconception patterns across the mapped skills, enough to exercise every
+Milestone 5 dashboard/cohort/benchmark edge case. **Synthetic-data quarantine
+rules** apply (v1.3) — synthetic data must be clearly quarantined from real
+student data.
+
+---
+
 # Interlude — Async ports + full Postgres adapters (post-M2, pre-M3)
 
 The persistence ports were converted to **async**, cascaded through every service

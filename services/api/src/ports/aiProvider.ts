@@ -57,8 +57,52 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "content.classify") {
       return { text: JSON.stringify(this.classify(request.input)) };
     }
-    // No other AI use cases are in Milestone 1 scope.
+    if (request.purpose === "assessment.generate") {
+      return { text: JSON.stringify(this.generateQuestion(request.input)) };
+    }
     return { text: "" };
+  }
+
+  /**
+   * Deterministically draft one question GROUNDED in a supplied content chunk
+   * (never fabricated from nothing). Version-specific `seed` yields different
+   * wording/values while testing the same content.
+   */
+  private generateQuestion(input: unknown): {
+    prompt: string;
+    options: string[] | null;
+    modelAnswer: string;
+    rubric: string | null;
+  } {
+    const f = (input ?? {}) as { chunk?: string; type?: string; difficulty?: string; seed?: string };
+    const chunk = (f.chunk ?? "").trim();
+    const topic = chunk.split(/\s+/).slice(0, 8).join(" ") || "the material";
+    const v = f.seed ? ` [${f.seed}]` : "";
+    const type = f.type ?? "short_answer";
+
+    if (type === "multiple_choice") {
+      return {
+        prompt: `Which statement about "${topic}" is correct?${v}`,
+        options: [`Correct fact about ${topic}`, "Distractor 1", "Distractor 2", "Distractor 3"],
+        modelAnswer: `Correct fact about ${topic}`,
+        rubric: null,
+      };
+    }
+    if (type === "numerical") {
+      return { prompt: `Compute a value from "${topic}".${v}`, options: null, modelAnswer: "42", rubric: null };
+    }
+    if (type === "extended_response") {
+      return {
+        prompt: `Explain, with reasoning, the key idea in "${topic}".${v}`,
+        options: null,
+        modelAnswer: `A well-structured explanation grounded in ${topic}.`,
+        rubric: `1 mark: identifies the idea. 2 marks: correct reasoning. 3 marks: worked example from ${topic}.`,
+      };
+    }
+    if (type === "scenario") {
+      return { prompt: `A student encounters "${topic}" in a real context — what should they do?${v}`, options: null, modelAnswer: `Apply ${topic} to the scenario.`, rubric: null };
+    }
+    return { prompt: `Briefly describe "${topic}".${v}`, options: null, modelAnswer: `A short answer about ${topic}.`, rubric: null };
   }
 
   private classify(input: unknown): {

@@ -5,10 +5,10 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 2 complete** — Skill Graph (versioned trusted
-> infrastructure: import → validate acyclic → expert sign-off → map approved
-> content through the full chain, with teacher overrides), on top of Milestone 1
-> (Content Studio + Knowledge Engine) and Milestone 0 (skeleton + foundations).
+> **Status: Milestone 3 complete** — Assessment Builder (plain-language request →
+> draft grounded only in the approved+mapped pool → rubrics/model answers/versions
+> → stays draft until the Teacher publishes), on top of Milestone 2 (Skill Graph),
+> Milestone 1 (Content Studio + Knowledge Engine) and Milestone 0 (foundations).
 
 ## Foundational decisions (locked — never re-litigate)
 
@@ -65,10 +65,12 @@ npm install
 npm test
 ```
 
-Expected: **101 passing tests** — 96 in `services/api` (every M0 FR-ADM/FR-ONB,
-M1 FR-CONT/FR-ING, and M2 FR-SKG-001/002/004 acceptance row, plus the approved-pool
-and skill-graph sign-off gates, acyclicity validation, the AI-service-layer audit
-path, and the foundations) and 5 in `infra` (region pinning). Type-check with:
+Expected: **115 passing tests** — 110 in `services/api` (every M0 FR-ADM/FR-ONB,
+M1 FR-CONT/FR-ING, M2 FR-SKG, and M3 FR-ASM-001–004 acceptance row, plus the
+approved-pool / skill-graph sign-off / draft-until-publish gates, acyclicity
+validation, the AI-service-layer audit path, and the foundations) and 5 in `infra`
+(region pinning). The **same 110 tests also run against Postgres** (see below).
+Type-check with:
 
 ```bash
 npm run typecheck
@@ -81,7 +83,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 96 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 110 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -151,9 +153,24 @@ the remap-historical-data prompt and single-confirmation bulk override.
 > The shipped seed is a representative **draft, not signed off**. A curriculum
 > expert reviews and signs it off (`SkillGraphService.signOff`) before live use.
 
+## Milestone 3 — Assessment Builder
+
+A Teacher generates a draft assessment from a plain-language request, grounded
+**only** in the approved + mapped pool — never fabricated. When the content can't
+support the requested count it generates fewer and reports the shortfall
+(FR-ASM-001); five question types with unsuitable-type flagging (FR-ASM-002);
+rubrics, model answers and multiple versions with a difficulty-balance flag
+(FR-ASM-003). Every generation call runs through the **AI service layer** (audited;
+deterministic local provider — live Bedrock deferred, ADR-0013). A mid-run AI
+failure yields a clear failed state with **no partial draft saved** and an audit
+entry. All output **stays draft until the Teacher publishes** — publish requires a
+review acknowledgement, accidental publish is reversible before the scheduled
+start, and access to an unpublished assessment is denied **at the permission
+layer** (not merely hidden) and logged; connectivity loss mid-attempt preserves
+work to the last save point (FR-ASM-004).
+
 ## What is intentionally NOT here yet
 
-Assessments (M3), synthetic data (M4), dashboards/cohorts (M5), parent/principal
-dashboards, reporting, live Bedrock calls, CSV import and SSO (FR-ADM-003 /
-FR-INT-001, plan-deferred), and the web UI screens. These belong to later
-milestones.
+Synthetic data (M4), dashboards/cohorts (M5), parent/principal dashboards,
+reporting, live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
+plan-deferred), and the web UI screens. These belong to later milestones.

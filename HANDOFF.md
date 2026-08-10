@@ -1,8 +1,71 @@
+# Handoff — Milestone 1
+
+**Date:** 2026-08-09
+**Milestone:** 1 — Content Studio + Knowledge Engine — **COMPLETE**
+**Suite:** `npm test` → **85 passing** (80 `services/api`, 5 `infra`). `npm run typecheck` clean.
+
+## Gate note (read first)
+
+The M1 gate was "Bedrock ap-southeast-2 zero-retention verified live." This
+machine has **no AWS credentials / CLI / Bedrock access**, so that live
+verification **could not be performed and was not faked**. With the product
+owner's agreement, M1 was built with the AI layer behind an `AiProvider` port: a
+real, guarded `BedrockProvider` (ap-southeast-2) is written but not invoked, and
+a **local deterministic provider (no network egress)** backs dev + the whole test
+suite. **Live Bedrock verification is the one open item** — unblocked by
+`aws configure` (or env creds) + an enabled in-region model. See ADR-0013.
+
+## What was built (every acceptance row tested)
+
+- **FR-CONT-001** upload — type/size validation, malware scan reject+quarantine
+  (logged), third-party-copyright attestation gate, duplicate + near-duplicate
+  flagging (`ContentService`).
+- **FR-CONT-002** AI classification via the single AI service layer — suggestions,
+  low-confidence flag, teacher edit persists as approved, unreviewed excluded
+  from pool (`ClassificationService`).
+- **FR-CONT-003** versioning — revised/concurrent edits become new versions
+  (history retained), near-duplicate flag, archive-in-use warning.
+- **FR-CONT-004** sharing — class/department scopes with **live** access
+  resolution (student class change and dept-leave revoke immediately).
+- **FR-ING-001/002** ingestion — text/structure → concept chunks; scanned→needs
+  OCR; corrupted→failed; **always terminal** (NFR-PERF-001) (`IngestionService`).
+- **FR-ING-003/004** linking — lessons/questions/outcomes navigable; outdated
+  outcome + orphaned-question views (`KnowledgeService`).
+- **Load-bearing approval gate** — `ContentService.approvedPool` is the only set
+  downstream reads; pending/unattested/unreviewed/un-ingested/quarantined/
+  archived never appear.
+- **AI service layer** operational via provider; **every AI call writes an audit
+  entry**; offshore/remote non-compliant providers refused at construction.
+
+## New this milestone
+
+Ports: `ContentStore`, `StoragePort`, `ScannerPort`, `TextExtractorPort`,
+`AiProvider`. Adapters: `InMemoryContentStore`/`InMemoryStorage`, `BedrockProvider`,
+in-memory scanner/extractor, `LocalClassifierProvider`. Postgres schema of record +
+`db/migrations/0003_content.sql` (content tables + `memberships.department`).
+
+## Deferred (M1)
+
+- **Live Bedrock verification** (ADR-0013) — the gate item.
+- Postgres `DataStore`/`ContentStore` adapters still deferred until a DB is
+  provisioned (ADR-0007); schema + migrations are the record.
+- Real S3 / malware scanner / OCR (Textract) — behind ports (ADR-0014).
+- Web UI screens (ADR-0012).
+
+## Next (Milestone 2 — do not start ahead of it)
+
+Skill Graph: map approved content subject→…→prerequisite→difficulty; prerequisite
+graph validated acyclic; difficulty an item attribute; teacher per-mapping
+overrides (Decision 4). Reads only from `approvedPool`. **External gate:**
+curriculum-expert sign-off of the skill-graph v0.1 draft before M2.
+
+---
+
 # Handoff — Milestone 0
 
 **Date:** 2026-08-09
 **Milestone:** 0 — Project skeleton + minimal School-Admin onboarding — **COMPLETE**
-**Suite:** `npm test` → **55 passing** (50 `services/api`, 5 `infra`). `npm run typecheck` clean.
+**Suite (at M0):** 55 passing (50 `services/api`, 5 `infra`).
 
 ## Starting context (read this if the premises look off)
 

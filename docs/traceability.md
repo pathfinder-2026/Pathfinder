@@ -63,3 +63,59 @@ one automated test. Run `npm test`.
 | Inference approvable state field (Decision 7) | `foundation-inference-approvable.test.ts` |
 | Region pinning (Decision 1) | `infra/test/region.test.ts` |
 | DoD end-to-end: log in as invited Teacher | `auth-login.test.ts` |
+
+# Milestone 1 traceability — acceptance rows → tests
+
+## FR-CONT-001 — Upload  (`m1-cont-001-upload.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — multiple files, correct type | "happy path: multiple files upload at once…" |
+| Edge — unsupported type rejected | "edge — unsupported file type is rejected listing supported formats" |
+| Edge — oversized stops early | "edge — oversized file stops early with a clear size-limit message" |
+| Edge — duplicate flagged | "edge — duplicate upload completes but is flagged a likely duplicate" |
+| Edge (NEW v1.4) — security scan reject/quarantine/log | "edge (NEW v1.4) — a file failing the security scan…" |
+| Edge (NEW v1.4) — copyright attestation gate | "edge (NEW v1.4) — third-party copyright: unattested content is excluded…" |
+
+## FR-CONT-002 — AI classification  (`m1-cont-002-classification.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — suggestions appear for review | "happy path: subject/year/topic/outcome/difficulty suggestions appear…" |
+| Edge — low confidence flagged | "edge — low confidence is visibly flagged…" |
+| Edge — teacher edit persists | "edge — teacher edits the classification and it persists…" |
+| Edge — never reviewed excluded from pool | "edge — never reviewed: content is excluded from the approved-content pool" |
+
+## FR-CONT-003 — Versioning / duplicates / archiving  (`m1-cont-003-versioning.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — revised version retains history | "happy path: a revised version retains the old one in history…" |
+| Edge — near-duplicate flagged for review | "edge — near-duplicate content is flagged for teacher review…" |
+| Edge — archive-in-use warns | "edge — archiving content in active use warns before confirming" |
+| Edge (NEW v1.4) — concurrent edits both versioned | "edge (NEW v1.4) — concurrent edits both become versions…" |
+
+## FR-CONT-004 — Share / restrict  (`m1-cont-004-sharing.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — class-restricted invisible to others | "happy path: a class-restricted item is invisible…" |
+| Edge — student class change revokes access | "edge — a student who changes class loses access…" |
+| Edge — dept leaver revoked, content remains | "edge — a departing department member loses access, but the content remains…" |
+
+## FR-ING-001/002 — Extraction  (`m1-ing-extract.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — text PDF → chunks/concepts | "happy path: a text-based PDF yields headings/paragraphs…" |
+| Edge — scanned → needs OCR | "edge — a scanned PDF with no selectable text is flagged for OCR…" |
+| Edge — corrupted → failed (terminal) | "edge — a corrupted file resolves to a clear ingestion-failed status…" |
+
+## FR-ING-003/004 — Linking  (`m1-ing-linking.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — links visible/navigable | "happy path: a lesson's linked questions and outcomes are all visible…" |
+| Edge — retired outcome flagged outdated | "edge — a retired curriculum outcome is flagged 'outdated'…" |
+| Edge — orphaned question in needs-linking | "edge — an orphaned question surfaces in the 'needs linking' view" |
+
+## M1 cross-cutting
+| Property | Test file |
+|---|---|
+| Approved-pool gate (pending never in pool) | `m1-approved-pool.test.ts` |
+| AI call goes through service layer + audited; offshore refused | `m1-ai-servicelayer.test.ts` |
+| NFR-PERF-001 ingestion always terminal, fast | `m1-perf-ingestion.test.ts` |

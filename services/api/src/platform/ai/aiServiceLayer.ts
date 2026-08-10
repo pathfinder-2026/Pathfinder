@@ -1,18 +1,21 @@
 import { ConflictError, ValidationError } from "../../domain/errors";
+import type { AuditRecorder } from "../audit/auditLog";
+import type {
+  AiCompletion,
+  AiCompletionRequest,
+  AiProvider,
+  ProviderDescriptor,
+} from "../../ports/aiProvider";
 
 /**
- * The single internal AI service layer (Foundational Decision 2).
+ * The single internal AI service layer (Foundational Decision 2) — the ONE
+ * choke point every LLM call passes through. It:
+ *   1. enforces residency / zero-retention / no-training on the provider, and
+ *   2. writes an audit entry for EVERY call (Foundational Decision 3).
  *
- * Every LLM call in Pathfinder must pass through this ONE choke point, which is
- * where residency, zero-retention and no-training rules are enforced before any
- * student-data prompt can reach a model.
- *
- * In Milestone 0 this is deliberately an EMPTY choke point: no provider is
- * wired and `run()` throws. Real inference (Amazon Bedrock, ap-southeast-2)
- * becomes operational in Milestone 1, where student content first reaches an
- * LLM. What already exists here in M0 is the *guard*: the endpoint-compliance
- * check that later milestones cannot bypass, so the constraint is encoded now
- * rather than retrofitted.
+ * In Milestone 1 it becomes operational via an injected provider. The remote
+ * (Bedrock, ap-southeast-2) provider is guarded; the local deterministic
+ * provider reaches no endpoint. If no provider is bound, `run()` throws.
  */
 
 /** AU AWS regions permitted for any data-bearing / inference service. */
@@ -22,75 +25,93 @@ export type AuRegion = (typeof AU_REGIONS)[number];
 /** Default per Foundational Decision 2. */
 export const DEFAULT_AI_REGION: AuRegion = "ap-southeast-2";
 
-export interface AiEndpointConfig {
-  provider: string;
-  region: string;
-  /** Provider contractually bound to zero retention of prompts/outputs. */
-  zeroRetention: boolean;
-  /** Provider contractually bound to NOT train on submitted data. */
-  noTraining: boolean;
-}
-
 /**
- * Enforce residency + zero-retention + no-training. Throws for any endpoint
- * that is offshore, retains data, or is training-enabled. This is the technical
- * enforcement point behind FR-GOV-004, FR-GOV-007 and NFR-PRV-001/002.
+ * Enforce residency + zero-retention + no-training for a provider. A local
+ * (in-process) provider reaches no endpoint and is inherently compliant; a
+ * remote provider must be in an approved AU region, zero-retention and
+ * no-training. Throws otherwise. This is the technical enforcement point behind
+ * FR-GOV-004, FR-GOV-007 and NFR-PRV-001/002.
  */
-export function assertCompliantEndpoint(config: AiEndpointConfig): void {
-  if (!AU_REGIONS.includes(config.region as AuRegion)) {
+export function assertCompliantProvider(descriptor: ProviderDescriptor): void {
+  if (descriptor.kind === "local") return;
+  if (!AU_REGIONS.includes(descriptor.region as AuRegion)) {
     throw new ValidationError(
-      `AI endpoint region "${config.region}" is not an approved AU region ` +
+      `AI endpoint region "${descriptor.region}" is not an approved AU region ` +
         `(${AU_REGIONS.join(", ")}). No student-data prompt may reach an offshore endpoint.`,
     );
   }
-  if (!config.zeroRetention) {
+  if (!descriptor.zeroRetention) {
     throw new ValidationError(
       "AI endpoint must be zero-retention before any student data flows through it.",
     );
   }
-  if (!config.noTraining) {
+  if (!descriptor.noTraining) {
     throw new ValidationError(
       "AI endpoint must be contractually no-training before any student data flows through it.",
     );
   }
 }
 
-export interface AiRunRequest {
-  purpose: string;
-  prompt: string;
-  /** Whether this prompt may contain student data (governs residency checks). */
-  containsStudentData: boolean;
+/** Back-compat helper retained for the endpoint-shaped config used in tests. */
+export interface AiEndpointConfig {
+  provider: string;
+  region: string;
+  zeroRetention: boolean;
+  noTraining: boolean;
+}
+export function assertCompliantEndpoint(config: AiEndpointConfig): void {
+  assertCompliantProvider({ kind: "remote", ...config });
 }
 
-export interface AiRunResult {
-  text: string;
-}
+export interface AiRunRequest extends AiCompletionRequest {}
+export interface AiRunResult extends AiCompletion {}
 
 export class AiServiceLayer {
-  constructor(private readonly endpoint: AiEndpointConfig | null = null) {
-    if (endpoint) assertCompliantEndpoint(endpoint);
+  constructor(
+    private readonly provider: AiProvider | null,
+    private readonly audit: AuditRecorder | null = null,
+  ) {
+    if (provider) assertCompliantProvider(provider.describe());
   }
 
-  /** Is a compliant provider wired? (false throughout Milestone 0.) */
+  /** Is a provider bound? */
   isOperational(): boolean {
-    return this.endpoint !== null;
+    return this.provider !== null;
+  }
+
+  descriptor(): ProviderDescriptor | null {
+    return this.provider ? this.provider.describe() : null;
   }
 
   /**
-   * Run an inference. Milestone 0: no provider is configured, so this always
-   * throws. The guard still runs first, so even a future misconfiguration is
-   * caught at the choke point.
+   * Run an inference through the choke point. Validates the provider, records an
+   * audit entry (Decision 3), then delegates. Throws if no provider is bound.
    */
-  async run(_request: AiRunRequest): Promise<AiRunResult> {
-    if (!this.endpoint) {
+  async run(request: AiRunRequest, actorId: string | null = null): Promise<AiRunResult> {
+    if (!this.provider) {
       throw new ConflictError(
         "AI_NOT_OPERATIONAL",
-        "The AI service layer is an empty choke point in Milestone 0. " +
-          "A compliant in-AU Bedrock endpoint is wired in Milestone 1.",
+        "The AI service layer has no provider bound.",
       );
     }
-    assertCompliantEndpoint(this.endpoint);
-    // Milestone 1 wires the Bedrock (ap-southeast-2) call here.
-    throw new ConflictError("AI_NOT_OPERATIONAL", "No inference provider is bound yet.");
+    const descriptor = this.provider.describe();
+    assertCompliantProvider(descriptor);
+
+    // Every AI call writes an audit entry — before and independent of the result.
+    this.audit?.append({
+      action: "ai.call",
+      actorId,
+      subjectType: "ai",
+      subjectId: request.purpose,
+      metadata: {
+        purpose: request.purpose,
+        provider: descriptor.provider,
+        providerKind: descriptor.kind,
+        region: descriptor.kind === "remote" ? descriptor.region : "local",
+        containsStudentData: request.containsStudentData,
+      },
+    });
+
+    return this.provider.complete(request);
   }
 }

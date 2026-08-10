@@ -13,6 +13,7 @@ export interface CreateAccountInput {
   lastName: string;
   campusId?: string | null;
   classId?: string | null;
+  department?: string | null;
   status?: User["status"];
 }
 
@@ -53,6 +54,7 @@ export class AccountService {
       role: input.role,
       campusId: input.campusId ?? null,
       classId: input.classId ?? null,
+      department: input.department ?? null,
     };
     this.store.insertMembership(membership);
 
@@ -73,7 +75,12 @@ export class AccountService {
    */
   changeMembership(
     membershipId: string,
-    changes: { role?: Role; campusId?: string | null; classId?: string | null },
+    changes: {
+      role?: Role;
+      campusId?: string | null;
+      classId?: string | null;
+      department?: string | null;
+    },
     actorId: string | null = null,
   ): Membership {
     const membership = this.store.getMembership(membershipId);
@@ -89,6 +96,7 @@ export class AccountService {
       role: changes.role ?? membership.role,
       campusId: changes.campusId === undefined ? membership.campusId : changes.campusId,
       classId: changes.classId === undefined ? membership.classId : changes.classId,
+      department: changes.department === undefined ? membership.department : changes.department,
     };
     this.store.updateMembership(updated);
     this.audit.append({

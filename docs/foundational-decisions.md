@@ -16,10 +16,19 @@ live in the code and how they are tested.
 ## 2. AI / LLM data path (single choke point)
 
 - `services/api/src/platform/ai/aiServiceLayer.ts` — the one place all LLM calls
-  must pass through. In M0 it is **empty** (`run()` throws); the residency /
-  zero-retention / no-training guard (`assertCompliantEndpoint`) already exists
-  and cannot be bypassed. Becomes operational in Milestone 1.
-- Tests: `services/api/test/foundation-ai-chokepoint.test.ts`.
+  must pass through. It enforces `assertCompliantProvider` (AU region +
+  zero-retention + no-training; a local in-process provider reaches no endpoint
+  and is inherently compliant) and **writes an audit entry on every call**
+  (Decision 3).
+- **M1: operational via an `AiProvider` port.** Production =
+  `src/adapters/bedrock/bedrockProvider.ts` (Bedrock, ap-southeast-2, guarded).
+  Dev/tests = `LocalClassifierProvider` (no network egress). **Live Bedrock
+  verification is deferred** (no AWS creds in this environment) — see
+  docs/decisions.md ADR-0013. No student-data prompt can reach an offshore or
+  training-enabled endpoint: the guard throws first.
+- Classification (FR-CONT-002) is the only M1 consumer; concept generation is
+  deterministic (not an LLM call).
+- Tests: `foundation-ai-chokepoint.test.ts`, `m1-ai-servicelayer.test.ts`.
 
 ## 3. Persistence & append-only audit log
 

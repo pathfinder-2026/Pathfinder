@@ -51,3 +51,57 @@ export function makeUser(ctx: AppContext, schoolId: string, email: string): User
 function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
+
+// ---- Milestone 1 content helpers ----
+
+let hashCounter = 0;
+/** Deterministic unique content hash for tests. */
+export function testHash(seed = ""): string {
+  hashCounter += 1;
+  return `hash-${seed}-${hashCounter}`;
+}
+
+export function makeTeacher(
+  ctx: AppContext,
+  schoolId: string,
+  email: string,
+  opts: { classId?: string | null; department?: string | null } = {},
+) {
+  return ctx.accounts.createAccount({
+    schoolId,
+    role: "teacher",
+    email,
+    firstName: "T",
+    lastName: "Eacher",
+    classId: opts.classId ?? null,
+    department: opts.department ?? null,
+  });
+}
+
+/**
+ * Upload → ingest → classify → approve classification → attest rights →
+ * approve content, so the item lands in the approved pool. Returns the item id.
+ */
+export async function makeApprovedContent(
+  ctx: AppContext,
+  schoolId: string,
+  teacherId: string,
+  opts: { title?: string; text?: string; share?: import("../src/domain/content").ShareScope } = {},
+): Promise<string> {
+  const up = ctx.content.uploadOne(schoolId, teacherId, {
+    title: opts.title ?? "Year 8 Algebra worksheet",
+    fileType: "pdf",
+    sizeBytes: 2048,
+    contentHash: testHash("approved"),
+    source: { text: opts.text ?? "# Algebra\nSolve the linear equation 2x + 3 = 11." },
+    share: opts.share,
+  });
+  if (up.status !== "accepted") throw new Error(`upload not accepted: ${up.reason}`);
+  const item = ctx.contentStore.getContentItem(up.contentItemId)!;
+  ctx.ingestion.ingest(item.currentVersionId, teacherId);
+  await ctx.classification.classify(up.contentItemId, teacherId);
+  ctx.classification.approveClassification(up.contentItemId, teacherId);
+  ctx.content.attestRights(up.contentItemId, teacherId);
+  ctx.content.approveContent(up.contentItemId, teacherId);
+  return up.contentItemId;
+}

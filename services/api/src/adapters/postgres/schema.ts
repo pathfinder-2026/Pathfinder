@@ -89,6 +89,7 @@ export const memberships = pgTable(
     role: text("role").notNull(),
     campusId: text("campus_id").references(() => campuses.id),
     classId: text("class_id").references(() => classes.id),
+    department: text("department"),
   },
   (t) => ({
     byUser: index("memberships_user_idx").on(t.userId),
@@ -189,3 +190,117 @@ export const onboardingProgress = pgTable("onboarding_progress", {
   completedSteps: jsonb("completed_steps").notNull(),
   workspaceEntered: boolean("workspace_entered").notNull().default(false),
 });
+
+// ---- Milestone 1: Content Studio + Knowledge Engine ----
+
+export const contentItems = pgTable(
+  "content_items",
+  {
+    id: text("id").primaryKey(),
+    schoolId: text("school_id").notNull().references(() => schools.id),
+    ownerTeacherId: text("owner_teacher_id").notNull().references(() => users.id),
+    title: text("title").notNull(),
+    currentVersionId: text("current_version_id").notNull(),
+    // Governance (draft/approved/published) — the load-bearing approval gate.
+    governanceStatus: text("governance_status").notNull().default("draft"),
+    approvedBy: text("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    rightsAttested: boolean("rights_attested").notNull().default(false),
+    archived: boolean("archived").notNull().default(false),
+    shareType: text("share_type").notNull().default("private"),
+    shareClassId: text("share_class_id").references(() => classes.id),
+    shareDepartment: text("share_department"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({ bySchool: index("content_items_school_idx").on(t.schoolId) }),
+);
+
+export const contentVersions = pgTable(
+  "content_versions",
+  {
+    id: text("id").primaryKey(),
+    contentItemId: text("content_item_id").notNull().references(() => contentItems.id),
+    versionNumber: bigint("version_number", { mode: "number" }).notNull(),
+    fileType: text("file_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    contentHash: text("content_hash").notNull(),
+    storageKey: text("storage_key").notNull(),
+    uploadedByTeacherId: text("uploaded_by_teacher_id").notNull().references(() => users.id),
+    scanStatus: text("scan_status").notNull(),
+    ingestionStatus: text("ingestion_status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({ byItem: index("content_versions_item_idx").on(t.contentItemId) }),
+);
+
+export const classifications = pgTable("classifications", {
+  id: text("id").primaryKey(),
+  contentItemId: text("content_item_id").notNull().references(() => contentItems.id),
+  subject: text("subject").notNull(),
+  year: bigint("year", { mode: "number" }).notNull(),
+  topic: text("topic").notNull(),
+  outcome: text("outcome").notNull(),
+  difficulty: text("difficulty").notNull(),
+  confidence: text("confidence").notNull(),
+  lowConfidence: boolean("low_confidence").notNull(),
+  status: text("status").notNull(),
+  reviewedByTeacherId: text("reviewed_by_teacher_id").references(() => users.id),
+});
+
+export const chunks = pgTable(
+  "chunks",
+  {
+    id: text("id").primaryKey(),
+    contentVersionId: text("content_version_id").notNull().references(() => contentVersions.id),
+    heading: text("heading").notNull(),
+    text: text("text").notNull(),
+    order: bigint("order", { mode: "number" }).notNull(),
+  },
+  (t) => ({ byVersion: index("chunks_version_idx").on(t.contentVersionId) }),
+);
+
+export const concepts = pgTable(
+  "concepts",
+  {
+    id: text("id").primaryKey(),
+    contentVersionId: text("content_version_id").notNull().references(() => contentVersions.id),
+    name: text("name").notNull(),
+  },
+  (t) => ({ byVersion: index("concepts_version_idx").on(t.contentVersionId) }),
+);
+
+export const outcomes = pgTable("outcomes", {
+  id: text("id").primaryKey(),
+  schoolId: text("school_id").notNull().references(() => schools.id),
+  code: text("code").notNull(),
+  description: text("description").notNull(),
+  deprecated: boolean("deprecated").notNull().default(false),
+});
+
+export const questions = pgTable("questions", {
+  id: text("id").primaryKey(),
+  schoolId: text("school_id").notNull().references(() => schools.id),
+  text: text("text").notNull(),
+  outcomeIds: jsonb("outcome_ids").notNull(),
+});
+
+export const lessons = pgTable("lessons", {
+  id: text("id").primaryKey(),
+  schoolId: text("school_id").notNull().references(() => schools.id),
+  title: text("title").notNull(),
+  questionIds: jsonb("question_ids").notNull(),
+  outcomeIds: jsonb("outcome_ids").notNull(),
+});
+
+export const contentReferences = pgTable(
+  "content_references",
+  {
+    id: text("id").primaryKey(),
+    contentItemId: text("content_item_id").notNull().references(() => contentItems.id),
+    refType: text("ref_type").notNull(),
+    refId: text("ref_id").notNull(),
+    active: boolean("active").notNull(),
+  },
+  (t) => ({ byItem: index("content_references_item_idx").on(t.contentItemId) }),
+);

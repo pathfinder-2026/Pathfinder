@@ -94,6 +94,8 @@ export interface Membership {
   role: Role;
   campusId: string | null;
   classId: string | null;
+  /** Optional department (used for department-scoped content sharing, M1). */
+  department?: string | null;
 }
 
 export type InviteStatus = "pending" | "accepted" | "revoked";

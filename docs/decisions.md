@@ -59,8 +59,37 @@ are opaque random strings; **authorization is computed live from memberships on
 every request**, so a role/class change takes effect without re-login
 (FR-ADM-002).
 
-## ADR-0012 — Web UI screens deferred to Milestone 1
-Milestone 0's acceptance criteria are all backend/service logic and the plan says
+## ADR-0012 — Web UI screens deferred
+Milestone 0/1 acceptance criteria are all backend/service logic and the plan says
 "nothing needs to be pretty yet". `apps/web` is a working React/Vite shell so the
-tooling and token split have a home; screens are built when Content Studio needs
-them.
+tooling and token split have a home; screens are built when a UI is needed.
+
+## ADR-0013 — Live Bedrock verification deferred; local AI provider default (M1)
+The Milestone 1 gate calls for the Bedrock ap-southeast-2 zero-retention path to
+be verified live. This environment has **no AWS credentials, CLI, or Bedrock
+access**, so that live verification cannot be performed and was **not faked**
+(fabricating a safety check would violate Decision 2). Instead the AI service
+layer is operational via an `AiProvider` port: the real, guarded
+`BedrockProvider` (ap-southeast-2) is written and type-checked but not invoked,
+and a **local deterministic provider** (no network egress — nothing leaves the
+machine) backs dev and the whole test suite. Live Bedrock verification is the one
+gated item, unblocked the moment credentials + an enabled in-region model exist.
+The compliance guard (`assertCompliantProvider`) remains the hard blocking
+mechanism, and every AI call still writes an audit entry.
+
+## ADR-0014 — Content ports + deterministic defaults (M1)
+Uploads, scanning, text extraction and AI all sit behind ports so the suite runs
+without real binaries, S3 or a live model:
+- **StoragePort** (prod: S3 ap-southeast-2) — in dev/test a stored object carries
+  simulation flags (`text` / `scanned` / `corrupt` / `malware`) to drive branches.
+- **ScannerPort** (prod: an in-AU malware scanner) — default flags EICAR / a
+  `malware` marker.
+- **TextExtractorPort** (prod: a real parser / Amazon Textract) — default derives
+  headings/paragraphs from text; `scanned`→needs-OCR, `corrupt`→failed.
+- **Concept generation is deterministic** (distinct section headings), not an LLM
+  call — only classification uses the AI layer in M1. Recorded so it's a
+  conscious choice, revisitable if richer concept extraction is wanted later.
+- **File-type/size policy** (defaults, `src/domain/content.ts`): supported =
+  documents/slides/pdf/txt/md/csv, video (mp4/mov/webm ≤500 MB), audio (≤200 MB),
+  images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
+- **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.

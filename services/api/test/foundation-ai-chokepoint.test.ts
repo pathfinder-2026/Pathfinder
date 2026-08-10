@@ -42,7 +42,7 @@ describe("Foundation — AI service layer (empty choke point + guard)", () => {
     );
   });
 
-  it("is not operational in Milestone 0 and refuses to run", async () => {
+  it("refuses to run when no provider is bound", async () => {
     const ai = new AiServiceLayer(null);
     expect(ai.isOperational()).toBe(false);
     await expect(
@@ -50,7 +50,11 @@ describe("Foundation — AI service layer (empty choke point + guard)", () => {
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it("refuses to construct with an offshore endpoint", () => {
-    expect(() => new AiServiceLayer({ ...compliant, region: "eu-west-1" })).toThrow(ValidationError);
+  it("refuses to construct with an offshore remote provider", () => {
+    const offshore = {
+      describe: () => ({ kind: "remote" as const, provider: "x", region: "eu-west-1", zeroRetention: true, noTraining: true }),
+      complete: async () => ({ text: "" }),
+    };
+    expect(() => new AiServiceLayer(offshore)).toThrow(ValidationError);
   });
 });

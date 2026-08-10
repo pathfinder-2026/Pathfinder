@@ -5,8 +5,9 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 0 complete** — project skeleton + minimal School-Admin
-> onboarding, plus the platform foundations every later milestone depends on.
+> **Status: Milestone 1 complete** — Content Studio + Knowledge Engine (upload →
+> ingest → AI classification → teacher approve/edit → approved pool), on top of
+> Milestone 0 (project skeleton + minimal School-Admin onboarding + foundations).
 
 ## Foundational decisions (locked — never re-litigate)
 
@@ -33,13 +34,15 @@ services/api     Fastify + TypeScript backend (domain → ports → adapters)
   src/platform     audit log, notifications, governance, AI choke point, tokens, clock
   src/ports        DataStore port
   src/adapters     memory (dev/test) + postgres (schema of record) adapters
-  src/services     SchoolService, AccountService, PrincipalService, InviteService,
-                   AuthService, OnboardingService
+  src/services     M0: School/Account/Principal/Invite/Auth/Onboarding
+                   M1: Content/Classification/Ingestion/Knowledge
+  src/ports        DataStore, ContentStore, Storage, Scanner, TextExtractor, AiProvider
+  src/adapters     memory (dev/test), postgres (schema of record), bedrock (AI)
   src/http         minimal Fastify app (create school, invite, accept, login)
   test             one test per acceptance row + one per foundation
 infra            AWS CDK (TypeScript) — region-pinned skeleton (no resources yet)
-apps/web         React 19 + Vite shell (screens deferred to Milestone 1)
-db/migrations    SQL schema of record + audit-log grants/trigger
+apps/web         React 19 + Vite shell (screens deferred)
+db/migrations    SQL schema of record + audit-log grants/trigger + content tables
 docs             foundational-decisions, decisions (ADRs), traceability
 ```
 
@@ -61,9 +64,10 @@ npm install
 npm test
 ```
 
-Expected: **55 passing tests** — 50 in `services/api` (every FR-ADM-001/002/007
-and FR-ONB-001/002 acceptance row, plus the foundations) and 5 in `infra`
-(region pinning). Type-check everything with:
+Expected: **85 passing tests** — 80 in `services/api` (every M0 FR-ADM/FR-ONB and
+M1 FR-CONT-001–004 / FR-ING-001–004 acceptance row, the approved-pool gate, the
+AI-service-layer audit path, NFR-PERF-001 ingestion, plus the foundations) and 5
+in `infra` (region pinning). Type-check everything with:
 
 ```bash
 npm run typecheck
@@ -85,9 +89,28 @@ curl -s localhost:3000/schools -H 'content-type: application/json' -d '{
 }'
 ```
 
+## Milestone 1 — Content Studio + Knowledge Engine
+
+Upload (with type/size validation, malware-scan reject+quarantine, third-party
+copyright attestation, duplicate/near-duplicate flagging), versioning +
+concurrent-edit history, class/department sharing, ingestion (text/structure →
+concept chunks; scanned→OCR flag; corrupted→failed, always terminal per
+NFR-PERF-001), AI-suggested classification through the **single AI service
+layer** (every call audited), and lesson/question/outcome linking with
+outdated-outcome and orphaned-question views. The **teacher-approval gate is
+load-bearing**: `ContentService.approvedPool` is the only set downstream features
+read, and pending / unattested / unreviewed / un-ingested / quarantined /
+archived content never appears in it.
+
+**AI data path (Foundational Decision 2):** the service layer is operational via
+an `AiProvider`. The production `BedrockProvider` targets `ap-southeast-2`
+(guarded by the residency/zero-retention/no-training check); a local
+deterministic provider (no network egress) backs dev and the test suite. **Live
+Bedrock verification is deferred** — see docs/decisions.md ADR-0013.
+
 ## What is intentionally NOT here yet
 
-Content upload/ingestion, the skill graph, assessments, dashboards, synthetic
-data, parent/principal dashboards, reporting, real Bedrock calls, CSV import and
+The skill graph (M2), assessments (M3), synthetic data (M4), dashboards/cohorts
+(M5), parent/principal dashboards, reporting, live Bedrock calls, CSV import and
 SSO (FR-ADM-003 / FR-INT-001, explicitly deferred by the plan), and the web UI
 screens. These belong to later milestones.

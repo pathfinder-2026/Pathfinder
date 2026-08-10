@@ -49,9 +49,9 @@ docs             foundational-decisions, decisions (ADRs), traceability
 
 ## Prerequisites
 
-- Node.js ≥ 20 (developed on Node 24 LTS). No database is required to run the
-  test suite — Milestone 0 runs on an in-memory store (see
-  [docs/decisions.md](docs/decisions.md), ADR-0007).
+- Node.js ≥ 20 (developed on Node 24 LTS). No external database is required — the
+  fast suite runs on an in-memory store, and the DB suite boots an **embedded**
+  PostgreSQL (real engine, no install/Docker) on demand.
 
 ## Install
 
@@ -73,6 +73,24 @@ path, and the foundations) and 5 in `infra` (region pinning). Type-check with:
 ```bash
 npm run typecheck
 ```
+
+## Verify the database layer (real Postgres)
+
+The SQL migrations and the DB-enforced governance guarantees (Foundational
+Decision 3 — the append-only audit grants + immutability + hash-chain triggers,
+the things the in-memory adapter only *simulates*) are validated against a real,
+embedded PostgreSQL:
+
+```bash
+npm run test:db --workspace services/api
+```
+
+Expected: **8 passing** — migrations `0001–0004` apply cleanly; the `pathfinder_app`
+role has `INSERT`+`SELECT` only (no `UPDATE`/`DELETE`); the immutability trigger
+blocks `UPDATE` even for a superuser; `DELETE` is refused except for the retention
+role; the hash-chain trigger rejects out-of-order/broken-link inserts; the
+`skill_nodes` type and `terms` date `CHECK`s hold; and core rows (jsonb/timestamptz)
+round-trip. See [docs/decisions.md](docs/decisions.md) ADR-0016.
 
 ## Run the API (dev)
 

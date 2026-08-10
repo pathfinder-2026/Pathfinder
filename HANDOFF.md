@@ -1,3 +1,20 @@
+# Interlude — Database validation (post-M2, pre-M3)
+
+Before starting M3, the DB layer was validated against a **real** embedded
+PostgreSQL (no install/Docker; `embedded-postgres` dev dependency).
+`npm run test:db --workspace services/api` → **8 passing**: migrations `0001–0004`
+apply cleanly, and the DB-enforced governance guarantees the in-memory adapter
+only simulates are proven — audit `INSERT+SELECT`-only grants, immutability
+triggers (UPDATE blocked; DELETE only for the retention role), hash-chain
+enforcement, `CHECK` constraints, and jsonb/timestamptz round-trip.
+
+**Open finding (ADR-0016):** full Postgres *store adapters* require converting the
+synchronous persistence ports to async (a cascade through every service/test) —
+a milestone-sized refactor, **not** done pre-M3. Recommended before the M5
+checkpoint. Migrations + governance are proven, lowering that refactor's risk.
+
+---
+
 # Handoff — Milestone 2
 
 **Date:** 2026-08-09

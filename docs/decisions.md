@@ -94,6 +94,26 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0016 — Validate migrations + DB governance against embedded Postgres (pre-M3)
+Before building M3, the SQL migrations (`0001–0004`) were run against a **real**
+PostgreSQL — the `embedded-postgres` package (a real engine downloaded as a dev
+dependency; no system install or Docker). `npm run test:db` boots an ephemeral
+cluster, applies the migrations, and asserts the DB-enforced governance
+guarantees that the in-memory adapter only *simulates*: the audit `INSERT+SELECT`
+grant model, the immutability triggers (UPDATE blocked; DELETE only for the
+retention role), the hash-chain enforcement trigger, and the `CHECK` constraints.
+Rationale: the audit table is the one place in-memory is *pretending*, and
+hand-written SQL compounds unverified across milestones — cheapest to prove now.
+
+**Finding — full Postgres store adapters need an async-port refactor.** The
+persistence ports (`DataStore`/`ContentStore`/`SkillGraphStore`) are
+**synchronous** (an in-memory-first choice). Real DB I/O is async, so backing the
+ports with Postgres means converting them to Promise-returning and cascading
+`async` through every service and test — a milestone-sized refactor, deliberately
+**not** done as a pre-M3 step. Recommended timing: schedule it before the M5
+validation checkpoint (extends ADR-0007). The migrations + governance are already
+proven, so that refactor is now lower-risk.
+
 ## ADR-0015 — Skill graph is AI-drafted but never self-signed-off (M2)
 The M2 gate requires a signed-off skill graph as a build input, and it wasn't on
 the machine. Rather than block, the **program generates the draft** (the plan

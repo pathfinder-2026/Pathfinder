@@ -1,3 +1,113 @@
+# Handoff — Appendix Milestone B — White-label / multi-tenant branding (FR-WL-001..004)
+
+**Date:** 2026-08-11
+**Scope:** The plan's Appendix Milestone B — configurable per-school branding, built on
+the Decision-5 token split. Additive; no earlier milestone changed behaviour.
+**Suite:** `npm test` → **266** (261 `services/api` + 5 `infra`); the same 261 acceptance
+tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run test:db` → 8;
+`npm run typecheck` clean.
+
+## What was built
+- **FR-WL-001 configure colour/logo** — `domain/branding.ts` (pure: WCAG-AA contrast
+  maths + `autoAdjust`, SVG active-content scan, white-label resolution) + `services/
+  brandingService.ts`. Brand colour validated against the AA floor; a failing colour is
+  NOT saved — `configureBranding` throws `BrandContrastError` carrying an accessible
+  `suggestion`. Logos: SVG with scripts/handlers/active content rejected
+  (`LOGO_ACTIVE_CONTENT`); raster malware-scanned via the shared `ScannerPort`
+  (`LOGO_INFECTED`); png/jpg/jpeg/svg only, <=25 MB. No config → default Pathfinder branding.
+- **FR-WL-002 full white-label** — product-name override + attribution removal on `user`
+  surfaces; `internal` surface ALWAYS resolves to the real Pathfinder identity
+  (presentation-layer only); revert is going-forward, not retroactive.
+- **FR-WL-003 consistency + point-in-time** — one `resolveBranding` drives app / report /
+  email; `issueReport` snapshots branding into a persisted `BrandedReport` (`getReport`
+  returns the original → never retroactively rebranded); logo-unavailable → text fallback
+  (school name) via `brandingHeader`.
+- **FR-WL-004 governance fixed** — `resolveBranding` always returns the frozen
+  `GOVERNANCE_TOKENS`; no branding field/column can set a governance colour;
+  `requestGovernanceOverride` is declined by design (`GOVERNANCE_TOKENS_FIXED`); AA floor
+  re-clamped at resolve time (server-side regardless of stored value).
+
+## Files & wiring
+- **New:** `domain/branding.ts`, `ports/brandingStore.ts`,
+  `adapters/memory/inMemoryBrandingStore.ts`, `adapters/postgres/pgBrandingStore.ts`,
+  `services/brandingService.ts`, `db/migrations/0016_branding.sql`
+  (`branding_configs` / `branding_logo_assets` / `branded_reports`), 4 test files
+  (`m-b-wl-001..004`, 15 tests).
+- **Changed:** `domain/errors.ts` (`BrandContrastError`); `context.ts` (wired
+  `brandingStore` + `branding`); `test/helpers.ts` + `test-pg/pgSetupEach.ts` (pg store +
+  truncate list); README, docs/decisions.md (**ADR-0030**), docs/traceability.md.
+
+## Decisions / deferred
+- ADR-0030. The **AA floor is white-on-primary** (the fixed on-primary text colour), not
+  best-of-black/white — any solid colour clears AA against one of them (~4.58 min), so the
+  meaningful floor is the pairing actually rendered. Enforced at BOTH configure and resolve.
+- Real logo image **bytes + object store (S3, ap-southeast-2)** deferred; the sanitise +
+  reference model is complete and test-covered. Governance override is structurally
+  impossible, not just refused.
+
+## How to verify
+`npm test` (266) · `npm run test:pg-suite --workspace services/api` (261 vs Postgres) ·
+`npm run test:db --workspace services/api` (8) · `npm run typecheck`. Migration 0016 is
+ASCII-only and auto-discovered by the pg harness.
+
+---
+
+# Handoff — Appendix Milestone A — CSV import + SSO (FR-ADM-003 / FR-INT-001)
+
+**Date:** 2026-08-11
+**Scope:** The plan's Appendix Milestone A — resequenced out of M0. FR-ADM-003 (CSV
+bulk import + SSO config) and FR-INT-001 (SSO sign-in). Additive; no earlier milestone
+changed behaviour.
+**Suite:** `npm test` → **251** (246 `services/api` + 5 `infra`); the same 246 acceptance
+tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run test:db` → 8;
+`npm run typecheck` clean.
+
+## What was built
+- **FR-ADM-003 CSV import** — `domain/csvImport.ts` (pure: RFC-4180-ish parser,
+  per-row validation, `sanitiseCell`/`isFormulaInjection`, result types) + `services/
+  csvImportService.ts` (`importUsers`, `exportUsersCsv`). Creates users/memberships/
+  enrolments via the existing `AccountService` — **no new tables for import**. Malformed
+  rows rejected with a specific error each; valid rows still import. Duplicate emails
+  (system **or** in-file) flagged + skipped, no conflicting account. Formula-injection
+  cells (`= + - @`, whitespace-stripped) neutralised with a leading `'` on import **and**
+  export; the row imports **flagged for review**. Students are enrolled into the named
+  class; class matched case-insensitively by name within the school.
+- **FR-ADM-003 / FR-INT-001 SSO** — `domain/sso.ts` (`SsoProvider`, `SsoConfig`, domain
+  helpers) + `ports/identityProviderPort.ts` (`IdentityProviderPort` + deterministic
+  `LocalIdentityProvider` with `setOutage`/`suspend`) + `services/ssoService.ts`
+  (`configure`, `signIn`). One provider + one domain per school (`sso_configs`, migration
+  **0015**). Domain mismatch → `SSO_DOMAIN_MISMATCH` (clear message). IdP outage →
+  `ServiceUnavailableError` code `SSO_IDP_UNAVAILABLE` (NOT an auth failure). Upstream
+  revoked → deny `SSO_ACCESS_REVOKED` **and** `deleteSessionsByUser` so a stale session
+  stops authorizing. Happy path issues a session, **no password created**.
+
+## Files & wiring
+- **New:** `domain/sso.ts`, `domain/csvImport.ts`, `ports/identityProviderPort.ts`,
+  `services/csvImportService.ts`, `services/ssoService.ts`, `db/migrations/0015_appendix_sso.sql`,
+  `test/appendix-adm-003-csv.test.ts` (5), `test/appendix-int-001-sso.test.ts` (4).
+- **Changed:** `domain/errors.ts` (`AuthError` optional `code` default `"AUTH"`;
+  new `ServiceUnavailableError`); `ports/dataStore.ts` + both adapters
+  (`getSsoConfig`/`saveSsoConfig`, `deleteSessionsByUser`); `context.ts` (wired `idp`,
+  `csvImport`, `sso`; hoisted `accountService`); `test-pg/pgSetupEach.ts` (added
+  `sso_configs` to TRUNCATE); README, docs/decisions.md (**ADR-0029**), docs/traceability.md.
+
+## Decisions / deferred
+- ADR-0029. Real Google/Microsoft **OIDC verification + directory lookup is deferred**
+  (like Bedrock, ADR-0013): the port, guards and edge-case tests exist; only the live
+  network provider is unwired. The `LocalIdentityProvider` stays in-memory in **both**
+  store backends (like the audit recorder).
+- Chose to store SSO as one-provider/one-domain per school (the MVP shape). CSV import
+  reuses `AccountService` rather than a bespoke path, so account-creation invariants
+  (audit, PII isolation) are shared.
+
+## How to verify
+`npm test` (251) · `npm run test:pg-suite --workspace services/api` (246 vs Postgres) ·
+`npm run test:db --workspace services/api` (8) · `npm run typecheck`. Migration 0015 is
+ASCII-only and auto-discovered by the pg harness. If the pg-suite fails at cluster start,
+kill a stray `postgres.exe` (holds port 5439).
+
+---
+
 # Handoff — Milestone 11 — Governance / audit hardening pass  (MVP COMPLETE)
 
 **Date:** 2026-08-11

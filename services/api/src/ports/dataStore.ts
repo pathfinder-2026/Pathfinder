@@ -14,6 +14,7 @@ import type {
 } from "../domain/types";
 import type { SafeguardingConfig } from "../domain/safeguarding";
 import type { SchoolPolicy } from "../domain/principal";
+import type { SsoConfig } from "../domain/sso";
 
 /** Stored password credential (scrypt hash + salt). */
 export interface Credential {
@@ -109,6 +110,11 @@ export interface DataStore {
   getCredential(userId: string): Promise<Credential | undefined>;
   insertSession(session: Session): Promise<void>;
   getSession(token: string): Promise<Session | undefined>;
+  /**
+   * Revoke every session for a user (FR-INT-001 — an upstream-revoked account
+   * must not keep a stale cached session working).
+   */
+  deleteSessionsByUser(userId: string): Promise<void>;
 
   // Onboarding
   getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined>;
@@ -121,4 +127,8 @@ export interface DataStore {
   // School policy (M9 — configurable sensitive comparison views)
   getSchoolPolicy(schoolId: string): Promise<SchoolPolicy | undefined>;
   saveSchoolPolicy(policy: SchoolPolicy): Promise<void>;
+
+  // SSO config (Appendix Milestone A — FR-ADM-003 / FR-INT-001)
+  getSsoConfig(schoolId: string): Promise<SsoConfig | undefined>;
+  saveSsoConfig(config: SsoConfig): Promise<void>;
 }

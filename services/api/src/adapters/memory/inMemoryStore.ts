@@ -20,6 +20,7 @@ import type {
 } from "../../ports/dataStore";
 import type { SafeguardingConfig } from "../../domain/safeguarding";
 import type { SchoolPolicy } from "../../domain/principal";
+import type { SsoConfig } from "../../domain/sso";
 
 /**
  * In-memory DataStore. Backs dev and the full test suite. Methods are async to
@@ -43,6 +44,7 @@ export class InMemoryStore implements DataStore {
   private onboarding = new Map<string, OnboardingProgress>();
   private safeguarding = new Map<string, SafeguardingConfig>();
   private policies = new Map<string, SchoolPolicy>();
+  private ssoConfigs = new Map<string, SsoConfig>();
 
   private static clone<T>(v: T): T {
     return structuredClone(v);
@@ -256,6 +258,9 @@ export class InMemoryStore implements DataStore {
     const s = this.sessions.get(token);
     return s ? InMemoryStore.clone(s) : undefined;
   }
+  async deleteSessionsByUser(userId: string): Promise<void> {
+    for (const [token, s] of this.sessions) if (s.userId === userId) this.sessions.delete(token);
+  }
 
   // Onboarding
   async getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined> {
@@ -280,5 +285,13 @@ export class InMemoryStore implements DataStore {
   }
   async saveSchoolPolicy(policy: SchoolPolicy): Promise<void> {
     this.policies.set(policy.schoolId, InMemoryStore.clone(policy));
+  }
+
+  async getSsoConfig(schoolId: string): Promise<SsoConfig | undefined> {
+    const c = this.ssoConfigs.get(schoolId);
+    return c ? InMemoryStore.clone(c) : undefined;
+  }
+  async saveSsoConfig(config: SsoConfig): Promise<void> {
+    this.ssoConfigs.set(config.schoolId, InMemoryStore.clone(config));
   }
 }

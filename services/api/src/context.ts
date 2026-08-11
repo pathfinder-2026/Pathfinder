@@ -37,6 +37,7 @@ import type { TextExtractorPort } from "./ports/textExtractorPort";
 import { InMemoryScanner } from "./ports/scannerPort";
 import { InMemoryTextExtractor } from "./ports/textExtractorPort";
 import { LocalClassifierProvider, type AiProvider } from "./ports/aiProvider";
+import { LocalIdentityProvider, type IdentityProviderPort } from "./ports/identityProviderPort";
 import { AccountService } from "./services/accountService";
 import { AuthService } from "./services/authService";
 import { InviteService } from "./services/inviteService";
@@ -66,6 +67,8 @@ import { BehaviouralService } from "./services/behaviouralService";
 import { CoCurricularService } from "./services/coCurricularService";
 import { ReportingService } from "./services/reportingService";
 import { GovernanceService } from "./services/governanceService";
+import { CsvImportService } from "./services/csvImportService";
+import { SsoService } from "./services/ssoService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -88,6 +91,8 @@ export interface AppContext {
   notifications: NotificationService;
   notificationChannel: InMemoryChannel;
   ai: AiServiceLayer;
+  /** SSO identity provider seam (FR-INT-001). In-memory + deterministic by default. */
+  idp: IdentityProviderPort;
   schools: SchoolService;
   accounts: AccountService;
   principals: PrincipalService;
@@ -117,6 +122,8 @@ export interface AppContext {
   coCurricular: CoCurricularService;
   reporting: ReportingService;
   governance: GovernanceService;
+  csvImport: CsvImportService;
+  sso: SsoService;
 }
 
 export interface BuildContextOptions {
@@ -142,6 +149,12 @@ export interface BuildContextOptions {
    * Production injects a guarded BedrockProvider (ap-southeast-2).
    */
   aiProvider?: AiProvider;
+  /**
+   * SSO identity provider. Defaults to the local deterministic provider (no
+   * network egress); production injects a real Google/Microsoft OIDC verifier
+   * (deferred — see docs/decisions.md ADR-0029).
+   */
+  idp?: IdentityProviderPort;
 }
 
 /**
@@ -174,8 +187,12 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const aiProvider = options.aiProvider ?? new LocalClassifierProvider();
   const ai = new AiServiceLayer(aiProvider, audit);
 
+  // SSO identity provider seam (local deterministic by default).
+  const idp = options.idp ?? new LocalIdentityProvider();
+
   const contentService = new ContentService(contentStore, store, storage, scanner, clock, audit);
   const skillGraph = new SkillGraphService(skillGraphStore, clock, audit);
+  const accountService = new AccountService(store, clock, audit);
 
   return {
     store,
@@ -197,8 +214,9 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     notifications,
     notificationChannel,
     ai,
+    idp,
     schools: new SchoolService(store, clock, audit),
-    accounts: new AccountService(store, clock, audit),
+    accounts: accountService,
     principals: new PrincipalService(store, audit),
     invites: new InviteService(store, clock, audit, notifications),
     auth: new AuthService(store, clock, audit),
@@ -226,5 +244,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     coCurricular: new CoCurricularService(reportingStore, store, clock, audit),
     reporting: new ReportingService(reportingStore, activityStore, assessmentStore, agentStore, parentStore, store, skillGraphStore, clock, audit),
     governance: new GovernanceService(store, workspaceStore, reportingStore, activityStore, clock, audit),
+    csvImport: new CsvImportService(store, accountService, clock, audit),
+    sso: new SsoService(store, idp, clock, audit),
   };
 }

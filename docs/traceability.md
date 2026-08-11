@@ -497,3 +497,23 @@ conformance requirement; production persona screens are deferred (ADR-0012), and
 fixed governance/brand tokens carry the contrast obligation. NFR-PERF-001 full
 latency/load targets are runtime SLOs; the testable invariant (ingestion always
 terminal) is covered by the M1 NFR-PERF-001 test.
+
+## Appendix Milestone A — FR-ADM-003 CSV import (+ SSO domain mismatch)
+`services/api/test/appendix-adm-003-csv.test.ts`
+
+| Row | Test |
+|---|---|
+| Happy path — correct CSV of 200 students → 200 accounts, right role + class | "happy path: a correct CSV of 200 students creates 200 accounts with the right role + class" |
+| Malformed rows — 5 rows missing required fields rejected per-row, valid rows import | "malformed rows: 5 rows missing required fields are each rejected with a specific error, valid rows still import" |
+| Duplicate emails — flagged + skipped, no conflicting account | "duplicate emails (existing + in-file): flagged as duplicate and skipped, never creating a conflicting account" |
+| Formula injection (NEW v1.4) — inert text, row flagged, never evaluated on export | "spreadsheet formula injection (NEW v1.4): the cell is sanitised to inert text, the row imports flagged for review, and no export ever emits an evaluable cell" |
+| SSO domain mismatch — access denied with a clear message | "SSO domain mismatch: a sign-in from outside the configured domain is denied with a clear message" |
+
+## Appendix Milestone A — FR-INT-001 SSO sign-in
+`services/api/test/appendix-int-001-sso.test.ts`
+
+| Row | Test |
+|---|---|
+| Happy path — Teacher signs in with Google, authenticated, no password created | "happy path: a Teacher signs in with Google and is authenticated with no password created" |
+| Edge — IdP outage → clear service-unavailable, not a generic login failure | "IdP outage: a clear service-unavailable error is surfaced, not a generic login failure" |
+| Edge — access revoked upstream → denied AND no stale cached session honoured | "access revoked upstream: sign-in is denied AND any stale cached session stops working" |

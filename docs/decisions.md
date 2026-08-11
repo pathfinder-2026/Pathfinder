@@ -94,6 +94,40 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0029 — CSV import + SSO (Appendix Milestone A)
+The plan **resequenced** FR-ADM-003 (CSV import + Google/Microsoft SSO) and FR-INT-001
+(SSO sign-in) out of Milestone 0: manual account creation unblocked the core loop, so
+these were "built later in sequence", their acceptance rows preserved in the plan's
+Appendix. This ADR records how they were built after the core MVP.
+
+- **CSV import is store-only** — it creates ordinary users/memberships/enrolments through
+  the existing `AccountService`, so no new tables. Parsing, per-row validation and
+  formula-injection sanitisation live in a pure domain module (`domain/csvImport.ts`) so
+  every edge is directly unit-testable; `CsvImportService` drives account creation. Each
+  row is independent: a malformed row is rejected with a **specific** error while valid
+  rows still import; a duplicate email (already in the system **or** earlier in the file)
+  is flagged and skipped, never creating a conflicting account.
+- **Formula-injection (NEW v1.4)** is neutralised on the way IN (a cell starting with
+  `= + - @`, after leading-whitespace stripping, is prefixed with `'` so a spreadsheet
+  treats it as literal text) **and** re-sanitised on the way OUT (`exportUsersCsv`), so no
+  downstream export/spreadsheet view can evaluate it. The row still imports but is
+  **flagged for review**. `sanitiseCell` is idempotent, so double-application is safe.
+- **SSO is one provider + one domain per school** (the MVP shape), stored in a small
+  `sso_configs` table (migration 0015). A sign-in for an email **outside** the configured
+  domain is denied with a **clear, specific** `SSO_DOMAIN_MISMATCH` message (this is the
+  FR-ADM-003 mismatch row).
+- **The IdP is a port** (`IdentityProviderPort`), like `AiProvider`. The default
+  `LocalIdentityProvider` is deterministic and network-free (stays in-memory in both store
+  backends, like the audit recorder) so the two FR-INT-001 edges are testable: an **outage**
+  throws `ServiceUnavailableError` (code `SSO_IDP_UNAVAILABLE`) — distinct from an auth
+  failure, so the UI shows "try again", not "invalid credentials"; an **upstream-revoked**
+  account is denied AND its cached sessions are purged (`deleteSessionsByUser`), so a stale
+  session cannot keep working. **Deferred (like Bedrock, ADR-0013):** the real Google/
+  Microsoft OIDC token verification + directory lookup — the port + guards + tests exist;
+  only the live network provider is unwired.
+- `AuthError` gained an optional `code` (default `"AUTH"`, backward-compatible) so SSO
+  denials carry intent-specific codes.
+
 ## ADR-0028 — Governance / audit hardening pass (M11)
 Milestone 11 verifies the incrementally-built governance end-to-end (NO new product
 features) and closes the gaps the verification surfaced. Two red-team failure modes

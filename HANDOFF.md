@@ -1,3 +1,59 @@
+# Handoff — Appendix Milestone A — CSV import + SSO (FR-ADM-003 / FR-INT-001)
+
+**Date:** 2026-08-11
+**Scope:** The plan's Appendix Milestone A — resequenced out of M0. FR-ADM-003 (CSV
+bulk import + SSO config) and FR-INT-001 (SSO sign-in). Additive; no earlier milestone
+changed behaviour.
+**Suite:** `npm test` → **251** (246 `services/api` + 5 `infra`); the same 246 acceptance
+tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run test:db` → 8;
+`npm run typecheck` clean.
+
+## What was built
+- **FR-ADM-003 CSV import** — `domain/csvImport.ts` (pure: RFC-4180-ish parser,
+  per-row validation, `sanitiseCell`/`isFormulaInjection`, result types) + `services/
+  csvImportService.ts` (`importUsers`, `exportUsersCsv`). Creates users/memberships/
+  enrolments via the existing `AccountService` — **no new tables for import**. Malformed
+  rows rejected with a specific error each; valid rows still import. Duplicate emails
+  (system **or** in-file) flagged + skipped, no conflicting account. Formula-injection
+  cells (`= + - @`, whitespace-stripped) neutralised with a leading `'` on import **and**
+  export; the row imports **flagged for review**. Students are enrolled into the named
+  class; class matched case-insensitively by name within the school.
+- **FR-ADM-003 / FR-INT-001 SSO** — `domain/sso.ts` (`SsoProvider`, `SsoConfig`, domain
+  helpers) + `ports/identityProviderPort.ts` (`IdentityProviderPort` + deterministic
+  `LocalIdentityProvider` with `setOutage`/`suspend`) + `services/ssoService.ts`
+  (`configure`, `signIn`). One provider + one domain per school (`sso_configs`, migration
+  **0015**). Domain mismatch → `SSO_DOMAIN_MISMATCH` (clear message). IdP outage →
+  `ServiceUnavailableError` code `SSO_IDP_UNAVAILABLE` (NOT an auth failure). Upstream
+  revoked → deny `SSO_ACCESS_REVOKED` **and** `deleteSessionsByUser` so a stale session
+  stops authorizing. Happy path issues a session, **no password created**.
+
+## Files & wiring
+- **New:** `domain/sso.ts`, `domain/csvImport.ts`, `ports/identityProviderPort.ts`,
+  `services/csvImportService.ts`, `services/ssoService.ts`, `db/migrations/0015_appendix_sso.sql`,
+  `test/appendix-adm-003-csv.test.ts` (5), `test/appendix-int-001-sso.test.ts` (4).
+- **Changed:** `domain/errors.ts` (`AuthError` optional `code` default `"AUTH"`;
+  new `ServiceUnavailableError`); `ports/dataStore.ts` + both adapters
+  (`getSsoConfig`/`saveSsoConfig`, `deleteSessionsByUser`); `context.ts` (wired `idp`,
+  `csvImport`, `sso`; hoisted `accountService`); `test-pg/pgSetupEach.ts` (added
+  `sso_configs` to TRUNCATE); README, docs/decisions.md (**ADR-0029**), docs/traceability.md.
+
+## Decisions / deferred
+- ADR-0029. Real Google/Microsoft **OIDC verification + directory lookup is deferred**
+  (like Bedrock, ADR-0013): the port, guards and edge-case tests exist; only the live
+  network provider is unwired. The `LocalIdentityProvider` stays in-memory in **both**
+  store backends (like the audit recorder).
+- Chose to store SSO as one-provider/one-domain per school (the MVP shape). CSV import
+  reuses `AccountService` rather than a bespoke path, so account-creation invariants
+  (audit, PII isolation) are shared.
+
+## How to verify
+`npm test` (251) · `npm run test:pg-suite --workspace services/api` (246 vs Postgres) ·
+`npm run test:db --workspace services/api` (8) · `npm run typecheck`. Migration 0015 is
+ASCII-only and auto-discovered by the pg harness. If the pg-suite fails at cluster start,
+kill a stray `postgres.exe` (holds port 5439).
+
+---
+
 # Handoff — Milestone 11 — Governance / audit hardening pass  (MVP COMPLETE)
 
 **Date:** 2026-08-11

@@ -44,7 +44,24 @@ export class NotFoundError extends DomainError {
 }
 
 export class AuthError extends DomainError {
-  constructor(message: string) {
-    super("AUTH", message);
+  /**
+   * Defaults to the generic "AUTH" code. SSO sign-in passes a specific code
+   * (e.g. SSO_DOMAIN_MISMATCH, SSO_ACCESS_REVOKED) so the UI can show a clear,
+   * intent-specific message rather than a generic "login failed" (FR-INT-001).
+   */
+  constructor(message: string, code = "AUTH") {
+    super(code, message);
+  }
+}
+
+/**
+ * A dependency the operation needs is temporarily unavailable (e.g. an external
+ * identity provider is down). Distinct from an auth failure so the UI can show a
+ * clear "service unavailable, try again" message rather than "invalid
+ * credentials" (FR-INT-001 — IdP outage).
+ */
+export class ServiceUnavailableError extends DomainError {
+  constructor(message: string, code = "SERVICE_UNAVAILABLE") {
+    super(code, message);
   }
 }

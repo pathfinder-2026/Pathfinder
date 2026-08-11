@@ -94,8 +94,9 @@ npm install
 npm test
 ```
 
-Expected: **242 passing tests** — 237 in `services/api` (every acceptance row for
-M0–M11: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
+Expected: **251 passing tests** — 246 in `services/api` (every acceptance row for
+M0–M11 plus the resequenced Appendix FR-ADM-003 / FR-INT-001: FR-ADM/FR-ONB,
+FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
 FR-PEER, FR-TAG, FR-STU/FR-SAG, FR-PAR, FR-PDB, FR-REP/FR-CAP/FR-BSS, and the M11
 FR-GOV/NFR governance-verification + two-mode red-team; plus the M4 synthetic-seed +
 quarantine tests, the Ask-for-Help adversarial suite, the Principal transcript
@@ -103,7 +104,7 @@ back-door hunt, and every governance gate — approved-pool / sign-off /
 draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-declined
 / state-layer-lockout / verification-before-data / consent-gated / audit-blocks-on-
 logging-failure / erasure-preserves-hash-chain / drift-fails-safe) and 5 in `infra`
-(region pinning). The **same 237 tests also run against Postgres** (see below).
+(region pinning). The **same 246 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash
@@ -117,7 +118,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 237 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 246 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -393,10 +394,31 @@ rests on:
   design)**, **collection consent-gated**, and **per-persona visibility** (author
   Teacher + Admin notes; Principal aggregate; Parent hidden until enabled).
 
+## Appendix Milestone A — CSV import + SSO (FR-ADM-003 / FR-INT-001)
+
+Resequenced out of Milestone 0 by the plan (manual account creation unblocked the
+core loop), now built with their Appendix acceptance rows intact:
+
+- **FR-ADM-003 — CSV import** (`CsvImportService`): bulk-create users from a CSV.
+  Each row is independent — a **malformed** row (missing field / bad role / bad
+  email / unknown class) is rejected with a **specific per-row error** while valid
+  rows still import; a **duplicate** email (already in the system or earlier in the
+  file) is flagged and skipped, never creating a conflicting account. A cell that
+  begins with `= + - @` (spreadsheet **formula injection**, NEW v1.4) is neutralised
+  to inert text on import **and** on export, and its row is **flagged for review**.
+- **FR-ADM-003 / FR-INT-001 — SSO** (`SsoService`, via an `IdentityProviderPort`):
+  a school federates with one provider (Google Workspace / Microsoft Entra ID) for
+  one email domain. A sign-in **outside** that domain is **denied with a clear
+  message**; an **IdP outage** surfaces a distinct service-unavailable error (not a
+  generic login failure); an account **revoked upstream** is denied **and** its
+  cached sessions are purged so no stale session survives. The happy path issues a
+  session with **no password created**. Real Google/Microsoft OIDC verification is
+  deferred like live Bedrock (ADR-0013/0029); the port, guards and tests are in place.
+
 ## What is intentionally NOT here yet
 
-The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate), then
-Milestone 11: governance / audit hardening pass (the non-negotiable gate before any
-real-student pilot), live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
-plan-deferred), and the production web UI screens (the preview console does not yet
-include peer, agent, student, parent, principal, or reporting screens).
+The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate) as a
+live pilot, live Bedrock calls, the live Google/Microsoft OIDC provider behind the
+SSO port (ADR-0029), Appendix Milestone B (white-label / multi-tenant branding), and
+the production web UI screens (the preview console does not yet include peer, agent,
+student, parent, principal, reporting, or import/SSO screens).

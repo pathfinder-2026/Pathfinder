@@ -15,6 +15,7 @@ import type {
 import type { Credential, DataStore, OnboardingProgress, Session } from "../../ports/dataStore";
 import type { SafeguardingConfig } from "../../domain/safeguarding";
 import type { SchoolPolicy } from "../../domain/principal";
+import type { SsoConfig } from "../../domain/sso";
 import { iso, isoOrNull, type Sql } from "./pgClient";
 
 /** PostgreSQL DataStore adapter (Amazon RDS/Aurora, ap-southeast-2). */
@@ -208,6 +209,9 @@ export class PgDataStore implements DataStore {
     const r = (await this.sql`select * from sessions where token=${token}`)[0];
     return r ? { token: r.token, userId: r.user_id, createdAt: iso(r.created_at) } : undefined;
   }
+  async deleteSessionsByUser(userId: string): Promise<void> {
+    await this.sql`delete from sessions where user_id=${userId}`;
+  }
 
   // Onboarding
   async getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined> {
@@ -257,6 +261,22 @@ export class PgDataStore implements DataStore {
       on conflict (school_id) do update set teacher_comparison_enabled=${p.teacherComparisonEnabled},
         behavioural_consent_configured=${p.behaviouralConsentConfigured},behavioural_parent_visible=${p.behaviouralParentVisible},
         retention_days=${p.retentionDays},updated_at=${p.updatedAt}`;
+  }
+
+  async getSsoConfig(schoolId: string): Promise<SsoConfig | undefined> {
+    const r = (await this.sql`select * from sso_configs where school_id=${schoolId}`)[0];
+    return r
+      ? {
+          schoolId: r.school_id, provider: r.provider, domain: r.domain,
+          configuredBy: r.configured_by, configuredAt: iso(r.configured_at),
+        }
+      : undefined;
+  }
+  async saveSsoConfig(c: SsoConfig): Promise<void> {
+    await this.sql`insert into sso_configs (school_id,provider,domain,configured_by,configured_at)
+      values (${c.schoolId},${c.provider},${c.domain},${c.configuredBy},${c.configuredAt})
+      on conflict (school_id) do update set provider=${c.provider},domain=${c.domain},
+        configured_by=${c.configuredBy},configured_at=${c.configuredAt}`;
   }
 }
 

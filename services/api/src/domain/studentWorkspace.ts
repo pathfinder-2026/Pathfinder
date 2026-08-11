@@ -29,7 +29,7 @@ export interface StudentTask {
   createdAt: string;
 }
 
-export type CalendarEventType = "assessment" | "class" | "homework" | "co_curricular";
+export type CalendarEventType = "assessment" | "class" | "homework" | "co_curricular" | "parent_meeting";
 
 export interface CalendarEvent {
   id: string;

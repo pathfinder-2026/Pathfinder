@@ -66,7 +66,29 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "help.hint") {
       return { text: this.helpHint(request.input) };
     }
+    if (request.purpose === "parent.summary") {
+      return { text: this.parentSummary(request.input) };
+    }
     return { text: "" };
+  }
+
+  /**
+   * A plain-language, OBSERVATIONAL progress summary for a parent — strengths and
+   * focus areas described in everyday topic words, never clinical/diagnostic terms
+   * and never raw internal labels. The service also guards the output.
+   */
+  private parentSummary(input: unknown): string {
+    const f = (input ?? {}) as { name?: string; strengths?: string[]; focusAreas?: string[]; activity?: string[] };
+    const who = f.name ?? "Your child";
+    const strengths = (f.strengths ?? []).filter(Boolean);
+    const focus = (f.focusAreas ?? []).filter(Boolean);
+    const activity = (f.activity ?? []).filter(Boolean);
+    const parts: string[] = [];
+    if (strengths.length) parts.push(`${who} is doing well with ${list(strengths)}.`);
+    if (focus.length) parts.push(`${who} has found ${list(focus)} more challenging and is getting extra practice.`);
+    if (activity.length) parts.push(`Recently: ${list(activity)}.`);
+    if (parts.length === 0) parts.push(`There's no new activity to report for ${who} this period.`);
+    return parts.join(" ");
   }
 
   /**
@@ -183,4 +205,11 @@ export class LocalClassifierProvider implements AiProvider {
       confidence,
     };
   }
+}
+
+/** Join items into a natural-language list: "a", "a and b", "a, b and c". */
+function list(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

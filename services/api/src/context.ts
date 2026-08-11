@@ -18,6 +18,7 @@ import { InMemoryDashboardStore } from "./adapters/memory/inMemoryDashboardStore
 import { InMemoryPeerStore } from "./adapters/memory/inMemoryPeerStore";
 import { InMemoryAgentStore } from "./adapters/memory/inMemoryAgentStore";
 import { InMemoryWorkspaceStore } from "./adapters/memory/inMemoryWorkspaceStore";
+import { InMemoryParentStore } from "./adapters/memory/inMemoryParentStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
@@ -27,6 +28,7 @@ import type { DashboardStore } from "./ports/dashboardStore";
 import type { PeerStore } from "./ports/peerStore";
 import type { AgentStore } from "./ports/agentStore";
 import type { WorkspaceStore } from "./ports/workspaceStore";
+import type { ParentStore } from "./ports/parentStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -56,6 +58,7 @@ import { AgentService } from "./services/agentService";
 import { SafeguardingService } from "./services/safeguardingService";
 import { StudentWorkspaceService } from "./services/studentWorkspaceService";
 import { AskForHelpService } from "./services/askForHelpService";
+import { ParentService } from "./services/parentService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -68,6 +71,7 @@ export interface AppContext {
   peerStore: PeerStore;
   agentStore: AgentStore;
   workspaceStore: WorkspaceStore;
+  parentStore: ParentStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -99,6 +103,7 @@ export interface AppContext {
   safeguarding: SafeguardingService;
   studentWorkspace: StudentWorkspaceService;
   askForHelp: AskForHelpService;
+  parents: ParentService;
 }
 
 export interface BuildContextOptions {
@@ -111,6 +116,7 @@ export interface BuildContextOptions {
   peerStore?: PeerStore;
   agentStore?: AgentStore;
   workspaceStore?: WorkspaceStore;
+  parentStore?: ParentStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -139,6 +145,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const peerStore = options.peerStore ?? new InMemoryPeerStore();
   const agentStore = options.agentStore ?? new InMemoryAgentStore();
   const workspaceStore = options.workspaceStore ?? new InMemoryWorkspaceStore();
+  const parentStore = options.parentStore ?? new InMemoryParentStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -165,6 +172,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     peerStore,
     agentStore,
     workspaceStore,
+    parentStore,
     storage,
     scanner,
     extractor,
@@ -196,5 +204,6 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     safeguarding: new SafeguardingService(store, clock, audit),
     studentWorkspace: new StudentWorkspaceService(workspaceStore, store, clock, audit, notifications),
     askForHelp: new AskForHelpService(workspaceStore, store, assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit, notifications),
+    parents: new ParentService(parentStore, store, activityStore, workspaceStore, skillGraphStore, ai, clock, audit, notifications),
   };
 }

@@ -5,16 +5,14 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 7 complete — Student Workspace + Ask for Help** (the plan's
-> highest-risk milestone). Real students see a low-analytics dashboard and calendar
-> of teacher-assigned tasks, with a **task-gated tutor**: the assessment-in-progress
-> lockout is enforced at the task-state layer, the tutor is grounded (never given
-> the answer), off-topic/direct-answer resistance is verified against an adversarial
-> suite (>100 attempts, ≥95% refusal, 0% leak), transcripts are teacher-only (never
-> a Principal), and Ask for Help won't enable without a configured safeguarding
-> contact + SLA. Built on M0–M6. **The Section 5 checkpoint remains the real-world
-> gate**; Milestone 11's governance verification is non-negotiable before any
-> real-student pilot.
+> **Status: Milestone 8 complete — Parent Dashboard.** A verified parent sees
+> plain-language, **never-diagnostic** progress for their **own child only** —
+> nothing until the link is verified, and never merged across children — plus a
+> child-scoped calendar and a **single weekly consolidated** notification (nothing
+> when there's nothing to report; safeguarding is the only immediate off-cadence
+> path). Built on M0–M7 (Student Workspace + Ask for Help, the highest-risk
+> milestone). **The Section 5 checkpoint remains the real-world gate**; Milestone
+> 11's governance verification is non-negotiable before any real-student pilot.
 
 ## See it running — the preview console
 
@@ -95,15 +93,15 @@ npm install
 npm test
 ```
 
-Expected: **183 passing tests** — 178 in `services/api` (every M0 FR-ADM/FR-ONB,
+Expected: **195 passing tests** — 190 in `services/api` (every M0 FR-ADM/FR-ONB,
 M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP, M5b
-FR-PEER, M6 FR-TAG, M7 FR-STU/FR-SAG acceptance row, the M4 synthetic-seed +
-quarantine tests and the Ask-for-Help adversarial suite, plus the approved-pool /
+FR-PEER, M6 FR-TAG, M7 FR-STU/FR-SAG, M8 FR-PAR acceptance row, the M4 synthetic-seed
++ quarantine tests and the Ask-for-Help adversarial suite, plus the approved-pool /
 sign-off / draft-until-publish / auto-assign-blocked / publish-or-withhold /
-grounded-or-declined / state-layer-lockout gates, acyclicity validation, the
-AI-service-layer audit path, and the foundations) and 5 in `infra` (region
-pinning). The **same 178 tests also run against Postgres** (see below).
-Type-check with:
+grounded-or-declined / state-layer-lockout / verification-before-data gates,
+acyclicity validation, the AI-service-layer audit path, and the foundations) and 5
+in `infra` (region pinning). The **same 190 tests also run against Postgres** (see
+below). Type-check with:
 
 ```bash
 npm run typecheck
@@ -116,7 +114,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 178 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 190 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -305,9 +303,27 @@ task-gated tutor:
   Principal**; a **safeguarding disclosure escalates** to the configured contact; and
   the tutor **won't enable without a configured safeguarding contact + SLA**.
 
+## Milestone 8 — Parent Dashboard
+
+Plain-language progress visibility for a **verified** parent (`ParentService`):
+
+- **FR-PAR-001 / FR-PAR-005** — a plain-language summary of strengths, focus areas
+  and recent activity; **no recent activity is stated plainly** (not stale data);
+  internal jargon (node ids/codes) is **translated to everyday topic words**.
+- **FR-PAR-003** — **verification-before-data is absolute**: nothing shows until
+  the parent-child link is verified, a parent only ever sees their **own** child
+  (another student is denied), children are **never merged**, and summaries are
+  **never diagnostic** — a code-level guard enforces observational wording (the DoD
+  calls this out specifically).
+- **FR-PAR-006** — a child-scoped **calendar** (parent-teacher meetings,
+  assessments, etc.); children in different year groups get **separate** calendars.
+- **FR-PAR-004** — a **single weekly consolidated** notification when there's new
+  activity, **none** when there's nothing; **safeguarding is the only off-cadence
+  path** (immediate, via FR-SAF-002) — no separate "urgent" class.
+
 ## What is intentionally NOT here yet
 
 The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate), then
-Milestones 8–11: parent/principal dashboards, reporting, live Bedrock calls, CSV
-import and SSO (FR-ADM-003 / FR-INT-001, plan-deferred), and the production web UI
-screens (the preview console does not yet include peer, agent, or student screens).
+Milestones 9–11: principal dashboard, reporting, live Bedrock calls, CSV import and
+SSO (FR-ADM-003 / FR-INT-001, plan-deferred), and the production web UI screens (the
+preview console does not yet include peer, agent, student, or parent screens).

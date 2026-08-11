@@ -26,7 +26,9 @@ export type NotificationType =
   // Milestone 7 — an overdue task notifies the assigning teacher; a safeguarding
   // classifier hit escalates to the school's safeguarding contact (FR-SAF-002).
   | "alert.overdue"
-  | "alert.safeguarding";
+  | "alert.safeguarding"
+  // Milestone 8 — the single weekly consolidated parent digest (FR-PAR-004).
+  | "parent.digest";
 
 export interface NotificationMessage {
   id: string;

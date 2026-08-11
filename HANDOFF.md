@@ -1,3 +1,63 @@
+# Handoff — Milestone 8 — Parent Dashboard
+
+**Date:** 2026-08-11
+**Milestone:** 8 — Parent Dashboard — **COMPLETE**
+**Suite:** `npm test` → **195** (190 `services/api` + 5 `infra`); the same 190
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The gate
+
+FR-PAR-003's "no data until verified / never cross-student" had **no underlying
+model** — only an `invite.parent` type and a `link-child` onboarding step name.
+Built `ParentChildLink` + verification (`ParentStore`, migration 0011); a single
+`requireVerified` guard covers both the unverified-relationship and cross-student
+rows (unverified OR unlinked studentId → `AuthError`, no data).
+
+## What was built (every acceptance row tested — 12 rows)
+
+- **FR-PAR-001/005** (`m8-par-001-dashboard.test.ts`) — plain-language summary
+  (strengths/focus/activity); no-recent-activity stated plainly; jargon translated
+  (`plainTopic` → topic words, never node ids/codes).
+- **FR-PAR-003** (`m8-par-003-access.test.ts`) — one verified child only; two
+  children never merged; **never diagnostic** (guarded + tested specifically);
+  unverified → no data.
+- **FR-PAR-006** (`m8-par-006-calendar.test.ts`) — child-scoped calendar; different
+  year groups → separate calendars.
+- **FR-PAR-004** (`m8-par-004-cadence.test.ts`) — one weekly consolidated digest;
+  nothing when nothing; safeguarding escalates immediately (M7 route), never via the
+  parent digest, no separate urgent class.
+
+## Safety / governance notes
+
+Summaries go through the AI service layer (`parent.summary`, audited) from factual
+mastery/activity; a `containsDiagnosticLanguage` guard replaces the text with an
+observational fallback if any clinical term slips through. Synthetic students hold
+no PII and have no parent link → never appear on a parent surface (M4 quarantine).
+AI *claims* about a student still pass the approvable-state gate before reaching a
+parent.
+
+## New this milestone
+
+`domain/parent.ts` (link + `containsDiagnosticLanguage` + `plainTopic`),
+`ParentStore` port (in-memory + Postgres), `ParentService`, migration `0011_parent.sql`,
+`parent.summary` provider purpose, `parent.digest` notification type, and
+`parent_meeting` added to `CalendarEventType`.
+
+## Deferred (M8)
+
+- A real parent-verification workflow (M8 has the Admin create + verify the link).
+- Parent screens in the preview console (UI still deferred generally).
+
+## Next
+
+The plan's next code milestone is **Milestone 9 — Principal Dashboard (school-level)**
+(FR-REP-001/002/004 — teacher/school reports, cost/usage; school-level only, never
+cross-school). The Section 5 checkpoint and M11 governance verification still gate a
+real-student pilot. Do not build ahead without direction.
+
+---
+
 # Handoff — Milestone 7 — Student Workspace + Ask for Help (highest-risk)
 
 **Date:** 2026-08-11

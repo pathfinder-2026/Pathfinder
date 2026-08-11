@@ -94,6 +94,37 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0025 — Parent Dashboard: verified, plain-language, non-diagnostic (M8)
+Milestone 8 (FR-PAR-001/003/004/005/006). Gate + decisions:
+- **The parent-child relationship + verification model did not exist** (only an
+  `invite.parent` type and a `link-child` onboarding step name). Built
+  `ParentChildLink` (`ParentStore`, migration 0011) with an explicit `verified`
+  flag. **`requireVerified` gates every data surface** — an unverified link OR a
+  studentId the parent isn't linked to both throw `AuthError` (no data). This one
+  guard covers FR-PAR-003's unverified-relationship AND cross-student rows.
+- **Never merged across children.** `dashboardFor`/`calendarFor` are per-(parent,
+  child); `verifiedChildren` lists them separately. A parent can only link to a
+  real, non-synthetic student in the school (M4 quarantine preserved — synthetic
+  students have no PII and no parent link, so they never appear on a parent surface).
+- **Plain-language, never diagnostic (DoD, tested specifically).** Summaries are
+  generated through the AI service layer (`parent.summary`, audited) from factual
+  mastery/activity; `plainTopic()` translates node labels/codes to everyday topic
+  words (never a node id/code); and a code-level guard replaces the text with a safe
+  observational fallback if `containsDiagnosticLanguage()` ever detects a clinical
+  term. AI *claims* about a student still pass the approvable-state gate
+  (`canSurfaceToStakeholder`) before reaching a parent.
+- **No stale data without context.** No recent activity → `hasRecentActivity:false`
+  and a plain "no new activity this period" message, not a stale snapshot.
+- **Single weekly consolidated cadence (FR-PAR-004).** `runWeeklyDigest` sends ONE
+  `parent.digest` per parent-child with new activity since `last_digest_at`, and
+  NOTHING when there's nothing to report. **Safeguarding is the only off-cadence
+  path** — it escalates immediately via the M7 FR-SAF-002 route (`alert.safeguarding`
+  to the DSL), never through the parent digest; there is no separate "urgent" class.
+- **Recorded defaults:** the school Admin creates + verifies links (real
+  verification workflow is later); `parent_meeting` added to `CalendarEventType`
+  (no CHECK migration needed); the parent calendar reuses the M7 year-group-scoped
+  events.
+
 ## ADR-0024 — Student Workspace + Ask for Help: state-layer safety (M7)
 Milestone 7 (FR-STU-001–004, FR-SAG-001/002) is the plan's highest-risk milestone.
 Gate + gaps surfaced and handled:

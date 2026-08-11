@@ -340,3 +340,36 @@ a safety-filter test, a safeguarding-gate test, and an adversarial suite.
 |---|---|
 | >100 extraction attempts, ≥95% refused, 0% leak | "direct-answer extraction: >100 varied attempts, ≥95% refused, 0% leak the answer" |
 | Off-topic redirection across varied unrelated questions | "off-topic redirection: varied unrelated questions are redirected, not answered" |
+
+# Milestone 8 traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 8 section maps to exactly one
+automated test. All run against both the in-memory and the Postgres backend.
+
+### FR-PAR-001 / FR-PAR-005 — parent dashboard  (`m8-par-001-dashboard.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — plain-language strengths / focus / recent activity | "happy path — a plain-language summary of strengths, focus areas and recent activity" |
+| Edge — no recent activity stated plainly (no stale data) | "edge — no recent activity: states this plainly rather than showing stale data" |
+| Edge — technical jargon translated to plain language | "edge — technical jargon is translated to plain language, not raw internal labels" |
+
+### FR-PAR-003 — access control & non-diagnostic language  (`m8-par-003-access.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — one verified child; another student denied | "happy path — a parent verified for one child sees only that child; another student is denied" |
+| Edge — two children kept separate, never merged | "edge — two verified children are kept clearly separate, never merged" |
+| Edge — learning-difficulty pattern described non-diagnostically | "edge — a learning-difficulty pattern is described observationally, never with diagnostic language" |
+| Edge — unverified relationship shows no data | "edge — an unverified relationship shows no student data until verification completes" |
+
+### FR-PAR-006 — parent calendar  (`m8-par-006-calendar.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — parent-teacher meeting + assessment both appear | "happy path — a parent-teacher meeting and an upcoming assessment both appear" |
+| Edge — children in different year groups get separate calendars | "edge — two children in different year groups get separate, correctly-scoped calendars" |
+
+### FR-PAR-004 — notification cadence  (`m8-par-004-cadence.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — one consolidated weekly notification, not one per item | "happy path — a week with new activity yields ONE consolidated notification, not one per item" |
+| Edge — nothing to report → no notification | "edge — a week with nothing to report sends no notification" |
+| Resolved (v1.3) — safeguarding escalates immediately, off-cadence | "resolved (v1.3) — safeguarding escalates immediately, independent of the digest cadence" |

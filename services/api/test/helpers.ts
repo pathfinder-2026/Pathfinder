@@ -15,6 +15,7 @@ import { PgDashboardStore } from "../src/adapters/postgres/pgDashboardStore";
 import { PgPeerStore } from "../src/adapters/postgres/pgPeerStore";
 import { PgAgentStore } from "../src/adapters/postgres/pgAgentStore";
 import { PgWorkspaceStore } from "../src/adapters/postgres/pgWorkspaceStore";
+import { PgParentStore } from "../src/adapters/postgres/pgParentStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -47,6 +48,7 @@ export function makeHarness(): TestHarness {
       peerStore: new PgPeerStore(sql),
       agentStore: new PgAgentStore(sql),
       workspaceStore: new PgWorkspaceStore(sql),
+      parentStore: new PgParentStore(sql),
     });
     return { ctx, clock };
   }
@@ -307,5 +309,50 @@ export async function setupStudentSchool(opts: { safeguarding?: boolean; yearGro
   return {
     ctx, clock, schoolId: school.id, campusId: campus.id, adminId: admin.user.id,
     teacherId: teacher.user.id, studentId: student.id, classId: klass.id, nodeId, yearGroup,
+  };
+}
+
+// ---- Milestone 8 Parent Dashboard helper ----
+
+/** Seed one mastery record for a real student (M8 parent-dashboard tests). */
+export async function seedMastery(
+  ctx: AppContext, schoolId: string, studentId: string, nodeId: string, score: number, whenIso: string,
+): Promise<void> {
+  await ctx.activityStore.insertMastery({
+    id: newId(), studentId, schoolId, nodeId, level: score >= 0.67 ? "secure" : score >= 0.34 ? "developing" : "low",
+    score, dataPoints: 5, lastActivityAt: whenIso, synthetic: false,
+  });
+}
+
+/** A student enrolled in a class (with PII), returning the user id. */
+async function makeEnrolledStudent(ctx: AppContext, schoolId: string, campusId: string, classId: string, firstName: string): Promise<string> {
+  const user = await makeUser(ctx, schoolId, `par-stud-${newId()}@r.edu`);
+  await ctx.store.upsertPersonalData({ userId: user.id, email: `par-stud-${newId()}@r.edu`, firstName, lastName: "Student" });
+  await ctx.store.insertMembership({ id: newId(), userId: user.id, schoolId, role: "student", campusId, classId, department: null });
+  await ctx.store.insertEnrolment({ id: newId(), studentId: user.id, classId, schoolId, active: true });
+  return user.id;
+}
+
+/**
+ * A school with a signed graph, a year-8 class, an enrolled child, and a parent
+ * user (not yet linked). Exposes skill nodes so tests can seed mastery. Use
+ * `ctx.parents.linkChild` + `verifyLink` to establish the verified relationship.
+ */
+export async function setupParentSchool() {
+  const { ctx, clock } = makeHarness();
+  const { school, campus, admin } = await seedSchoolWithAdmin(ctx, `Parent School ${newId()}`);
+  const versionId = await setupSignedGraph(ctx, school.id);
+  const skillNodes = (await ctx.skillGraphStore.listNodes(versionId)).filter((n) => n.type === "skill");
+  const fractionsNode = skillNodes.find((n) => /fraction/i.test(n.label)) ?? skillNodes[0]!;
+  const integersNode = skillNodes.find((n) => /integer/i.test(n.label)) ?? skillNodes[1]!;
+  const klass = await ctx.schools.createClass(school.id, campus.id, "8A", admin.user.id, "8");
+  const teacher = await makeTeacher(ctx, school.id, `par-teacher-${newId()}@r.edu`, { classId: klass.id });
+  const studentId = await makeEnrolledStudent(ctx, school.id, campus.id, klass.id, "Ada");
+  const parent = await makeUser(ctx, school.id, `parent-${newId()}@r.edu`);
+
+  return {
+    ctx, clock, schoolId: school.id, campusId: campus.id, adminId: admin.user.id,
+    teacherId: teacher.user.id, studentId, parentId: parent.id, classId: klass.id,
+    fractionsNode, integersNode, makeChild: (firstName: string) => makeEnrolledStudent(ctx, school.id, campus.id, klass.id, firstName),
   };
 }

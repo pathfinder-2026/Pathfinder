@@ -36,6 +36,31 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     return { teachers: by("teacher"), students: by("student"), parents: by("parent"), principals: by("principal"), classes: classes.length };
   };
 
+  // ---- Invite acceptance (public, token-based) + role onboarding ----
+  app.get("/api/v1/invites/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const invite = await ctx.store.getInviteByToken(token);
+    if (!invite) return reply.status(404).send({ code: "NOT_FOUND", message: "Invite not found." });
+    const school = await ctx.store.getSchool(invite.schoolId);
+    const pii = await ctx.store.getPersonalData(invite.userId);
+    return reply.send({ role: invite.role, status: invite.status, schoolName: school?.name ?? null, firstName: pii?.firstName ?? null });
+  });
+
+  app.post("/api/v1/invites/accept", async (req, reply) => {
+    const { token, password } = req.body as { token: string; password: string };
+    const result = await ctx.auth.acceptInvite(token, password);
+    const pii = await ctx.store.getPersonalData(result.user.id);
+    const session = await ctx.auth.login(pii!.email, password);
+    const auth = await ctx.auth.authorize(session.token);
+    const campuses = await ctx.store.listCampusesBySchool(auth.user.schoolId);
+    return reply.send({ token: session.token, schoolId: auth.user.schoolId, campusId: campuses[0]?.id ?? null, roles: auth.roles });
+  });
+
+  app.get("/api/v1/onboarding/me", async (req, reply) => {
+    const auth = await requireUser(req);
+    return reply.send(await ctx.onboarding.getUserOnboarding(auth.user.id));
+  });
+
   // ---- Sign in an existing user; resolve their school context ----
   app.post("/api/v1/auth/login", async (req, reply) => {
     const { email, password } = req.body as { email: string; password: string };

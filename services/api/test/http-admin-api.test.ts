@@ -192,6 +192,34 @@ describe("Production Admin API — onboarding over HTTP", () => {
     await a.close();
   });
 
+  it("an invited teacher accepts their invite, gets a session, and sees role onboarding", async () => {
+    const ctx = buildContext({ clock: new FixedClock() });
+    const a = buildApp({}, ctx);
+    const started = (await a.inject({ method: "POST", url: "/api/v1/onboarding/start", payload: START })).json();
+    const auth = { authorization: `Bearer ${started.token}` };
+    // Admin finishes configure so the invitee isn't in the waiting state.
+    await a.inject({ method: "POST", url: `/api/v1/schools/${started.schoolId}/classes`, headers: auth, payload: { campusId: started.campusId, name: "8A" } });
+    await a.inject({ method: "POST", url: `/api/v1/schools/${started.schoolId}/onboarding/steps/configure/complete`, headers: auth });
+    await a.inject({ method: "POST", url: `/api/v1/schools/${started.schoolId}/invites`, headers: auth, payload: { role: "teacher", email: "newt@riverbank.edu", firstName: "Nia", lastName: "New" } });
+
+    // Recover the invite token from the notification the invite service emitted.
+    const msg = ctx.notificationChannel.delivered.find((m) => m.type === "invite.teacher")!;
+    const token = (msg.context as { token: string }).token;
+
+    const preview = await a.inject({ method: "GET", url: `/api/v1/invites/${token}` });
+    expect(preview.json()).toMatchObject({ role: "teacher", status: "pending", schoolName: "Riverbank College" });
+
+    const accepted = await a.inject({ method: "POST", url: "/api/v1/invites/accept", payload: { token, password: "password123" } });
+    expect(accepted.statusCode).toBe(200);
+    const teacherAuth = { authorization: `Bearer ${accepted.json().token}` };
+    expect(accepted.json().roles).toContain("teacher");
+
+    const ob = await a.inject({ method: "GET", url: "/api/v1/onboarding/me", headers: teacherAuth });
+    expect(ob.json()).toMatchObject({ state: "ready", roles: ["teacher"] });
+    expect(ob.json().steps).toContain("review-classes");
+    await a.close();
+  });
+
   it("rejects onboarding reads without a valid session, and across schools", async () => {
     const a = app();
     const { schoolId } = await start(a);

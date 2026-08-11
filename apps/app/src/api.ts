@@ -81,6 +81,12 @@ export interface Account {
 export const ROLES = ["admin", "teacher", "student", "parent", "principal"] as const;
 
 export const api = {
+  getInvite: (token: string) => request<{ role: string; status: string; schoolName: string | null; firstName: string | null }>("GET", `/api/v1/invites/${token}`),
+  acceptInvite: (token: string, password: string) =>
+    request<{ token: string; schoolId: string; campusId: string | null; roles: string[] }>("POST", "/api/v1/invites/accept", { token, password }),
+  me: (s: Session) => request<{ userId: string; roles: string[]; firstName: string | null }>("GET", "/api/v1/me", undefined, s.token),
+  myOnboarding: (s: Session) =>
+    request<{ state: "waiting_on_school_setup"; roles: string[] } | { state: "ready"; roles: string[]; steps: string[] }>("GET", "/api/v1/onboarding/me", undefined, s.token),
   login: (email: string, password: string) =>
     request<{ token: string; schoolId: string; campusId: string | null; roles: string[] }>(
       "POST", "/api/v1/auth/login", { email, password },

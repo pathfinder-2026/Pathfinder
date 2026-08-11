@@ -7,7 +7,8 @@
   "workspaces": [
     "services/api",
     "infra",
-    "apps/web"
+    "apps/web",
+    "apps/app"
   ],
   "engines": {
     "node": ">=20"
@@ -18,6 +19,7 @@
     "test:infra": "npm run test --workspace infra",
     "typecheck": "npm run typecheck --workspace services/api && npm run typecheck --workspace infra",
     "dev:api": "npm run dev --workspace services/api",
-    "dev:web": "npm run dev --workspace apps/web"
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:app": "npm run dev --workspace apps/app"
   }
 }

@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { AuthError, ConflictError, ValidationError } from "../domain/errors";
+import { AuthError, ConflictError, NotFoundError, ValidationError } from "../domain/errors";
 import type { Membership, User } from "../domain/types";
 import type { AuditRecorder } from "../platform/audit/auditLog";
 import type { Clock } from "../platform/clock";
@@ -54,6 +54,27 @@ export class AuthService {
       metadata: { userId: user.id, role: invite.role },
     });
     return { user: { ...user, status: "active" } };
+  }
+
+  /**
+   * Set an initial password for an account that was created directly (not via an
+   * invite) — e.g. the founding School Admin during onboarding. Distinct from
+   * acceptInvite, which also flips an invite to "accepted".
+   */
+  async setInitialPassword(userId: string, password: string): Promise<void> {
+    const user = await this.store.getUser(userId);
+    if (!user) throw new NotFoundError("User not found.");
+    if (!password || password.length < 8) {
+      throw new ValidationError("Password must be at least 8 characters.");
+    }
+    await this.setPassword(userId, password);
+    this.audit.append({
+      action: "auth.password.set",
+      actorId: userId,
+      subjectType: "user",
+      subjectId: userId,
+      metadata: {},
+    });
   }
 
   /** Authenticate by email + password and issue a session token. */

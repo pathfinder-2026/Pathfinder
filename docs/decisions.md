@@ -94,6 +94,39 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0031 — Production web app foundation + Admin onboarding slice
+The production persona UIs (deferred since ADR-0012) begin here, built persona by
+persona as thin vertical slices. First slice: School-Admin onboarding.
+
+- **A fresh app (`apps/app`), not the preview console.** The preview console
+  (`apps/web`, ADR-0021) is an explicitly-throwaway validation aid that satisfies no
+  FR; the production UI is a clean React 19 + Vite app on the real design system. Both
+  coexist (preview on :5173, production on :5174) until the production UI supersedes it.
+- **Design tokens mirror Decision 5 in CSS.** `apps/app/src/theme.css` splits BRAND
+  tokens (`--pf-brand*`, themeable — the white-label layer sets `--pf-brand` at runtime)
+  from GOVERNANCE tokens (`--gov-*`, fixed, deliberately NOT derived from `--pf-brand`).
+  Governance status chips read only `--gov-*`, so a brand change can never recolour a
+  draft/approved/locked signal — FR-WL-004 realised in the UI, matching the backend
+  guarantee. `applyBrand` sets only `--pf-brand` (+ a derived tint); the server has
+  already clamped the colour to the AA floor, so white-on-brand text stays legible.
+- **New production HTTP surface under `/api/v1`** (`http/adminApi.ts`), mounted
+  alongside the M0 core-loop routes and the preview API without collision. Every route
+  is session-guarded (Bearer token -> `auth.authorize`), admin-scoped, and same-school
+  checked; it only does HTTP plumbing over the already-tested services. Errors flow
+  through `buildApp`'s shared handler.
+- **Admin self-registration primitive.** Onboarding needs a founding Admin who can log
+  back in, but that Admin isn't invited by anyone. Added `AuthService.setInitialPassword`
+  (validates + hashes + stores a credential, audited) — distinct from `acceptInvite`,
+  which also flips an invite. `POST /api/v1/onboarding/start` composes createSchool +
+  createAccount + setInitialPassword + login and returns a session.
+- The 7-step onboarding is rendered as the "waypoint trail" from the look-and-feel doc
+  (the pathfinder motif); completed/current waypoints are navigable, future ones locked,
+  mirroring the server-side step-order guard. HTTP surface covered by
+  `test/http-admin-api.test.ts` (full flow + zero-teacher confirm + auth/cross-school
+  guard); the app itself is typecheck- + production-build-verified and driven live.
+  Real logo bytes, the remaining personas (Teacher/Student/Parent/Principal), and
+  WCAG 2.2 AA audit tooling (NFR-A11Y-001) come in later slices.
+
 ## ADR-0030 — White-label / multi-tenant branding (Appendix Milestone B)
 FR-WL-001..004 build the configurable branding layer on top of the fixed-vs-themeable
 token split established in Milestone 0 (Foundational Decision 5). Branding is confined

@@ -1,3 +1,50 @@
+# Handoff — Production web app: School-Admin onboarding slice (FR-ADM / FR-ONB)
+
+**Date:** 2026-08-11
+**Scope:** First slice of the deferred production persona UIs (ADR-0012) — a fresh
+production app (`apps/app`) rendering the School-Admin onboarding journey end-to-end.
+Additive; no earlier milestone changed. Built at owner direction to test-drive a pilot.
+**Suite:** `npm test` → **269** (264 `services/api` + 5 `infra`); the same 264 also pass
+**vs Postgres**; `npm run typecheck` clean (api + infra + app); `apps/app` production
+`vite build` clean; the flow was driven live over HTTP.
+
+## What was built
+- **Production HTTP surface** `services/api/src/http/adminApi.ts` under `/api/v1`
+  (session-guarded, admin-scoped, same-school checked), wired into `buildApp`. Endpoints:
+  onboarding/start, onboarding state, complete-step, enter-workspace, classes, invites,
+  safeguarding, branding (get/set), summary. Only HTTP plumbing over tested services.
+- **Admin self-registration** `AuthService.setInitialPassword` (validated + hashed +
+  audited) so `POST /api/v1/onboarding/start` = createSchool + createAccount + password +
+  login -> session.
+- **Fresh production app `apps/app`** (React 19 + Vite, :5174, proxies /api -> :3000):
+  design tokens (`theme.css`) split themeable BRAND (`--pf-brand*`) from fixed GOVERNANCE
+  (`--gov-*`, never derived from brand — FR-WL-004 in the UI); screens Start (create
+  school + admin), Onboarding (the 7-step "waypoint trail" with a panel per step:
+  configure classes, invite teachers/students/parents, operations+branding, go-live with
+  zero-teacher confirm), Workspace (live summary). Live white-label theming + AA-floor
+  guardrail surfaced from the API.
+
+## Files & wiring
+- **New:** `http/adminApi.ts`, `test/http-admin-api.test.ts` (3 tests); `apps/app/*`
+  (package.json, tsconfig, vite.config, index.html, src/{main,App,api,brand,components,
+  theme.css,styles.css}, src/screens/{Start,Onboarding,Workspace}).
+- **Changed:** `authService.ts` (+setInitialPassword, +NotFoundError import), `http/app.ts`
+  (registerAdminApi), root `package.json` (+apps/app workspace, +dev:app), README, ADR-0031.
+
+## How to run / verify
+Two terminals: `npm run dev:api` then `npm run dev:app`, open http://localhost:5174.
+Tests: `npm test` (269) · `npm run test:pg-suite --workspace services/api` (264) ·
+`npm run typecheck`. Note: the dev API is in-memory, so data resets on restart. If :3000
+is held by a stale server, free it before `dev:api`.
+
+## Deferred
+Remaining personas (Teacher/Student/Parent/Principal) + their feature screens; real logo
+image upload UI; a formal WCAG 2.2 AA audit (NFR-A11Y-001) with automated a11y tests;
+wiring the app to cloud (live Bedrock / RDS / S3). The HTTP `/api/v1` surface grows with
+each new persona slice.
+
+---
+
 # Handoff — Appendix Milestone B — White-label / multi-tenant branding (FR-WL-001..004)
 
 **Date:** 2026-08-11

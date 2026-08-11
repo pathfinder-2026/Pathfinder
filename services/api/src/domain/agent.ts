@@ -63,6 +63,8 @@ export interface AgentSuggestion {
   /** Drafts persist unsent; there is no path that auto-sends them. */
   sent: boolean;
   sentAt: string | null;
+  /** Set when the teacher edits the draft before use (feeds the M9 AI edit-rate). */
+  edited: boolean;
   createdAt: string;
 }
 

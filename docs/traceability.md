@@ -373,3 +373,47 @@ automated test. All run against both the in-memory and the Postgres backend.
 | Happy — one consolidated weekly notification, not one per item | "happy path — a week with new activity yields ONE consolidated notification, not one per item" |
 | Edge — nothing to report → no notification | "edge — a week with nothing to report sends no notification" |
 | Resolved (v1.3) — safeguarding escalates immediately, off-cadence | "resolved (v1.3) — safeguarding escalates immediately, independent of the digest cadence" |
+
+# Milestone 9 traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 9 section maps to exactly one
+automated test. All run against both the in-memory and the Postgres backend.
+
+### FR-PDB-001 — teacher metrics  (`m9-pdb-001-teachers.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — per-teacher + school-wide metrics | "happy path — per-teacher and school-wide coverage/approval metrics are shown" |
+| Edge — low-activity outlier flagged distinctly | "edge — a low-activity established teacher is flagged distinctly, not blended into the average" |
+| Edge — new teacher shown in a shorter window | "edge — a new teacher is shown in a shorter window, not unfairly flagged as low-engagement" |
+
+### FR-PDB-002 — school-wide mastery  (`m9-pdb-002-mastery.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — school-wide patterns visible | "happy path — school-wide mastery patterns are visible, not just class-by-class" |
+| Edge — outlier class highlighted | "edge — an outlier class is highlighted rather than hidden inside a smoothed average" |
+
+### FR-PDB-003 — drill-down  (`m9-pdb-003-drill.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — drill school -> class -> student | "happy path — drill from school to a class to an individual student" |
+| Edge — cross-campus comparison not offered | "edge — cross-campus comparison is out of MVP scope and not offered" |
+| Edge — Ask-for-Help excluded at deepest drill | "edge — Ask-for-Help transcripts remain excluded at the deepest drill level" |
+
+### FR-PDB-004 — alerts  (`m9-pdb-004-alerts.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — sharp weekly drop raises an alert | "happy path — a sharp weekly mastery drop raises an alert" |
+| Edge — expected seasonal dip not flagged | "edge — an expected seasonal dip during a break window is not flagged" |
+| Edge — minor fluctuations don't alert (no fatigue) | "edge — minor fluctuations below the threshold do not raise alerts (no fatigue)" |
+
+### FR-PDB-005 — tutor transcripts never reach a Principal  (`m9-pdb-005-privacy.test.ts`)
+| Row | Test |
+|---|---|
+| Happy + export bypass — back-door hunt across all surfaces | "back-door hunt — SECRET never appears in any Principal surface, including exports" |
+| Dual-role — transcript only via Teacher capacity | "dual-role Principal-Teacher — sees own-class transcripts via Teacher capacity, never via a Principal surface" |
+
+### FR-PDB-006 — policy-gated comparison  (`m9-pdb-006-policy.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — disabled comparison view does not appear | "happy path — with teacher-to-teacher comparison disabled, that view does not appear at all" |
+| Edge — enabling mid-term makes it available going forward | "edge — enabling the comparison mid-term makes it available going forward" |

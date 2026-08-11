@@ -1,3 +1,70 @@
+# Handoff — Milestone 9 — Principal Dashboard (school-level)
+
+**Date:** 2026-08-11
+**Milestone:** 9 — Principal Dashboard — **COMPLETE**
+**Suite:** `npm test` → **210** (205 `services/api` + 5 `infra`); the same 205
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The non-negotiable, and how it's guaranteed
+
+Ask-for-Help transcripts are **unreachable from every Principal surface including
+exports**. This is structural: `PrincipalDashboardService` never calls a
+help-session/help-message method and no type it returns carries transcript content.
+A **back-door test** seeds a real transcript with a unique marker and asserts it
+appears in NONE of teacherReport / masteryOverview / drillClass / drillStudent /
+exportReport.
+
+## Refined M7 rule (per the M9 clarification)
+
+M7 previously blanket-denied anyone with a principal role. Now the only allow path
+for `AskForHelpService.transcript` is the assigning teacher (`viewerId ===
+session.teacherId`). So a **dual-role Principal-Teacher reads transcripts for their
+own classes via Teacher capacity**, a pure Principal is denied
+(`NOT_ASSIGNING_TEACHER`), and Principal surfaces still never expose transcripts.
+(M7 test updated.)
+
+## What was built (every acceptance row tested — 15 rows)
+
+- **FR-PDB-001** (`m9-pdb-001-teachers.test.ts`) — per-teacher + school-wide metrics;
+  low-activity outlier flagged; new teacher shorter-window/not-unfairly-compared.
+- **FR-PDB-002** (`m9-pdb-002-mastery.test.ts`) — school-wide mastery; outlier class
+  highlighted.
+- **FR-PDB-003** (`m9-pdb-003-drill.test.ts`) — drill school→class→student; cross-campus
+  refused (`OUT_OF_MVP_SCOPE`); Ask-for-Help excluded at deepest drill.
+- **FR-PDB-004** (`m9-pdb-004-alerts.test.ts`) — sharp-drop alert; seasonal break
+  suppressed; sub-threshold no-fatigue.
+- **FR-PDB-005** (`m9-pdb-005-privacy.test.ts`) — back-door hunt; dual-role via Teacher
+  capacity only.
+- **FR-PDB-006** (`m9-pdb-006-policy.test.ts`) — comparison view policy-gated; enable
+  mid-term applies going forward.
+
+## New this milestone
+
+`domain/principal.ts` (metrics/overview/alert/policy types + `PRINCIPAL_THRESHOLDS`),
+`PrincipalDashboardService` (deliberately NO help-store access), `school_policies` +
+DataStore policy methods, an additive `edited` flag on `agent_suggestions`
+(`editDraft` sets it; makes the AI edit-rate real), `WorkspaceStore.listTasksByTeacher`,
+migration `0012_principal.sql`. The M0 `PrincipalService` (FR-ADM-007) is untouched;
+the M9 service is `ctx.principalDashboard`.
+
+## Deferred (M9)
+
+- Principal screens in the preview console (UI still deferred generally).
+- Turnaround-time metric is a workload proxy (no explicit turnaround timestamps yet).
+
+## Next
+
+The plan's next code milestone is **Milestone 10 — Reporting (academic, co-curricular,
+behavioural/social)**. NOTE the behavioural/social piece has a **pre-build policy
+sign-off requirement** and a defined MVP default (four observation categories only —
+collaboration/communication/resilience/participation — teacher-authored notes, NO AI
+inference; visibility defaults per persona; collection disabled until a school's
+parental-consent mechanism is configured). The Section 5 checkpoint and M11 governance
+verification still gate a real-student pilot. Do not build ahead without direction.
+
+---
+
 # Handoff — Milestone 8 — Parent Dashboard
 
 **Date:** 2026-08-11

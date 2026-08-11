@@ -59,6 +59,7 @@ import { SafeguardingService } from "./services/safeguardingService";
 import { StudentWorkspaceService } from "./services/studentWorkspaceService";
 import { AskForHelpService } from "./services/askForHelpService";
 import { ParentService } from "./services/parentService";
+import { PrincipalDashboardService } from "./services/principalDashboardService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -104,6 +105,7 @@ export interface AppContext {
   studentWorkspace: StudentWorkspaceService;
   askForHelp: AskForHelpService;
   parents: ParentService;
+  principalDashboard: PrincipalDashboardService;
 }
 
 export interface BuildContextOptions {
@@ -205,5 +207,6 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     studentWorkspace: new StudentWorkspaceService(workspaceStore, store, clock, audit, notifications),
     askForHelp: new AskForHelpService(workspaceStore, store, assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit, notifications),
     parents: new ParentService(parentStore, store, activityStore, workspaceStore, skillGraphStore, ai, clock, audit, notifications),
+    principalDashboard: new PrincipalDashboardService(store, activityStore, assessmentStore, agentStore, workspaceStore, clock, audit),
   };
 }

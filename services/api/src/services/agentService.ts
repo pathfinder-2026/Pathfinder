@@ -90,6 +90,7 @@ export class AgentService {
   async editDraft(teacherId: string, suggestionId: string, content: string): Promise<AgentSuggestion> {
     const suggestion = await this.owned(teacherId, suggestionId);
     suggestion.content = content;
+    suggestion.edited = true;
     await this.agents.updateSuggestion(suggestion);
     this.audit.append({ action: "agent.draft.edited", actorId: teacherId, subjectType: "agent_suggestion", subjectId: suggestion.id, metadata: {} });
     return suggestion;
@@ -155,7 +156,7 @@ export class AgentService {
       grounding: refs, sensitiveSections, requiresExtraReview: sensitiveSections.length > 0,
       personalised: opts.personalised ?? true,
       personalisationNote: opts.personalisationNote ?? null,
-      sent: false, sentAt: null, createdAt: this.clock.isoNow(),
+      sent: false, sentAt: null, edited: false, createdAt: this.clock.isoNow(),
     };
     await this.agents.insertSuggestion(suggestion);
     this.audit.append({

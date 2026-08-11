@@ -19,6 +19,7 @@ import type {
   Session,
 } from "../../ports/dataStore";
 import type { SafeguardingConfig } from "../../domain/safeguarding";
+import type { SchoolPolicy } from "../../domain/principal";
 
 /**
  * In-memory DataStore. Backs dev and the full test suite. Methods are async to
@@ -41,6 +42,7 @@ export class InMemoryStore implements DataStore {
   private sessions = new Map<string, Session>();
   private onboarding = new Map<string, OnboardingProgress>();
   private safeguarding = new Map<string, SafeguardingConfig>();
+  private policies = new Map<string, SchoolPolicy>();
 
   private static clone<T>(v: T): T {
     return structuredClone(v);
@@ -270,5 +272,13 @@ export class InMemoryStore implements DataStore {
   }
   async saveSafeguardingConfig(config: SafeguardingConfig): Promise<void> {
     this.safeguarding.set(config.schoolId, InMemoryStore.clone(config));
+  }
+
+  async getSchoolPolicy(schoolId: string): Promise<SchoolPolicy | undefined> {
+    const p = this.policies.get(schoolId);
+    return p ? InMemoryStore.clone(p) : undefined;
+  }
+  async saveSchoolPolicy(policy: SchoolPolicy): Promise<void> {
+    this.policies.set(policy.schoolId, InMemoryStore.clone(policy));
   }
 }

@@ -94,6 +94,39 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0026 — Principal Dashboard: transcript-proof by construction (M9)
+Milestone 9 (FR-PDB-001..006), a whole-school view scoped to one school. Decisions:
+- **Ask-for-Help transcripts are unreachable from EVERY Principal surface, by
+  construction (non-negotiable DoD).** `PrincipalDashboardService` never calls any
+  help-session/help-message method, and no type it returns carries transcript
+  content — dashboard, drill-down, alerts, and export alike. A back-door test seeds
+  a real transcript with a unique marker and asserts it appears in none of those
+  surfaces.
+- **Refined the M7 transcript rule per the M9 clarification.** M7 previously
+  blanket-denied anyone holding a principal role. That's now: the ONLY allow path is
+  the assigning teacher (`viewerId === session.teacherId`). So a dual-role
+  Principal-Teacher reads transcripts for their OWN classes via their Teacher
+  capacity, a pure Principal is denied (`NOT_ASSIGNING_TEACHER`), and Principal
+  SURFACES still never expose transcripts. (M7 test updated to the refined code.)
+- **No cross-campus comparison** (FR-PDB-003 edge) — `compareCampuses` throws
+  `OUT_OF_MVP_SCOPE`; the interface does not offer it.
+- **Metrics computed from real data, made honest.** Coverage/approval/edit/engagement
+  come from assessments, agent drafts (a new additive `edited` flag on
+  `agent_suggestions`, migration 0012, set by `editDraft`) and tasks
+  (`listTasksByTeacher`). A new teacher is contextualised by a shorter window and is
+  never flagged as a low-engagement outlier (FR-PDB-001 edge). Outlier teachers/classes
+  are flagged distinctly rather than smoothed into an average.
+- **Alerts have thresholds.** Only week-over-week mastery drops >= a meaningful delta
+  surface (no alert fatigue); a configured seasonal break window suppresses expected
+  dips. Uses the existing mastery `history`.
+- **Sensitive comparison views are policy-gated (FR-PDB-006).** `school_policies`
+  (migration 0012) defaults teacher-to-teacher comparison OFF; the report's
+  `comparison` is null unless the school enables it, and enabling records an
+  `updatedAt` (applies going forward).
+- **Synthetic students excluded** from all Principal surfaces (M4 quarantine).
+- **Naming:** the M0 `PrincipalService` (FR-ADM-007 campus assignment) is untouched;
+  the M9 service is `PrincipalDashboardService` (`ctx.principalDashboard`).
+
 ## ADR-0025 — Parent Dashboard: verified, plain-language, non-diagnostic (M8)
 Milestone 8 (FR-PAR-001/003/004/005/006). Gate + decisions:
 - **The parent-child relationship + verification model did not exist** (only an

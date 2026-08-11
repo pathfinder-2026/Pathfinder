@@ -125,10 +125,11 @@ export class AskForHelpService {
   async transcript(viewerId: string, sessionId: string): Promise<HelpMessage[]> {
     const session = await this.workspace.getHelpSession(sessionId);
     if (!session) throw new NotFoundError("Help session not found.");
-    const roles = (await this.store.listMembershipsByUser(viewerId)).map((m) => m.role);
-    if (roles.includes("principal")) {
-      throw new ConflictError("PRINCIPAL_FORBIDDEN", "Ask for Help transcripts are never visible to a Principal.");
-    }
+    // The ONLY path to a transcript is the assigning teacher (Teacher capacity).
+    // A Principal is never the assigning teacher for a class they don't teach, so
+    // they are denied here; and no Principal-facing SURFACE (PrincipalService) ever
+    // reaches transcripts at all. A dual-role Principal-Teacher therefore sees
+    // transcripts only for their own classes, via their Teacher capacity (M9 rule).
     if (viewerId !== session.teacherId) {
       throw new ConflictError("NOT_ASSIGNING_TEACHER", "Only the assigning teacher may view this transcript.");
     }

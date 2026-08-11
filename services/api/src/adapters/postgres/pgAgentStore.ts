@@ -9,16 +9,16 @@ export class PgAgentStore implements AgentStore {
   async insertSuggestion(s: AgentSuggestion): Promise<void> {
     await this.sql`insert into agent_suggestions
       (id,school_id,teacher_id,kind,title,content,grounding,sensitive_sections,requires_extra_review,
-       personalised,personalisation_note,sent,sent_at,created_at)
+       personalised,personalisation_note,sent,sent_at,edited,created_at)
       values (${s.id},${s.schoolId},${s.teacherId},${s.kind},${s.title},${s.content},
         ${this.sql.json(s.grounding as never)},${this.sql.json(s.sensitiveSections as never)},${s.requiresExtraReview},
-        ${s.personalised},${s.personalisationNote},${s.sent},${s.sentAt},${s.createdAt})`;
+        ${s.personalised},${s.personalisationNote},${s.sent},${s.sentAt},${s.edited},${s.createdAt})`;
   }
   async updateSuggestion(s: AgentSuggestion): Promise<void> {
     await this.sql`update agent_suggestions set title=${s.title},content=${s.content},
       grounding=${this.sql.json(s.grounding as never)},sensitive_sections=${this.sql.json(s.sensitiveSections as never)},
       requires_extra_review=${s.requiresExtraReview},personalised=${s.personalised},
-      personalisation_note=${s.personalisationNote},sent=${s.sent},sent_at=${s.sentAt} where id=${s.id}`;
+      personalisation_note=${s.personalisationNote},sent=${s.sent},sent_at=${s.sentAt},edited=${s.edited} where id=${s.id}`;
   }
   async getSuggestion(id: string): Promise<AgentSuggestion | undefined> {
     const rows = await this.sql`select * from agent_suggestions where id=${id}`;
@@ -39,7 +39,7 @@ function mapSuggestion(r: Row): AgentSuggestion {
     title: r.title, content: r.content,
     grounding: r.grounding as GroundingRef[], sensitiveSections: r.sensitive_sections as SensitiveSection[],
     requiresExtraReview: r.requires_extra_review, personalised: r.personalised,
-    personalisationNote: r.personalisation_note, sent: r.sent, sentAt: isoOrNull(r.sent_at),
+    personalisationNote: r.personalisation_note, sent: r.sent, sentAt: isoOrNull(r.sent_at), edited: r.edited,
     createdAt: iso(r.created_at),
   };
 }

@@ -10,6 +10,7 @@ export interface WorkspaceStore {
   getTask(id: string): Promise<StudentTask | undefined>;
   updateTask(t: StudentTask): Promise<void>;
   listTasksByStudent(studentId: string): Promise<StudentTask[]>;
+  listTasksByTeacher(teacherId: string): Promise<StudentTask[]>;
 
   insertEvent(e: CalendarEvent): Promise<void>;
   getEvent(id: string): Promise<CalendarEvent | undefined>;

@@ -118,10 +118,12 @@ describe("M7 FR-STU-002/SAG — Ask for Help", () => {
     const transcript = await ctx.askForHelp.transcript(teacherId, session.id);
     expect(transcript.length).toBeGreaterThanOrEqual(2); // student message + assistant reply
 
-    // A Principal → hard-denied.
+    // A Principal (not the assigning teacher) → denied. No Principal-facing surface
+    // ever reaches transcripts; a Principal is only ever the assigning teacher for a
+    // class they personally teach (their Teacher capacity), never here (M9 rule).
     const principal = await makeUser(ctx, schoolId, `principal-${newId()}@r.edu`);
     await ctx.store.insertMembership({ id: newId(), userId: principal.id, schoolId, role: "principal", campusId, classId: null, department: null });
-    await expect(ctx.askForHelp.transcript(principal.id, session.id)).rejects.toMatchObject({ code: "PRINCIPAL_FORBIDDEN" });
+    await expect(ctx.askForHelp.transcript(principal.id, session.id)).rejects.toMatchObject({ code: "NOT_ASSIGNING_TEACHER" });
 
     // A different (non-assigning) teacher → denied.
     const other = await makeTeacher(ctx, schoolId, `other-teacher-${newId()}@r.edu`);

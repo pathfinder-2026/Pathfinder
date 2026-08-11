@@ -324,6 +324,11 @@ export async function seedMastery(
   });
 }
 
+/** A student enrolled in a class (with PII), returning the user id. Exported for M9. */
+export async function enrolStudent(ctx: AppContext, schoolId: string, campusId: string, classId: string, firstName: string): Promise<string> {
+  return makeEnrolledStudent(ctx, schoolId, campusId, classId, firstName);
+}
+
 /** A student enrolled in a class (with PII), returning the user id. */
 async function makeEnrolledStudent(ctx: AppContext, schoolId: string, campusId: string, classId: string, firstName: string): Promise<string> {
   const user = await makeUser(ctx, schoolId, `par-stud-${newId()}@r.edu`);
@@ -354,5 +359,28 @@ export async function setupParentSchool() {
     ctx, clock, schoolId: school.id, campusId: campus.id, adminId: admin.user.id,
     teacherId: teacher.user.id, studentId, parentId: parent.id, classId: klass.id,
     fractionsNode, integersNode, makeChild: (firstName: string) => makeEnrolledStudent(ctx, school.id, campus.id, klass.id, firstName),
+  };
+}
+
+// ---- Milestone 9 Principal Dashboard helper ----
+
+/**
+ * A school with a signed graph, a Principal (assigned to the campus), and helpers
+ * to create classes/teachers/students. Exposes two skill nodes for assessments.
+ */
+export async function setupPrincipalSchool() {
+  const { ctx, clock } = makeHarness();
+  const { school, campus, admin } = await seedSchoolWithAdmin(ctx, `Principal School ${newId()}`);
+  const versionId = await setupSignedGraph(ctx, school.id);
+  const skills = (await ctx.skillGraphStore.listNodes(versionId)).filter((n) => n.type === "skill");
+  const principal = await makeUser(ctx, school.id, `principal-${newId()}@r.edu`);
+  await ctx.store.insertMembership({ id: newId(), userId: principal.id, schoolId: school.id, role: "principal", campusId: campus.id, classId: null, department: null });
+
+  return {
+    ctx, clock, schoolId: school.id, campusId: campus.id, adminId: admin.user.id, principalId: principal.id,
+    nodeId: skills[0]!.id, nodeId2: skills[1]!.id,
+    makeClass: (name: string, yearGroup: string | null = "8") => ctx.schools.createClass(school.id, campus.id, name, admin.user.id, yearGroup),
+    enrol: (classId: string, firstName: string) => enrolStudent(ctx, school.id, campus.id, classId, firstName),
+    makeTeacher: (classId?: string) => makeTeacher(ctx, school.id, `p-teacher-${newId()}@r.edu`, { classId: classId ?? null }),
   };
 }

@@ -16,6 +16,9 @@ export class InMemoryWorkspaceStore implements WorkspaceStore {
   async listTasksByStudent(studentId: string): Promise<StudentTask[]> {
     return [...this.tasks.values()].filter((t) => t.studentId === studentId).map(clone);
   }
+  async listTasksByTeacher(teacherId: string): Promise<StudentTask[]> {
+    return [...this.tasks.values()].filter((t) => t.teacherId === teacherId).map(clone);
+  }
 
   async insertEvent(e: CalendarEvent): Promise<void> { this.events.set(e.id, clone(e)); }
   async getEvent(id: string): Promise<CalendarEvent | undefined> { const v = this.events.get(id); return v ? clone(v) : undefined; }

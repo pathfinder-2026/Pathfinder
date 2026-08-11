@@ -13,6 +13,7 @@ import type {
   User,
 } from "../domain/types";
 import type { SafeguardingConfig } from "../domain/safeguarding";
+import type { SchoolPolicy } from "../domain/principal";
 
 /** Stored password credential (scrypt hash + salt). */
 export interface Credential {
@@ -116,4 +117,8 @@ export interface DataStore {
   // Safeguarding config (M7 — a hard precondition for Ask for Help)
   getSafeguardingConfig(schoolId: string): Promise<SafeguardingConfig | undefined>;
   saveSafeguardingConfig(config: SafeguardingConfig): Promise<void>;
+
+  // School policy (M9 — configurable sensitive comparison views)
+  getSchoolPolicy(schoolId: string): Promise<SchoolPolicy | undefined>;
+  saveSchoolPolicy(policy: SchoolPolicy): Promise<void>;
 }

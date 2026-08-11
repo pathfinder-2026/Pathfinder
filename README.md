@@ -5,14 +5,15 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 8 complete — Parent Dashboard.** A verified parent sees
-> plain-language, **never-diagnostic** progress for their **own child only** —
-> nothing until the link is verified, and never merged across children — plus a
-> child-scoped calendar and a **single weekly consolidated** notification (nothing
-> when there's nothing to report; safeguarding is the only immediate off-cadence
-> path). Built on M0–M7 (Student Workspace + Ask for Help, the highest-risk
-> milestone). **The Section 5 checkpoint remains the real-world gate**; Milestone
-> 11's governance verification is non-negotiable before any real-student pilot.
+> **Status: Milestone 9 complete — Principal Dashboard (school-level).** A
+> whole-school view (teacher coverage/AI-approval/workload, school-wide mastery &
+> risk, drill school→class→student, threshold-based anomaly alerts, policy-gated
+> comparison views) — with the **non-negotiable guarantee that Ask-for-Help tutor
+> transcripts are unreachable from every Principal surface including exports**
+> (enforced structurally, verified by a back-door hunt). No cross-campus
+> comparison. Built on M0–M8. **The Section 5 checkpoint remains the real-world
+> gate**; Milestone 11's governance verification is non-negotiable before any
+> real-student pilot.
 
 ## See it running — the preview console
 
@@ -93,15 +94,15 @@ npm install
 npm test
 ```
 
-Expected: **195 passing tests** — 190 in `services/api` (every M0 FR-ADM/FR-ONB,
+Expected: **210 passing tests** — 205 in `services/api` (every M0 FR-ADM/FR-ONB,
 M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP, M5b
-FR-PEER, M6 FR-TAG, M7 FR-STU/FR-SAG, M8 FR-PAR acceptance row, the M4 synthetic-seed
-+ quarantine tests and the Ask-for-Help adversarial suite, plus the approved-pool /
-sign-off / draft-until-publish / auto-assign-blocked / publish-or-withhold /
-grounded-or-declined / state-layer-lockout / verification-before-data gates,
-acyclicity validation, the AI-service-layer audit path, and the foundations) and 5
-in `infra` (region pinning). The **same 190 tests also run against Postgres** (see
-below). Type-check with:
+FR-PEER, M6 FR-TAG, M7 FR-STU/FR-SAG, M8 FR-PAR, M9 FR-PDB acceptance row, the M4
+synthetic-seed + quarantine tests, the Ask-for-Help adversarial suite and the
+Principal transcript back-door hunt, plus the approved-pool / sign-off /
+draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-declined
+/ state-layer-lockout / verification-before-data gates, acyclicity validation, the
+AI-service-layer audit path, and the foundations) and 5 in `infra` (region pinning).
+The **same 205 tests also run against Postgres** (see below). Type-check with:
 
 ```bash
 npm run typecheck
@@ -114,7 +115,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 190 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 205 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -321,9 +322,32 @@ Plain-language progress visibility for a **verified** parent (`ParentService`):
   activity, **none** when there's nothing; **safeguarding is the only off-cadence
   path** (immediate, via FR-SAF-002) — no separate "urgent" class.
 
+## Milestone 9 — Principal Dashboard (school-level)
+
+A whole-school view scoped to one school (`PrincipalDashboardService`):
+
+- **FR-PDB-001** — per-teacher **coverage / AI-approval / edit-rate / engagement /
+  workload** + school-wide; low-activity teachers **flagged distinctly**; new
+  teachers shown in a **shorter window**, not compared unfairly.
+- **FR-PDB-002** — **school-wide mastery & risk**; an **outlier class is
+  highlighted**, not smoothed into the average.
+- **FR-PDB-003** — **drill school → class → student**; **no cross-campus
+  comparison** (out of MVP scope); Ask-for-Help excluded even at the deepest level.
+- **FR-PDB-004** — **threshold-based anomaly alerts** (sharp mastery drops); a
+  configured **seasonal break** suppresses expected dips; minor fluctuations don't
+  alert (no fatigue).
+- **FR-PDB-005** — **the non-negotiable**: Ask-for-Help tutor transcripts are
+  **unreachable from every Principal surface including exports**, enforced
+  structurally (the service never reads the help store) and verified by a
+  back-door hunt. A dual-role Principal-Teacher sees transcripts only via their
+  Teacher capacity, for their own classes.
+- **FR-PDB-006** — sensitive teacher-to-teacher **comparison views are policy-gated**
+  (off by default; enabling applies going forward).
+
 ## What is intentionally NOT here yet
 
 The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate), then
-Milestones 9–11: principal dashboard, reporting, live Bedrock calls, CSV import and
-SSO (FR-ADM-003 / FR-INT-001, plan-deferred), and the production web UI screens (the
-preview console does not yet include peer, agent, student, or parent screens).
+Milestones 10–11: reporting (academic/co-curricular/behavioural), governance
+verification, live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
+plan-deferred), and the production web UI screens (the preview console does not yet
+include peer, agent, student, parent, or principal screens).

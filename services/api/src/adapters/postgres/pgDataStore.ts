@@ -14,6 +14,7 @@ import type {
 } from "../../domain/types";
 import type { Credential, DataStore, OnboardingProgress, Session } from "../../ports/dataStore";
 import type { SafeguardingConfig } from "../../domain/safeguarding";
+import type { SchoolPolicy } from "../../domain/principal";
 import { iso, isoOrNull, type Sql } from "./pgClient";
 
 /** PostgreSQL DataStore adapter (Amazon RDS/Aurora, ap-southeast-2). */
@@ -238,6 +239,16 @@ export class PgDataStore implements DataStore {
       values (${c.schoolId},${c.contactName},${c.contactRole},${c.slaHours},${c.afterHoursPolicy},${c.configuredBy},${c.configuredAt})
       on conflict (school_id) do update set contact_name=${c.contactName},contact_role=${c.contactRole},
         sla_hours=${c.slaHours},after_hours_policy=${c.afterHoursPolicy},configured_by=${c.configuredBy},configured_at=${c.configuredAt}`;
+  }
+
+  async getSchoolPolicy(schoolId: string): Promise<SchoolPolicy | undefined> {
+    const r = (await this.sql`select * from school_policies where school_id=${schoolId}`)[0];
+    return r ? { schoolId: r.school_id, teacherComparisonEnabled: r.teacher_comparison_enabled, updatedAt: iso(r.updated_at) } : undefined;
+  }
+  async saveSchoolPolicy(p: SchoolPolicy): Promise<void> {
+    await this.sql`insert into school_policies (school_id,teacher_comparison_enabled,updated_at)
+      values (${p.schoolId},${p.teacherComparisonEnabled},${p.updatedAt})
+      on conflict (school_id) do update set teacher_comparison_enabled=${p.teacherComparisonEnabled},updated_at=${p.updatedAt}`;
   }
 }
 

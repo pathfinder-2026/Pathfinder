@@ -24,6 +24,9 @@ export class PgWorkspaceStore implements WorkspaceStore {
   async listTasksByStudent(studentId: string): Promise<StudentTask[]> {
     return (await this.sql`select * from student_tasks where student_id=${studentId}`).map(mapTask);
   }
+  async listTasksByTeacher(teacherId: string): Promise<StudentTask[]> {
+    return (await this.sql`select * from student_tasks where teacher_id=${teacherId}`).map(mapTask);
+  }
 
   async insertEvent(e: CalendarEvent): Promise<void> {
     await this.sql`insert into calendar_events (id,school_id,title,type,event_date,year_group,source_id,changed,created_at)

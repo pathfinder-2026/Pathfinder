@@ -67,6 +67,12 @@ export interface AiRunRequest extends AiCompletionRequest {}
 export interface AiRunResult extends AiCompletion {}
 
 export class AiServiceLayer {
+  /** Fail-safe pause: when set, no AI call proceeds (FR-GOV-007 drift). */
+  private paused: { reason: string } | null = null;
+  /** Per-actor usage counters for the fair-use guardrail (NFR-COST-001). */
+  private readonly usage = new Map<string, number>();
+  private usageCap: number | null = null;
+
   constructor(
     private readonly provider: AiProvider | null,
     private readonly audit: AuditRecorder | null = null,
@@ -84,20 +90,54 @@ export class AiServiceLayer {
   }
 
   /**
-   * Run an inference through the choke point. Validates the provider, records an
-   * audit entry (Decision 3), then delegates. Throws if no provider is bound.
+   * FR-GOV-007 — fail safe. When the provider's data-handling configuration
+   * changes or cannot be verified, PAUSE the choke point: every AI call then
+   * fails with a clear Admin-facing status rather than continuing silently.
+   */
+  pauseForDrift(reason: string): void {
+    this.paused = { reason };
+    this.audit?.append({ action: "ai.paused", actorId: null, subjectType: "ai", subjectId: "service-layer", metadata: { reason } });
+  }
+  resume(): void {
+    this.paused = null;
+    this.audit?.append({ action: "ai.resumed", actorId: null, subjectType: "ai", subjectId: "service-layer", metadata: {} });
+  }
+  isPaused(): boolean {
+    return this.paused !== null;
+  }
+
+  /** NFR-COST-001 — a per-actor fair-use cap. null = unlimited (default). */
+  setUsageCap(cap: number | null): void {
+    this.usageCap = cap;
+  }
+  usageFor(actorId: string): number {
+    return this.usage.get(actorId) ?? 0;
+  }
+
+  /**
+   * Run an inference through the choke point. Fail-safe pause and usage cap are
+   * checked FIRST; the provider is re-validated on every call (so config drift to
+   * a non-compliant endpoint is blocked architecturally, not by convention); then
+   * an audit entry is written BEFORE the provider runs — if that write throws, the
+   * action is blocked rather than silently proceeding unlogged (FR-GOV-002).
    */
   async run(request: AiRunRequest, actorId: string | null = null): Promise<AiRunResult> {
     if (!this.provider) {
-      throw new ConflictError(
-        "AI_NOT_OPERATIONAL",
-        "The AI service layer has no provider bound.",
-      );
+      throw new ConflictError("AI_NOT_OPERATIONAL", "The AI service layer has no provider bound.");
     }
-    const descriptor = this.provider.describe();
-    assertCompliantProvider(descriptor);
+    if (this.paused) {
+      throw new ConflictError("AI_PAUSED", `AI is paused pending Admin review: ${this.paused.reason}`);
+    }
+    const key = actorId ?? "system";
+    if (this.usageCap !== null && (this.usage.get(key) ?? 0) >= this.usageCap) {
+      throw new ConflictError("COST_CAP_REACHED", "AI fair-use cap reached. An Admin can raise the limit; requests are declined rather than billed unbounded.");
+    }
 
-    // Every AI call writes an audit entry — before and independent of the result.
+    const descriptor = this.provider.describe();
+    assertCompliantProvider(descriptor); // re-validated per call: drift to a non-compliant endpoint is blocked here
+
+    // Every AI call writes an audit entry BEFORE the result — a logging failure
+    // throws here and blocks the action (never a silent, unlogged AI call).
     this.audit?.append({
       action: "ai.call",
       actorId,
@@ -109,9 +149,13 @@ export class AiServiceLayer {
         providerKind: descriptor.kind,
         region: descriptor.kind === "remote" ? descriptor.region : "local",
         containsStudentData: request.containsStudentData,
+        // Provenance references (ids only — no PII in the immutable log): the
+        // grounding content and the prompt purpose make the AI action auditable.
+        grounding: request.provenanceGrounding ?? [],
       },
     });
 
+    this.usage.set(key, (this.usage.get(key) ?? 0) + 1);
     return this.provider.complete(request);
   }
 }

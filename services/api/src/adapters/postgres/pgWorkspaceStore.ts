@@ -62,6 +62,10 @@ export class PgWorkspaceStore implements WorkspaceStore {
   async listHelpMessages(sessionId: string): Promise<HelpMessage[]> {
     return (await this.sql`select * from help_messages where session_id=${sessionId} order by created_at asc`).map(mapMessage);
   }
+  async deleteHelpMessagesBefore(iso: string): Promise<number> {
+    const rows = await this.sql`delete from help_messages where created_at < ${iso} returning id`;
+    return rows.length;
+  }
 }
 
 type Row = Record<string, any>;

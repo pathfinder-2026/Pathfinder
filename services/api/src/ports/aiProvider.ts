@@ -32,6 +32,8 @@ export interface AiCompletionRequest {
   input?: unknown;
   /** Whether this prompt may contain student data (governs residency checks). */
   containsStudentData: boolean;
+  /** Approved-content ids grounding this call — logged as provenance (FR-GOV-002). */
+  provenanceGrounding?: string[];
 }
 
 export interface AiCompletion {

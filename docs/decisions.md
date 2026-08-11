@@ -94,6 +94,53 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0028 — Governance / audit hardening pass (M11)
+Milestone 11 verifies the incrementally-built governance end-to-end (NO new product
+features) and closes the gaps the verification surfaced. Two red-team failure modes
++ every FR-GOV / NFR.
+- **Red-team A (AI -> student without teacher action):** a single test exercises
+  every AI-content path — assessment is draft + student-denied until published;
+  agent drafts never auto-send; focus material is `AUTO_ASSIGN_BLOCKED`; inference
+  claims fail `canSurfaceToStakeholder` until approved; unpublish revokes delivery.
+  No path found.
+- **Red-team B (Principal surfaces expose transcripts):** a back-door hunt seeds a
+  real transcript with a unique marker and asserts it appears in NONE of
+  teacherReport / masteryOverview / drillClass / drillStudent / exportReport /
+  schoolReport. Structural (PrincipalDashboardService never reads the help store).
+- **FR-GOV-002 hardening:** the AI choke point now (a) writes the audit entry BEFORE
+  the provider runs, so a logging failure THROWS and blocks the action (verified: a
+  throwing recorder blocks the call and the provider never runs); (b) logs grounding
+  provenance (ids only — no PII in the immutable log).
+- **FR-GOV-003 retention:** `GovernanceService.runRetention` deletes aged Ask-for-Help
+  data past the configured `retentionDays` and LOGS its own deletion
+  (`retention.deleted`) to the append-only audit.
+- **FR-GOV-006 export/erasure:** `exportStudent` yields a complete human-readable
+  record; `eraseStudent` removes PII (personal_data) while audited facts (mastery)
+  and the id-only, hash-chained audit rows persist — `verifyChain()` stays true, so
+  the chain is preserved WITHOUT retaining PII. Active records require an explicit
+  confirm (PII-only erasure is the default, never destructive record deletion).
+- **FR-GOV-007 fail-safe:** the choke point re-validates the provider on every call
+  (drift to a non-compliant endpoint is blocked architecturally) and can be PAUSED
+  (`pauseForDrift`) so calls fail `AI_PAUSED` when config can't be verified.
+- **FR-GOV-005 anti-rubber-stamping:** publish requires each generated item reviewed,
+  records review-duration + items-opened on the audit entry, and
+  `approvalQualityPrompt` returns a non-blocking spot-check prompt for fast bulk
+  approval (aggregate only, never a per-teacher league table).
+- **NFR-COST-001:** a per-actor fair-use cap on the choke point declines further
+  calls (`COST_CAP_REACHED`) rather than billing unbounded.
+- **NFR-SEC-001/002, NFR-AUD-001, NFR-PRV-002, NFR-SAF-001, FR-SAF-002 restricted
+  visibility** all verified by test (provenance survives archival; content never
+  cross-school; safety trips return a clear logged message; safeguarding events reach
+  only the nominated contact, never a Teacher/Principal surface).
+- **Documented, not unit-tested (honest limitation):** NFR-A11Y-001 (WCAG 2.2 AA) is
+  a UI conformance requirement — the production persona UIs aren't built yet (deferred
+  since ADR-0012), so this remains a build-time requirement for those screens (the
+  fixed governance/brand design tokens carry the contrast obligation). NFR-PERF-001's
+  full latency/load targets are runtime SLOs; the testable invariant (ingestion always
+  resolves to a terminal status, never hangs) is covered by the M1 NFR-PERF-001 test.
+- **No new tables of consequence:** migration 0014 adds only `retention_days` to
+  `school_policies`; retention reuses a new `deleteHelpMessagesBefore`.
+
 ## ADR-0027 — Reporting + co-curricular + behavioural/social (M10)
 Milestone 10 (FR-REP-001/002/004, FR-CAP-002, FR-BSS-001/002). Decisions:
 - **Behavioural/social is a SEPARATE data model** (`behavioural_observations`, migration

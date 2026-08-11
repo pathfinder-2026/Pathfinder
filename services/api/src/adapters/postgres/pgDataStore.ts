@@ -246,15 +246,17 @@ export class PgDataStore implements DataStore {
     return r ? {
       schoolId: r.school_id, teacherComparisonEnabled: r.teacher_comparison_enabled,
       behaviouralConsentConfigured: r.behavioural_consent_configured, behaviouralParentVisible: r.behavioural_parent_visible,
+      retentionDays: r.retention_days === null || r.retention_days === undefined ? null : Number(r.retention_days),
       updatedAt: iso(r.updated_at),
     } : undefined;
   }
   async saveSchoolPolicy(p: SchoolPolicy): Promise<void> {
     await this.sql`insert into school_policies
-      (school_id,teacher_comparison_enabled,behavioural_consent_configured,behavioural_parent_visible,updated_at)
-      values (${p.schoolId},${p.teacherComparisonEnabled},${p.behaviouralConsentConfigured},${p.behaviouralParentVisible},${p.updatedAt})
+      (school_id,teacher_comparison_enabled,behavioural_consent_configured,behavioural_parent_visible,retention_days,updated_at)
+      values (${p.schoolId},${p.teacherComparisonEnabled},${p.behaviouralConsentConfigured},${p.behaviouralParentVisible},${p.retentionDays},${p.updatedAt})
       on conflict (school_id) do update set teacher_comparison_enabled=${p.teacherComparisonEnabled},
-        behavioural_consent_configured=${p.behaviouralConsentConfigured},behavioural_parent_visible=${p.behaviouralParentVisible},updated_at=${p.updatedAt}`;
+        behavioural_consent_configured=${p.behaviouralConsentConfigured},behavioural_parent_visible=${p.behaviouralParentVisible},
+        retention_days=${p.retentionDays},updated_at=${p.updatedAt}`;
   }
 }
 

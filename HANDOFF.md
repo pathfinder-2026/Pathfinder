@@ -1,3 +1,66 @@
+# Handoff — Milestone 11 — Governance / audit hardening pass  (MVP COMPLETE)
+
+**Date:** 2026-08-11
+**Milestone:** 11 — Governance / audit hardening — **COMPLETE**. Milestones 0-11 done.
+**Suite:** `npm test` → **242** (237 `services/api` + 5 `infra`); the same 237
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The red-team (two failure modes) — no path found
+
+- **AI content -> student without teacher action** (`m11-redteam.test.ts`): every
+  AI-content path is draft/blocked (assessment student-denied until published; agent
+  drafts never auto-send; focus material AUTO_ASSIGN_BLOCKED; inference withheld until
+  approved; unpublish revokes delivery).
+- **Principal surfaces expose transcripts**: a back-door hunt seeds a real transcript
+  with a unique marker and asserts it appears in none of teacherReport / masteryOverview
+  / drillClass / drillStudent / exportReport / schoolReport.
+
+## What was verified / hardened (every M11 requirement)
+
+- **FR-GOV-002**: AI choke point audits BEFORE the provider runs -> a logging failure
+  throws and blocks the action (verified: throwing recorder blocks; provider never
+  runs). AI calls log grounding provenance (ids only).
+- **FR-GOV-003**: `GovernanceService.runRetention` deletes aged Ask-for-Help data and
+  logs its own `retention.deleted`.
+- **FR-GOV-006**: `exportStudent` (human-readable) + `eraseStudent` (PII removed,
+  audited facts kept, hash chain preserved via id-only audit rows; active records ->
+  confirm).
+- **FR-GOV-007**: per-call re-validation + `pauseForDrift` -> `AI_PAUSED`.
+- **FR-GOV-005**: publish requires items reviewed; records review-duration + items-opened;
+  `approvalQualityPrompt` non-blocking bulk spot-check.
+- **NFR-COST-001**: per-actor fair-use cap -> `COST_CAP_REACHED`.
+- **NFR-SEC-001/002, NFR-AUD-001, NFR-PRV-002, NFR-SAF-001, FR-SAF-002** verified by test.
+
+## New this milestone (governance mechanisms only)
+
+`GovernanceService` (retention + data-subject export/erasure), AI service-layer
+hardening (audit-before-complete already blocked; added `pauseForDrift`/`resume`,
+per-actor usage cap, provenance field), `AssessmentService.approvalQualityPrompt` +
+publish review metadata, `WorkspaceStore.deleteHelpMessagesBefore`, `SchoolPolicy.retentionDays`,
+migration `0014_governance.sql`.
+
+## Deferred / documented (honest limitations)
+
+- **NFR-A11Y-001 (WCAG 2.2 AA)** is a UI conformance requirement; the production
+  persona screens are deferred (ADR-0012). It remains a build requirement for those
+  screens; the fixed governance/brand design tokens carry the contrast floor.
+- **NFR-PERF-001** full latency/load targets are runtime SLOs (load-tested at deploy);
+  the testable "always resolves to a terminal status, never hangs" invariant is covered
+  (M1 NFR-PERF-001 test).
+- Live Bedrock verification (ADR-0013); actual AWS provisioning; the production
+  design-system UI screens; FR-ADM-003 CSV/SSO + FR-INT-001 (plan-resequenced appendix).
+
+## Next
+
+**The MVP build (Milestones 0-11) is complete.** The Section 5 validation checkpoint
+(evidence pilot teachers publish AI-drafted assessments with real edit rates and act
+on suggestions) remains the real-world gate before scaling. Remaining plan items are
+the Appendix (FR-ADM-003 CSV/SSO, FR-INT-001) and productionisation (live Bedrock, AWS
+provisioning, the design-system UI). Do not build ahead without direction.
+
+---
+
 # Handoff — Milestone 10 — Reporting
 
 **Date:** 2026-08-11

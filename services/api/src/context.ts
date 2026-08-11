@@ -65,6 +65,7 @@ import { PrincipalDashboardService } from "./services/principalDashboardService"
 import { BehaviouralService } from "./services/behaviouralService";
 import { CoCurricularService } from "./services/coCurricularService";
 import { ReportingService } from "./services/reportingService";
+import { GovernanceService } from "./services/governanceService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -115,6 +116,7 @@ export interface AppContext {
   behavioural: BehaviouralService;
   coCurricular: CoCurricularService;
   reporting: ReportingService;
+  governance: GovernanceService;
 }
 
 export interface BuildContextOptions {
@@ -223,5 +225,6 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     behavioural: new BehaviouralService(reportingStore, store, clock, audit),
     coCurricular: new CoCurricularService(reportingStore, store, clock, audit),
     reporting: new ReportingService(reportingStore, activityStore, assessmentStore, agentStore, parentStore, store, skillGraphStore, clock, audit),
+    governance: new GovernanceService(store, workspaceStore, reportingStore, activityStore, clock, audit),
   };
 }

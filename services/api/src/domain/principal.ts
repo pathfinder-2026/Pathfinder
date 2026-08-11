@@ -19,12 +19,14 @@ export interface SchoolPolicy {
   behaviouralConsentConfigured: boolean;
   /** M10 FR-BSS: behavioural notes stay hidden from Parents until the school enables it. */
   behaviouralParentVisible: boolean;
+  /** M11 FR-GOV-003: configured data-retention period in days (null = keep). */
+  retentionDays: number | null;
   updatedAt: string | null;
 }
 
 /** A SchoolPolicy with all gates at their safe defaults (off). */
 export function defaultSchoolPolicy(schoolId: string): SchoolPolicy {
-  return { schoolId, teacherComparisonEnabled: false, behaviouralConsentConfigured: false, behaviouralParentVisible: false, updatedAt: null };
+  return { schoolId, teacherComparisonEnabled: false, behaviouralConsentConfigured: false, behaviouralParentVisible: false, retentionDays: null, updatedAt: null };
 }
 
 export interface TeacherMetrics {

@@ -40,4 +40,9 @@ export class InMemoryWorkspaceStore implements WorkspaceStore {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map(clone);
   }
+  async deleteHelpMessagesBefore(iso: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, m] of this.messages) if (m.createdAt < iso) { this.messages.delete(id); deleted += 1; }
+    return deleted;
+  }
 }

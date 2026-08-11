@@ -455,3 +455,45 @@ automated test. All run against both the in-memory and the Postgres backend.
 | Edge — AI inference blocked; only four categories accepted | "edge — AI inference is blocked by design; only the four categories are accepted" |
 | Edge — per-persona visibility (Teacher notes / Principal aggregate / Parent hidden) | "edge — visibility differs per persona (author Teacher notes; Principal aggregate; Parent hidden)" |
 | Edge — collection disabled without configured consent | "edge — collection does not go live for a school without its consent mechanism configured" |
+
+# Milestone 11 traceability — governance verification + red-team
+
+M11 is a hardening/verification pass (no new features). Tests run against both the
+in-memory and the Postgres backend.
+
+### Red-team (the two failure modes)  (`m11-redteam.test.ts`)
+| Failure mode | Test |
+|---|---|
+| AI content -> student without teacher action (all paths) | "no unreviewed AI artifact is student-reachable: assessment, agent draft, focus material, inference" |
+| Revoked approval stops delivery | "revoked approval stops delivery: unpublish makes an assessment student-inaccessible again" |
+| Principal surfaces expose transcripts (back-door hunt) | "back-door hunt across every Principal surface and export" |
+
+### FR-GOV-001..007 + cost  (`m11-gov.test.ts`)
+| Requirement | Test |
+|---|---|
+| FR-GOV-002 — logging failure blocks the action | "an audit-logging failure BLOCKS the AI action (never silently unlogged)" |
+| FR-GOV-002 — AI call logged with provenance + timestamp | "a generation logs an ai.call with provenance + timestamp" |
+| FR-GOV-002/003 — retention logs its own deletions | "retention deletes aged data and logs its OWN deletion" |
+| FR-GOV-006 — erasure preserves the hash chain | "erasure removes PII, keeps audited facts, and PRESERVES the hash chain" |
+| FR-GOV-006 — active records require confirm | "active records require an explicit confirm (PII-only erasure is the default)" |
+| FR-GOV-006 — export is complete + human-readable | "export produces a complete, human-readable record of the student's data" |
+| FR-GOV-004/007 — guard blocks training-enabled/offshore | "the AI guard blocks training-enabled and offshore endpoints" |
+| FR-GOV-007 — provider drift fails safe (pause) | "provider drift fails safe: the choke point pauses and blocks calls" |
+| NFR-COST-001 — fair-use cap declines, not unbounded | "a fair-use cap declines further AI calls rather than billing unbounded" |
+| FR-GOV-005 — review metadata + bulk-approval prompt | "publish records review metadata and a fast bulk approval is flagged (non-blocking)" |
+
+### NFRs + FR-SAF-002  (`m11-nfr.test.ts`)
+| Requirement | Test |
+|---|---|
+| NFR-SEC-001 — Principal/Teacher permissions distinct | "Principal and Teacher permissions are provably distinct" |
+| NFR-SEC-002 — no transcript in any Principal view | "no Ask-for-Help transcript content appears in any Principal view" |
+| NFR-AUD-001 — provenance survives archival | "provenance survives archival: a grounding reference is retained, not broken" |
+| NFR-PRV-002 — content not cross-school | "one school's content is never visible in another school's approved pool" |
+| NFR-SAF-001 — safety trip is clear + logged | "a safety-filter trip returns a clear message, not a silent failure, and is logged" |
+| FR-SAF-002 — safeguarding event restricted visibility | "a safeguarding event is restricted: never on a Teacher dashboard or Principal surface" |
+
+**Documented (not unit-tested):** NFR-A11Y-001 (WCAG 2.2 AA) — a build-time UI
+conformance requirement; production persona screens are deferred (ADR-0012), and the
+fixed governance/brand tokens carry the contrast obligation. NFR-PERF-001 full
+latency/load targets are runtime SLOs; the testable invariant (ingestion always
+terminal) is covered by the M1 NFR-PERF-001 test.

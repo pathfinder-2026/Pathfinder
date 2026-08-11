@@ -22,4 +22,6 @@ export interface WorkspaceStore {
   findHelpSession(studentId: string, taskId: string): Promise<HelpSession | undefined>;
   insertHelpMessage(m: HelpMessage): Promise<void>;
   listHelpMessages(sessionId: string): Promise<HelpMessage[]>;
+  /** Retention (M11): delete help messages created before `iso`; returns the count. */
+  deleteHelpMessagesBefore(iso: string): Promise<number>;
 }

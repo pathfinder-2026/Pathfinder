@@ -187,10 +187,47 @@ export class AssessmentService {
     if (!a.reviewAcknowledged) {
       throw new ConflictError("REVIEW_REQUIRED", "Review the generated questions before publishing.");
     }
-    const updated: Assessment = { ...a, status: "published", publishedAt: this.clock.isoNow() };
+    // FR-GOV-005 — each generated item must have been reviewed (opened) before a
+    // student-facing publish. This extends FR-ASM-004's review-acknowledgement.
+    const questions = await this.store.listQuestionsByAssessment(assessmentId);
+    if (questions.length > 0 && !questions.every((q) => q.reviewed)) {
+      throw new ConflictError("ITEMS_NOT_OPENED", "Every generated item must be opened/reviewed before publishing.");
+    }
+    const now = this.clock.isoNow();
+    // Anti-rubber-stamping: record review-duration + items-opened on the audit entry.
+    const reviewedAt = this.audit.find((e) => e.action === "assessment.reviewed" && e.subjectId === assessmentId).at(-1)?.at ?? a.createdAt;
+    const reviewDurationMs = Math.max(0, new Date(now).getTime() - new Date(reviewedAt).getTime());
+
+    const updated: Assessment = { ...a, status: "published", publishedAt: now };
     await this.store.updateAssessment(updated);
-    this.audit.append({ action: "assessment.published", actorId: teacherId, subjectType: "assessment", subjectId: assessmentId, metadata: {} });
+    this.audit.append({
+      action: "assessment.published", actorId: teacherId, subjectType: "assessment", subjectId: assessmentId,
+      metadata: { itemsOpened: questions.length, reviewDurationMs },
+    });
     return updated;
+  }
+
+  /**
+   * FR-GOV-005 — a NON-BLOCKING approval-quality signal (anti-rubber-stamping).
+   * If a Teacher approved many items in a very short window (below a per-item
+   * review-time floor), return a gentle spot-check prompt. Aggregate only — never
+   * an individual league table (consistent with FR-PDB-006).
+   */
+  async approvalQualityPrompt(teacherId: string, opts: { windowMs?: number; floorMsPerItem?: number } = {}): Promise<{ flagged: boolean; itemsInWindow: number; prompt: string | null }> {
+    const windowMs = opts.windowMs ?? 5 * 60 * 1000;
+    const floorMsPerItem = opts.floorMsPerItem ?? 15 * 1000;
+    const now = this.clock.now().getTime();
+    const recent = this.audit
+      .find((e) => e.action === "assessment.published" && e.actorId === teacherId && now - new Date(e.at).getTime() <= windowMs);
+    const itemsInWindow = recent.reduce((sum, e) => sum + (Number((e.metadata as { itemsOpened?: number }).itemsOpened) || 0), 0);
+    const totalReviewMs = recent.reduce((sum, e) => sum + (Number((e.metadata as { reviewDurationMs?: number }).reviewDurationMs) || 0), 0);
+    // Flag when the actual average review time per item is below the floor.
+    const avgPerItemMs = itemsInWindow > 0 ? totalReviewMs / itemsInWindow : Infinity;
+    const flagged = itemsInWindow > 0 && avgPerItemMs < floorMsPerItem;
+    return {
+      flagged, itemsInWindow,
+      prompt: flagged ? `You approved ${itemsInWindow} items in a short window — spot-check two?` : null,
+    };
   }
 
   /** Unpublish — allowed only before the scheduled start (accidental publish). */

@@ -58,12 +58,14 @@ npm run dev:app
 ```
 
 Then open **http://localhost:5174** (the app proxies `/api` to the API on `:3000`).
-Create a school + admin, follow the trail (configure classes → invite teachers /
+Sign in (or create a school), follow the trail (configure classes → invite teachers /
 students / parents → operations & branding → go live). On the **Operations** step, try
 a brand colour and a too-light one (the server auto-suggests an accessible alternative),
 and toggle white-label — the draft/approved/computed status chips stay fixed while the
-brand accent changes. The production surface is served under `/api/v1` (see
-[docs/decisions.md](docs/decisions.md) ADR-0031).
+brand accent changes. From the live workspace, **Manage people** assigns roles and edits
+names (FR-ADM-002; Principal per campus, FR-ADM-007) — demoting the only admin is blocked.
+An existing admin **signs back in** with email + password. The production surface is served
+under `/api/v1` (see [docs/decisions.md](docs/decisions.md) ADR-0031).
 
 ## Foundational decisions (locked — never re-litigate)
 
@@ -121,7 +123,7 @@ npm install
 npm test
 ```
 
-Expected: **269 passing tests** — 264 in `services/api` (every acceptance row for
+Expected: **271 passing tests** — 266 in `services/api` (every acceptance row for
 M0–M11 plus the resequenced Appendix A FR-ADM-003 / FR-INT-001 and Appendix B
 FR-WL-001..004: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
 FR-PEER, FR-TAG, FR-STU/FR-SAG, FR-PAR, FR-PDB, FR-REP/FR-CAP/FR-BSS, and the M11
@@ -131,7 +133,7 @@ back-door hunt, and every governance gate — approved-pool / sign-off /
 draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-declined
 / state-layer-lockout / verification-before-data / consent-gated / audit-blocks-on-
 logging-failure / erasure-preserves-hash-chain / drift-fails-safe) and 5 in `infra`
-(region pinning). The **same 264 tests also run against Postgres** (see below).
+(region pinning). The **same 266 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash
@@ -145,7 +147,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 264 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 266 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the

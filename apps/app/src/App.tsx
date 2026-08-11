@@ -4,8 +4,9 @@ import { applyBrand } from "./brand";
 import { Start } from "./screens/Start";
 import { Onboarding } from "./screens/Onboarding";
 import { Workspace } from "./screens/Workspace";
+import { People } from "./screens/People";
 
-type View = "start" | "onboarding" | "workspace" | "loading";
+type View = "start" | "onboarding" | "workspace" | "people" | "loading";
 
 export function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -57,8 +58,11 @@ export function App() {
 
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
+  if (view === "people") {
+    return <People session={session} displayName={displayName} onBack={() => setView("workspace")} onSignOut={onSignOut} />;
+  }
   if (view === "workspace") {
-    return <Workspace session={session} displayName={displayName} onSignOut={onSignOut} />;
+    return <Workspace session={session} displayName={displayName} onManagePeople={() => setView("people")} onSignOut={onSignOut} />;
   }
   return (
     <Onboarding

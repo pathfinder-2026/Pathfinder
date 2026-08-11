@@ -126,6 +126,12 @@ persona as thin vertical slices. First slice: School-Admin onboarding.
   guard); the app itself is typecheck- + production-build-verified and driven live.
   Real logo bytes, the remaining personas (Teacher/Student/Parent/Principal), and
   WCAG 2.2 AA audit tooling (NFR-A11Y-001) come in later slices.
+- **Sign-in + account management (added to the slice).** An existing admin signs back
+  in via `POST /api/v1/auth/login` (resolves school + first campus so the app has full
+  context). A **People** screen assigns roles (`PATCH .../memberships/:id/role` ->
+  `changeMembership`, FR-ADM-002; Principal per campus via the campus scope, FR-ADM-007)
+  and edits names (`PATCH .../users/:id/name` -> new `AccountService.updateName`, audited).
+  The server's last-admin guard (can't demote the only admin) surfaces as a 409 in the UI.
 
 ## ADR-0030 — White-label / multi-tenant branding (Appendix Milestone B)
 FR-WL-001..004 build the configurable branding layer on top of the fixed-vs-themeable

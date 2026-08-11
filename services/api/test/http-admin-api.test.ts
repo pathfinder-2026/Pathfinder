@@ -98,6 +98,64 @@ describe("Production Admin API — onboarding over HTTP", () => {
     await a.close();
   });
 
+  it("an existing admin can sign back in with email + password", async () => {
+    const a = app();
+    await start(a); // creates the admin with password123
+
+    const login = await a.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email: START.admin.email, password: START.admin.password } });
+    expect(login.statusCode).toBe(200);
+    const body = login.json();
+    expect(body.token).toBeTruthy();
+    expect(body.roles).toContain("admin");
+    expect(body.schoolId).toBeTruthy();
+
+    const bad = await a.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email: START.admin.email, password: "wrong" } });
+    expect(bad.statusCode).toBe(401);
+    await a.close();
+  });
+
+  it("assigns roles and edits names (FR-ADM-002), and blocks demoting the only admin", async () => {
+    const a = app();
+    const { token, schoolId, campusId } = await start(a);
+    const auth = { authorization: `Bearer ${token}` };
+
+    // Invite a teacher, then manage accounts.
+    await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/invites`, headers: auth,
+      payload: { role: "teacher", email: "t@riverbank.edu", firstName: "Tara", lastName: "Teach" },
+    });
+
+    const accounts = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/accounts`, headers: auth })).json() as any[];
+    expect(accounts.length).toBe(2); // admin + teacher
+    const teacher = accounts.find((r) => r.role === "teacher")!;
+    const admin = accounts.find((r) => r.role === "admin")!;
+
+    // Change the teacher's role to principal, scoped to the campus (FR-ADM-002/007).
+    const roleRes = await a.inject({
+      method: "PATCH", url: `/api/v1/schools/${schoolId}/memberships/${teacher.membershipId}/role`, headers: auth,
+      payload: { role: "principal", campusId },
+    });
+    expect(roleRes.json()).toMatchObject({ role: "principal" });
+
+    // Edit the teacher's name.
+    const nameRes = await a.inject({
+      method: "PATCH", url: `/api/v1/schools/${schoolId}/users/${teacher.userId}/name`, headers: auth,
+      payload: { firstName: "Tanya", lastName: "Teacher" },
+    });
+    expect(nameRes.statusCode).toBe(200);
+    const after = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/accounts`, headers: auth })).json() as any[];
+    expect(after.find((r) => r.userId === teacher.userId)).toMatchObject({ firstName: "Tanya", role: "principal" });
+
+    // Cannot demote the only admin.
+    const demote = await a.inject({
+      method: "PATCH", url: `/api/v1/schools/${schoolId}/memberships/${admin.membershipId}/role`, headers: auth,
+      payload: { role: "teacher" },
+    });
+    expect(demote.statusCode).toBe(409);
+    await a.close();
+  });
+
   it("rejects onboarding reads without a valid session, and across schools", async () => {
     const a = app();
     const { schoolId } = await start(a);

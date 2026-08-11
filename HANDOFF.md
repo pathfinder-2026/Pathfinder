@@ -4,9 +4,16 @@
 **Scope:** First slice of the deferred production persona UIs (ADR-0012) — a fresh
 production app (`apps/app`) rendering the School-Admin onboarding journey end-to-end.
 Additive; no earlier milestone changed. Built at owner direction to test-drive a pilot.
-**Suite:** `npm test` → **269** (264 `services/api` + 5 `infra`); the same 264 also pass
+**Suite:** `npm test` → **271** (266 `services/api` + 5 `infra`); the same 266 also pass
 **vs Postgres**; `npm run typecheck` clean (api + infra + app); `apps/app` production
 `vite build` clean; the flow was driven live over HTTP.
+
+**Update (same slice, extended):** added **sign-in** for an existing admin
+(`POST /api/v1/auth/login`, resolves school + campus) with a sign-in/create toggle on the
+entry screen; and **account management** — a **People** screen that assigns roles
+(`PATCH .../memberships/:id/role`, FR-ADM-002; Principal per campus, FR-ADM-007) and edits
+names (`PATCH .../users/:id/name` -> new `AccountService.updateName`). The only-admin
+demotion guard surfaces as a 409. Covered by 2 more `http-admin-api.test.ts` cases (5 total).
 
 ## What was built
 - **Production HTTP surface** `services/api/src/http/adminApi.ts` under `/api/v1`

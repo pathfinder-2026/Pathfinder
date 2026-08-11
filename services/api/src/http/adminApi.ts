@@ -36,6 +36,20 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     return { teachers: by("teacher"), students: by("student"), parents: by("parent"), principals: by("principal"), classes: classes.length };
   };
 
+  // ---- Sign in an existing user; resolve their school context ----
+  app.post("/api/v1/auth/login", async (req, reply) => {
+    const { email, password } = req.body as { email: string; password: string };
+    const session = await ctx.auth.login(email, password);
+    const auth = await ctx.auth.authorize(session.token);
+    const campuses = await ctx.store.listCampusesBySchool(auth.user.schoolId);
+    return reply.send({
+      token: session.token,
+      schoolId: auth.user.schoolId,
+      campusId: campuses[0]?.id ?? null,
+      roles: auth.roles,
+    });
+  });
+
   // ---- Onboarding: create the school + founding Admin, issue a session ----
   app.post("/api/v1/onboarding/start", async (req, reply) => {
     const body = req.body as {
@@ -143,6 +157,52 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     const { role, email, firstName, lastName } = req.body as { role: Role; email: string; firstName: string; lastName: string };
     const result = await ctx.invites.invite(schoolId, role, { email, firstName, lastName }, auth.user.id);
     return reply.status(201).send({ inviteId: result.invite.id, userId: result.user.id, role: result.invite.role });
+  });
+
+  // ---- Accounts: assign roles + names (FR-ADM-002 / FR-ADM-007) ----
+  app.get("/api/v1/schools/:schoolId/campuses", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const campuses = await ctx.store.listCampusesBySchool(schoolId);
+    return reply.send(campuses.map((c) => ({ id: c.id, name: c.name })));
+  });
+
+  app.get("/api/v1/schools/:schoolId/accounts", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const memberships = await ctx.store.listMembershipsBySchool(schoolId);
+    const rows = await Promise.all(
+      memberships.map(async (m) => {
+        const user = await ctx.store.getUser(m.userId);
+        const pii = await ctx.store.getPersonalData(m.userId);
+        return {
+          membershipId: m.id, userId: m.userId, role: m.role, campusId: m.campusId,
+          firstName: pii?.firstName ?? null, lastName: pii?.lastName ?? null, email: pii?.email ?? null,
+          status: user?.status ?? "unknown",
+        };
+      }),
+    );
+    return reply.send(rows);
+  });
+
+  app.patch("/api/v1/schools/:schoolId/memberships/:membershipId/role", async (req, reply) => {
+    const { schoolId, membershipId } = req.params as { schoolId: string; membershipId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const membership = await ctx.store.getMembership(membershipId);
+    if (!membership || membership.schoolId !== schoolId) throw new AuthError("Membership not found in this school.");
+    const { role, campusId } = req.body as { role: Role; campusId?: string | null };
+    const updated = await ctx.accounts.changeMembership(membershipId, { role, campusId: campusId ?? membership.campusId }, auth.user.id);
+    return reply.send({ membershipId: updated.id, role: updated.role, campusId: updated.campusId });
+  });
+
+  app.patch("/api/v1/schools/:schoolId/users/:userId/name", async (req, reply) => {
+    const { schoolId, userId } = req.params as { schoolId: string; userId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const target = await ctx.store.getUser(userId);
+    if (!target || target.schoolId !== schoolId) throw new AuthError("User not found in this school.");
+    const { firstName, lastName } = req.body as { firstName: string; lastName: string };
+    await ctx.accounts.updateName(userId, firstName, lastName, auth.user.id);
+    return reply.send({ ok: true });
   });
 
   // ---- Configure operations: safeguarding contact (Ask-for-Help precondition) ----

@@ -3,7 +3,7 @@ import { api, type Session } from "../api";
 import { Banner, Button, Card, Chip, TopBar } from "../components";
 
 /** Post-onboarding landing — confirms the school is live with a summary. */
-export function Workspace({ session, displayName, onSignOut }: { session: Session; displayName: string; onSignOut: () => void }) {
+export function Workspace({ session, displayName, onManagePeople, onSignOut }: { session: Session; displayName: string; onManagePeople: () => void; onSignOut: () => void }) {
   const [summary, setSummary] = useState<{ schoolName: string; counts: { teachers: number; students: number; parents: number; classes: number } } | null>(null);
 
   useEffect(() => { void api.summary(session).then(setSummary); }, [session]);
@@ -20,7 +20,10 @@ export function Workspace({ session, displayName, onSignOut }: { session: Sessio
           <Banner kind="brand">Setup complete — your school is ready for teachers to start building content.</Banner>
 
           <Card>
-            <div className="card__head"><h2 className="section">At a glance</h2></div>
+            <div className="card__head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h2 className="section">At a glance</h2>
+              <Button variant="primary" onClick={onManagePeople}>Manage people</Button>
+            </div>
             <div className="tiles">
               <div className="tile"><div className="tile__num">{summary?.counts.classes ?? "—"}</div><div className="tile__label">Classes</div></div>
               <div className="tile"><div className="tile__num">{summary?.counts.teachers ?? "—"}</div><div className="tile__label">Teachers</div></div>

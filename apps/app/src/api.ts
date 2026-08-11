@@ -67,7 +67,30 @@ export interface ResolvedBranding {
   logo: { available: boolean; url: string | null; fallbackText: string };
 }
 
+export interface Account {
+  membershipId: string;
+  userId: string;
+  role: string;
+  campusId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  status: string;
+}
+
+export const ROLES = ["admin", "teacher", "student", "parent", "principal"] as const;
+
 export const api = {
+  login: (email: string, password: string) =>
+    request<{ token: string; schoolId: string; campusId: string | null; roles: string[] }>(
+      "POST", "/api/v1/auth/login", { email, password },
+    ),
+  campuses: (s: Session) => request<{ id: string; name: string }[]>("GET", `/api/v1/schools/${s.schoolId}/campuses`, undefined, s.token),
+  accounts: (s: Session) => request<Account[]>("GET", `/api/v1/schools/${s.schoolId}/accounts`, undefined, s.token),
+  changeRole: (s: Session, membershipId: string, role: string, campusId?: string | null) =>
+    request<{ role: string }>("PATCH", `/api/v1/schools/${s.schoolId}/memberships/${membershipId}/role`, { role, campusId }, s.token),
+  updateName: (s: Session, userId: string, firstName: string, lastName: string) =>
+    request<{ ok: boolean }>("PATCH", `/api/v1/schools/${s.schoolId}/users/${userId}/name`, { firstName, lastName }, s.token),
   startOnboarding: (payload: unknown) =>
     request<{ token: string; schoolId: string; campusId: string; adminId: string; schoolName: string }>(
       "POST", "/api/v1/onboarding/start", payload,

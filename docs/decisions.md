@@ -94,6 +94,50 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0030 — White-label / multi-tenant branding (Appendix Milestone B)
+FR-WL-001..004 build the configurable branding layer on top of the fixed-vs-themeable
+token split established in Milestone 0 (Foundational Decision 5). Branding is confined
+to the brand layer by construction.
+
+- **Governance stays unreachable.** `resolveBranding` always returns the frozen
+  `GOVERNANCE_TOKENS`; there is no field on any branding input (or column in
+  `branding_configs`) that could set a governance colour; and an explicit
+  `requestGovernanceOverride` is **declined by design** (`GOVERNANCE_TOKENS_FIXED`,
+  audited). FR-WL-004 is thus a structural property, not a runtime check that could
+  be bypassed.
+- **The WCAG-AA floor is evaluated as white-on-primary**, not "best of black/white
+  text". Any solid colour clears AA (4.5:1) against black *or* white — the maximum of
+  the two bottoms out at ~4.58 near luminance 0.179 — so a best-of-both floor would
+  never reject anything. The platform renders **white** text/icons on the brand
+  primary (buttons, chips, header bars, links), so that is the pairing the floor must
+  hold for. `autoAdjust` darkens toward black (monotonically raising white-contrast;
+  black is the terminal 21:1 case). The floor is enforced **twice**: `configureBranding`
+  refuses a failing colour and returns a `BrandContrastError.suggestion`; and
+  `resolveBranding` **re-clamps** at read time, so even a colour written straight to
+  the store (bypassing configure) is served accessibly (FR-WL-004 "server-side
+  regardless").
+- **Logo sanitisation (NEW v1.4).** SVG is accepted only after an active-content scan
+  (`<script>`, `on*=` handlers, `<foreignObject>/<iframe>/<embed>/<object>`,
+  `javascript:`/`data:text/html`, inline DTD / `<!ENTITY>`, SMIL `<set>/<animate>`) —
+  any hit is rejected (`LOGO_ACTIVE_CONTENT`). Raster logos (png/jpg/jpeg) are
+  malware-scanned through the **same `ScannerPort`** the content pipeline uses
+  (`LOGO_INFECTED`). Only safe image content is ever stored. Real logo image bytes +
+  object store (S3, ap-southeast-2) are deferred; the sanitise + reference model is
+  complete.
+- **Point-in-time reports.** `issueReport` snapshots the resolved branding into a
+  persisted `BrandedReport`; `getReport` returns that original snapshot, so a later
+  branding change (or a white-label revert) never rebrands an already-issued report
+  (FR-WL-002 revert / FR-WL-003 point-in-time). Logo availability is resolved against
+  the stored `LogoAsset`, so a missing asset degrades to a **text fallback** (school
+  name), never a broken image.
+- **White-label is presentation-only.** The `internal` surface always resolves to the
+  real Pathfinder identity regardless of a school's white-label toggle (FR-WL-002
+  support-tooling edge). A `user` surface shows the school product name + hides
+  attribution only under full white-label; otherwise it stays co-branded.
+- New `BrandingStore` port (in-memory + Postgres), `BrandingService`, `domain/branding.ts`
+  (pure contrast maths + SVG scan + resolution), migration 0016. `BrandContrastError`
+  carries the accessible suggestion (same pattern as `ConfirmationRequiredError`).
+
 ## ADR-0029 — CSV import + SSO (Appendix Milestone A)
 The plan **resequenced** FR-ADM-003 (CSV import + Google/Microsoft SSO) and FR-INT-001
 (SSO sign-in) out of Milestone 0: manual account creation unblocked the core loop, so

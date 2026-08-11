@@ -517,3 +517,42 @@ terminal) is covered by the M1 NFR-PERF-001 test.
 | Happy path — Teacher signs in with Google, authenticated, no password created | "happy path: a Teacher signs in with Google and is authenticated with no password created" |
 | Edge — IdP outage → clear service-unavailable, not a generic login failure | "IdP outage: a clear service-unavailable error is surfaced, not a generic login failure" |
 | Edge — access revoked upstream → denied AND no stale cached session honoured | "access revoked upstream: sign-in is denied AND any stale cached session stops working" |
+
+## Appendix Milestone B — FR-WL-001 configure brand colour + logo
+`services/api/test/m-b-wl-001-config.test.ts`
+
+| Row | Test |
+|---|---|
+| Happy path — contrast-passing colour + logo saved and applied immediately | "happy path: a contrast-passing colour and a logo are saved and applied immediately" |
+| Edge — colour fails contrast → warn + auto-adjusted alternative | "colour fails contrast: warns and offers an auto-adjusted alternative rather than silently accepting" |
+| Edge — no branding configured → default Pathfinder branding | "no branding configured: default Pathfinder branding is shown, not a broken/empty state" |
+| Edge (NEW v1.4) — active content in logo file → sanitised/rejected | "active content in a logo file (NEW v1.4): an SVG with scripts/handlers is rejected; only safe content is stored" |
+| (Supporting) malware-flagged raster logo rejected | "a malware-flagged raster logo is rejected by the security scan" |
+
+## Appendix Milestone B — FR-WL-002 full white-label mode
+`services/api/test/m-b-wl-002-whitelabel.test.ts`
+
+| Row | Test |
+|---|---|
+| Happy path — school name throughout, no attribution on user surfaces | "happy path: with full white-label on, the school's name appears and no Pathfinder attribution shows on user surfaces" |
+| Edge — internal support tooling keeps real Pathfinder identity | "internal support tooling still shows the real Pathfinder identity (override is presentation-layer only)" |
+| Edge — reverting to co-branded, no retroactive change to issued reports | "reverting to co-branded: attribution + Pathfinder name reappear going forward, with no retroactive change to reports already issued" |
+
+## Appendix Milestone B — FR-WL-003 consistent branding across app/reports/emails
+`services/api/test/m-b-wl-003-consistency.test.ts`
+
+| Row | Test |
+|---|---|
+| Happy path — same logo + colour in app, report and email | "happy path: the same brand colour + logo appear in-app, in an exported report, and in a notification email" |
+| Edge — branding changed after report generated → not retroactively rebranded | "branding changed after a report was generated: reopening it is not retroactively rebranded" |
+| Edge — logo fails to load → text fallback (school name) | "logo fails to load: a text fallback (school name) is shown rather than a broken image" |
+
+## Appendix Milestone B — FR-WL-004 governance visual states remain fixed
+`services/api/test/m-b-wl-004-governance-fixed.test.ts`
+
+| Row | Test |
+|---|---|
+| Happy path — governance chips use fixed platform tokens, never the brand colour | "happy path: with a brand colour applied, governance chips still render with fixed platform tokens, never the brand colour" |
+| Edge — school requests governance-status override → declined by design | "a school's request to recolour a governance status is declined by design" |
+| Edge — accessibility floor (WCAG AA) enforced server-side | "accessibility floor: even a stored non-AA colour is clamped server-side, and governance stays fixed" |
+| (Supporting) branding is isolated per school (multi-tenant) | "branding is stored per school (multi-tenant isolation)" |

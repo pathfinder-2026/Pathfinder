@@ -20,6 +20,7 @@ import { InMemoryAgentStore } from "./adapters/memory/inMemoryAgentStore";
 import { InMemoryWorkspaceStore } from "./adapters/memory/inMemoryWorkspaceStore";
 import { InMemoryParentStore } from "./adapters/memory/inMemoryParentStore";
 import { InMemoryReportingStore } from "./adapters/memory/inMemoryReportingStore";
+import { InMemoryBrandingStore } from "./adapters/memory/inMemoryBrandingStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
@@ -31,6 +32,7 @@ import type { AgentStore } from "./ports/agentStore";
 import type { WorkspaceStore } from "./ports/workspaceStore";
 import type { ParentStore } from "./ports/parentStore";
 import type { ReportingStore } from "./ports/reportingStore";
+import type { BrandingStore } from "./ports/brandingStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -69,6 +71,7 @@ import { ReportingService } from "./services/reportingService";
 import { GovernanceService } from "./services/governanceService";
 import { CsvImportService } from "./services/csvImportService";
 import { SsoService } from "./services/ssoService";
+import { BrandingService } from "./services/brandingService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -83,6 +86,7 @@ export interface AppContext {
   workspaceStore: WorkspaceStore;
   parentStore: ParentStore;
   reportingStore: ReportingStore;
+  brandingStore: BrandingStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -124,6 +128,7 @@ export interface AppContext {
   governance: GovernanceService;
   csvImport: CsvImportService;
   sso: SsoService;
+  branding: BrandingService;
 }
 
 export interface BuildContextOptions {
@@ -138,6 +143,7 @@ export interface BuildContextOptions {
   workspaceStore?: WorkspaceStore;
   parentStore?: ParentStore;
   reportingStore?: ReportingStore;
+  brandingStore?: BrandingStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -174,6 +180,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const workspaceStore = options.workspaceStore ?? new InMemoryWorkspaceStore();
   const parentStore = options.parentStore ?? new InMemoryParentStore();
   const reportingStore = options.reportingStore ?? new InMemoryReportingStore();
+  const brandingStore = options.brandingStore ?? new InMemoryBrandingStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -206,6 +213,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     workspaceStore,
     parentStore,
     reportingStore,
+    brandingStore,
     storage,
     scanner,
     extractor,
@@ -246,5 +254,6 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     governance: new GovernanceService(store, workspaceStore, reportingStore, activityStore, clock, audit),
     csvImport: new CsvImportService(store, accountService, clock, audit),
     sso: new SsoService(store, idp, clock, audit),
+    branding: new BrandingService(brandingStore, store, scanner, clock, audit),
   };
 }

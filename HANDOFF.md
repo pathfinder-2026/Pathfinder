@@ -1,3 +1,57 @@
+# Handoff — Appendix Milestone B — White-label / multi-tenant branding (FR-WL-001..004)
+
+**Date:** 2026-08-11
+**Scope:** The plan's Appendix Milestone B — configurable per-school branding, built on
+the Decision-5 token split. Additive; no earlier milestone changed behaviour.
+**Suite:** `npm test` → **266** (261 `services/api` + 5 `infra`); the same 261 acceptance
+tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run test:db` → 8;
+`npm run typecheck` clean.
+
+## What was built
+- **FR-WL-001 configure colour/logo** — `domain/branding.ts` (pure: WCAG-AA contrast
+  maths + `autoAdjust`, SVG active-content scan, white-label resolution) + `services/
+  brandingService.ts`. Brand colour validated against the AA floor; a failing colour is
+  NOT saved — `configureBranding` throws `BrandContrastError` carrying an accessible
+  `suggestion`. Logos: SVG with scripts/handlers/active content rejected
+  (`LOGO_ACTIVE_CONTENT`); raster malware-scanned via the shared `ScannerPort`
+  (`LOGO_INFECTED`); png/jpg/jpeg/svg only, <=25 MB. No config → default Pathfinder branding.
+- **FR-WL-002 full white-label** — product-name override + attribution removal on `user`
+  surfaces; `internal` surface ALWAYS resolves to the real Pathfinder identity
+  (presentation-layer only); revert is going-forward, not retroactive.
+- **FR-WL-003 consistency + point-in-time** — one `resolveBranding` drives app / report /
+  email; `issueReport` snapshots branding into a persisted `BrandedReport` (`getReport`
+  returns the original → never retroactively rebranded); logo-unavailable → text fallback
+  (school name) via `brandingHeader`.
+- **FR-WL-004 governance fixed** — `resolveBranding` always returns the frozen
+  `GOVERNANCE_TOKENS`; no branding field/column can set a governance colour;
+  `requestGovernanceOverride` is declined by design (`GOVERNANCE_TOKENS_FIXED`); AA floor
+  re-clamped at resolve time (server-side regardless of stored value).
+
+## Files & wiring
+- **New:** `domain/branding.ts`, `ports/brandingStore.ts`,
+  `adapters/memory/inMemoryBrandingStore.ts`, `adapters/postgres/pgBrandingStore.ts`,
+  `services/brandingService.ts`, `db/migrations/0016_branding.sql`
+  (`branding_configs` / `branding_logo_assets` / `branded_reports`), 4 test files
+  (`m-b-wl-001..004`, 15 tests).
+- **Changed:** `domain/errors.ts` (`BrandContrastError`); `context.ts` (wired
+  `brandingStore` + `branding`); `test/helpers.ts` + `test-pg/pgSetupEach.ts` (pg store +
+  truncate list); README, docs/decisions.md (**ADR-0030**), docs/traceability.md.
+
+## Decisions / deferred
+- ADR-0030. The **AA floor is white-on-primary** (the fixed on-primary text colour), not
+  best-of-black/white — any solid colour clears AA against one of them (~4.58 min), so the
+  meaningful floor is the pairing actually rendered. Enforced at BOTH configure and resolve.
+- Real logo image **bytes + object store (S3, ap-southeast-2)** deferred; the sanitise +
+  reference model is complete and test-covered. Governance override is structurally
+  impossible, not just refused.
+
+## How to verify
+`npm test` (266) · `npm run test:pg-suite --workspace services/api` (261 vs Postgres) ·
+`npm run test:db --workspace services/api` (8) · `npm run typecheck`. Migration 0016 is
+ASCII-only and auto-discovered by the pg harness.
+
+---
+
 # Handoff — Appendix Milestone A — CSV import + SSO (FR-ADM-003 / FR-INT-001)
 
 **Date:** 2026-08-11

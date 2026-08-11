@@ -8,6 +8,7 @@ import { afterAll, beforeEach } from "vitest";
  */
 const TABLES = [
   "behavioural_observations", "cocurricular_records", "teacher_comments", "licences",
+  "branded_reports", "branding_logo_assets", "branding_configs",
   "sso_configs", "school_policies", "parent_children",
   "help_messages", "help_sessions", "calendar_events", "student_tasks", "safeguarding_configs",
   "agent_suggestions",

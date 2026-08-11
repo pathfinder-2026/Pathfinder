@@ -65,3 +65,19 @@ export class ServiceUnavailableError extends DomainError {
     super(code, message);
   }
 }
+
+/**
+ * A chosen brand colour fails the WCAG-AA contrast floor (FR-WL-001). Carries an
+ * accessible `suggestion` so the UI can offer an auto-adjusted alternative rather
+ * than silently accepting an inaccessible colour.
+ */
+export class BrandContrastError extends DomainError {
+  constructor(
+    message: string,
+    public readonly suggestion: string,
+    public readonly contrastWhite: number,
+    public readonly contrastBlack: number,
+  ) {
+    super("BRAND_CONTRAST_FAILED", message);
+  }
+}

@@ -30,6 +30,29 @@ export function Card({ children }: { children: ReactNode }) {
   return <section className="card">{children}</section>;
 }
 
+/** Standard admin sub-page shell: top bar, back link, title/lede, sign out. */
+export function PageShell({
+  displayName, title, lede, onBack, onSignOut, children,
+}: {
+  displayName: string; title: string; lede?: string;
+  onBack: () => void; onSignOut: () => void; children: ReactNode;
+}) {
+  return (
+    <div className="app">
+      <TopBar title={displayName} roleTag="Administrator" />
+      <main className="main">
+        <div className="container">
+          <button className="linkish" onClick={onBack}>← Back to workspace</button>
+          <h1 style={{ marginTop: 10 }}>{title}</h1>
+          {lede && <p className="lede">{lede}</p>}
+          {children}
+          <div className="btn-row"><span className="spacer" /><Button variant="ghost" onClick={onSignOut}>Sign out</Button></div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 export function Field({
   label, hint, children, htmlFor,
 }: { label: string; hint?: string; children: ReactNode; htmlFor?: string }) {

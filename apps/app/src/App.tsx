@@ -5,8 +5,12 @@ import { Start } from "./screens/Start";
 import { Onboarding } from "./screens/Onboarding";
 import { Workspace } from "./screens/Workspace";
 import { People } from "./screens/People";
+import { CsvImport } from "./screens/CsvImport";
+import { SsoSettings } from "./screens/SsoSettings";
+import { BrandingSettings } from "./screens/BrandingSettings";
+import { Structure } from "./screens/Structure";
 
-type View = "start" | "onboarding" | "workspace" | "people" | "loading";
+export type View = "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure" | "loading";
 
 export function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -58,11 +62,16 @@ export function App() {
 
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
-  if (view === "people") {
-    return <People session={session} displayName={displayName} onBack={() => setView("workspace")} onSignOut={onSignOut} />;
+  const back = () => setView("workspace");
+  if (view === "people") return <People session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "csv-import") return <CsvImport session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "sso") return <SsoSettings session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "structure") return <Structure session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "branding") {
+    return <BrandingSettings session={session} displayName={displayName} onBrandingChanged={() => refreshBranding(session)} onBack={back} onSignOut={onSignOut} />;
   }
   if (view === "workspace") {
-    return <Workspace session={session} displayName={displayName} onManagePeople={() => setView("people")} onSignOut={onSignOut} />;
+    return <Workspace session={session} displayName={displayName} onNavigate={setView} onSignOut={onSignOut} />;
   }
   return (
     <Onboarding

@@ -229,6 +229,64 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     return reply.status(200).send({ primaryColor: config.primaryColor, whiteLabelEnabled: config.whiteLabelEnabled });
   });
 
+  // ---- CSV bulk import (FR-ADM-003) ----
+  app.post("/api/v1/schools/:schoolId/import/users", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { csv } = req.body as { csv: string };
+    const result = await ctx.csvImport.importUsers(schoolId, csv ?? "", auth.user.id);
+    return reply.send(result);
+  });
+  app.get("/api/v1/schools/:schoolId/export/users", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    return reply.send({ csv: await ctx.csvImport.exportUsersCsv(schoolId) });
+  });
+
+  // ---- SSO configuration (FR-ADM-003 / FR-INT-001) ----
+  app.get("/api/v1/schools/:schoolId/sso", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const config = await ctx.sso.getConfig(schoolId);
+    return reply.send(config ? { provider: config.provider, domain: config.domain } : null);
+  });
+  app.post("/api/v1/schools/:schoolId/sso", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { provider, domain } = req.body as { provider: "google" | "microsoft"; domain: string };
+    const config = await ctx.sso.configure(schoolId, { provider, domain }, auth.user.id);
+    return reply.status(201).send({ provider: config.provider, domain: config.domain });
+  });
+
+  // ---- Branding logo upload (FR-WL-001) ----
+  app.post("/api/v1/schools/:schoolId/branding/logo", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const body = req.body as { format: string; sizeBytes: number; svgSource?: string };
+    const result = await ctx.branding.uploadLogo(schoolId, body, auth.user.id);
+    return reply.status(201).send(result);
+  });
+
+  // ---- Add a campus (FR-ADM-001) ----
+  app.post("/api/v1/schools/:schoolId/campuses", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { name } = req.body as { name: string };
+    const result = await ctx.schools.addCampus(schoolId, { name }, auth.user.id);
+    return reply.status(201).send({ id: result.campus.id, name: result.campus.name });
+  });
+
+  // ---- Assign Principal to one or more campuses (FR-ADM-007) ----
+  app.post("/api/v1/schools/:schoolId/principals", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { userId, campusIds } = req.body as { userId: string; campusIds: string[] };
+    const target = await ctx.store.getUser(userId);
+    if (!target || target.schoolId !== schoolId) throw new AuthError("User not found in this school.");
+    const created = await ctx.principals.assignPrincipal(userId, campusIds, auth.user.id);
+    return reply.status(201).send({ assigned: created.length });
+  });
+
   // ---- Workspace summary ----
   app.get("/api/v1/schools/:schoolId/summary", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };

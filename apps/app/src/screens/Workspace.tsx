@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { api, type Session } from "../api";
 import { Banner, Button, Card, Chip, TopBar } from "../components";
+import type { View } from "../App";
 
-/** Post-onboarding landing — confirms the school is live with a summary. */
-export function Workspace({ session, displayName, onManagePeople, onSignOut }: { session: Session; displayName: string; onManagePeople: () => void; onSignOut: () => void }) {
+const TOOLS: { view: View; title: string; desc: string }[] = [
+  { view: "people", title: "People", desc: "Assign roles and edit names" },
+  { view: "structure", title: "School structure", desc: "Campuses and classes" },
+  { view: "csv-import", title: "Import users (CSV)", desc: "Bulk-create accounts" },
+  { view: "sso", title: "Single sign-on", desc: "Google / Microsoft" },
+  { view: "branding", title: "Branding", desc: "Colour, logo, white-label" },
+];
+
+/** Post-onboarding landing — a hub for the school's admin tools. */
+export function Workspace({ session, displayName, onNavigate, onSignOut }: { session: Session; displayName: string; onNavigate: (v: View) => void; onSignOut: () => void }) {
   const [summary, setSummary] = useState<{ schoolName: string; counts: { teachers: number; students: number; parents: number; classes: number } } | null>(null);
 
   useEffect(() => { void api.summary(session).then(setSummary); }, [session]);
@@ -20,10 +29,7 @@ export function Workspace({ session, displayName, onManagePeople, onSignOut }: {
           <Banner kind="brand">Setup complete — your school is ready for teachers to start building content.</Banner>
 
           <Card>
-            <div className="card__head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h2 className="section">At a glance</h2>
-              <Button variant="primary" onClick={onManagePeople}>Manage people</Button>
-            </div>
+            <div className="card__head"><h2 className="section">At a glance</h2></div>
             <div className="tiles">
               <div className="tile"><div className="tile__num">{summary?.counts.classes ?? "—"}</div><div className="tile__label">Classes</div></div>
               <div className="tile"><div className="tile__num">{summary?.counts.teachers ?? "—"}</div><div className="tile__label">Teachers</div></div>
@@ -33,11 +39,22 @@ export function Workspace({ session, displayName, onManagePeople, onSignOut }: {
           </Card>
 
           <Card>
-            <div className="card__head"><h2 className="section">Next steps</h2><p className="muted">Coming online in later slices of the production UI.</p></div>
+            <div className="card__head"><h2 className="section">Admin tools</h2></div>
+            <div className="tiles">
+              {TOOLS.map((t) => (
+                <button key={t.view} className="tile" style={{ textAlign: "left", cursor: "pointer", background: "var(--pf-card)" }} onClick={() => onNavigate(t.view)}>
+                  <div className="tile__label" style={{ fontSize: 14, color: "var(--pf-ink)", fontWeight: 700 }}>{t.title}</div>
+                  <div className="tile__label" style={{ marginTop: 4 }}>{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="card__head"><h2 className="section">Teaching &amp; learning</h2><p className="muted">Persona surfaces coming online in later slices.</p></div>
             <ul className="people">
-              <li className="person"><span>Content Studio — upload & approve teaching material</span><span className="spacer" /><Chip state="pending">Soon</Chip></li>
-              <li className="person"><span>Assessment Builder — generate from approved content</span><span className="spacer" /><Chip state="pending">Soon</Chip></li>
-              <li className="person"><span>Teacher & Principal dashboards</span><span className="spacer" /><Chip state="pending">Soon</Chip></li>
+              <li className="person"><span>Content Studio · Assessment Builder (Teacher)</span><span className="spacer" /><Chip state="pending">Next</Chip></li>
+              <li className="person"><span>Student workspace · Parent &amp; Principal dashboards</span><span className="spacer" /><Chip state="pending">Next</Chip></li>
             </ul>
           </Card>
 

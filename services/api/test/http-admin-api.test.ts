@@ -156,6 +156,42 @@ describe("Production Admin API — onboarding over HTTP", () => {
     await a.close();
   });
 
+  it("admin management endpoints: CSV import, SSO, branding logo, campus, principal", async () => {
+    const a = app();
+    const { token, schoolId, campusId } = await start(a);
+    const auth = { authorization: `Bearer ${token}` };
+    await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+
+    // CSV import: one valid, one malformed (missing email), one formula-injection.
+    const csv = ["firstName,lastName,email,role,class",
+      "Ann,Ok,ann@r.edu,student,8A",
+      "Bad,NoEmail,,student,8A",
+      "=SUM(1),Inject,inj@r.edu,student,8A"].join("\n");
+    const imp = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/import/users`, headers: auth, payload: { csv } });
+    expect(imp.json()).toMatchObject({ imported: expect.any(Array), rejected: expect.any(Array), flaggedForReview: 1 });
+    expect(imp.json().rejected).toHaveLength(1);
+
+    // SSO configure + read back.
+    const sso = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/sso`, headers: auth, payload: { provider: "google", domain: "school.edu" } });
+    expect(sso.statusCode).toBe(201);
+    expect((await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/sso`, headers: auth })).json()).toMatchObject({ provider: "google", domain: "school.edu" });
+
+    // Branding logo: active-content SVG is rejected.
+    const bad = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/branding/logo`, headers: auth, payload: { format: "svg", sizeBytes: 40, svgSource: "<svg><script>x()</script></svg>" } });
+    expect(bad.statusCode).toBe(409);
+    const good = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/branding/logo`, headers: auth, payload: { format: "svg", sizeBytes: 40, svgSource: "<svg><rect/></svg>" } });
+    expect(good.statusCode).toBe(201);
+
+    // Add a campus, then assign a principal to it.
+    const camp = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/campuses`, headers: auth, payload: { name: "North" } });
+    const northId = camp.json().id as string;
+    const inv = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/invites`, headers: auth, payload: { role: "teacher", email: "pr@r.edu", firstName: "Pat", lastName: "Ral" } });
+    const userId = inv.json().userId as string;
+    const assign = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/principals`, headers: auth, payload: { userId, campusIds: [campusId, northId] } });
+    expect(assign.json()).toMatchObject({ assigned: 2 });
+    await a.close();
+  });
+
   it("rejects onboarding reads without a valid session, and across schools", async () => {
     const a = app();
     const { schoolId } = await start(a);

@@ -91,6 +91,16 @@ export const api = {
     request<{ role: string }>("PATCH", `/api/v1/schools/${s.schoolId}/memberships/${membershipId}/role`, { role, campusId }, s.token),
   updateName: (s: Session, userId: string, firstName: string, lastName: string) =>
     request<{ ok: boolean }>("PATCH", `/api/v1/schools/${s.schoolId}/users/${userId}/name`, { firstName, lastName }, s.token),
+  importUsers: (s: Session, csv: string) =>
+    request<{ totalRows: number; imported: any[]; rejected: { line: number; errors: string[] }[]; duplicates: { line: number; email: string }[]; flaggedForReview: number }>(
+      "POST", `/api/v1/schools/${s.schoolId}/import/users`, { csv }, s.token,
+    ),
+  exportUsers: (s: Session) => request<{ csv: string }>("GET", `/api/v1/schools/${s.schoolId}/export/users`, undefined, s.token),
+  getSso: (s: Session) => request<{ provider: string; domain: string } | null>("GET", `/api/v1/schools/${s.schoolId}/sso`, undefined, s.token),
+  setSso: (s: Session, provider: string, domain: string) => request<{ provider: string; domain: string }>("POST", `/api/v1/schools/${s.schoolId}/sso`, { provider, domain }, s.token),
+  uploadLogo: (s: Session, body: { format: string; sizeBytes: number; svgSource?: string }) => request<{ key: string; format: string }>("POST", `/api/v1/schools/${s.schoolId}/branding/logo`, body, s.token),
+  addCampus: (s: Session, name: string) => request<{ id: string; name: string }>("POST", `/api/v1/schools/${s.schoolId}/campuses`, { name }, s.token),
+  assignPrincipal: (s: Session, userId: string, campusIds: string[]) => request<{ assigned: number }>("POST", `/api/v1/schools/${s.schoolId}/principals`, { userId, campusIds }, s.token),
   startOnboarding: (payload: unknown) =>
     request<{ token: string; schoolId: string; campusId: string; adminId: string; schoolName: string }>(
       "POST", "/api/v1/onboarding/start", payload,

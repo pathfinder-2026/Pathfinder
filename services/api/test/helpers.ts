@@ -12,6 +12,7 @@ import { PgSkillGraphStore } from "../src/adapters/postgres/pgSkillGraphStore";
 import { PgAssessmentStore } from "../src/adapters/postgres/pgAssessmentStore";
 import { PgActivityStore } from "../src/adapters/postgres/pgActivityStore";
 import { PgDashboardStore } from "../src/adapters/postgres/pgDashboardStore";
+import { PgPeerStore } from "../src/adapters/postgres/pgPeerStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -41,6 +42,7 @@ export function makeHarness(): TestHarness {
       assessmentStore: new PgAssessmentStore(sql),
       activityStore: new PgActivityStore(sql),
       dashboardStore: new PgDashboardStore(sql),
+      peerStore: new PgPeerStore(sql),
     });
     return { ctx, clock };
   }
@@ -222,4 +224,32 @@ export async function seedActivityClass(
     seed: opts.seed ?? 42,
   });
   return { ctx, schoolId: school.id, classId: klass.id, adminId: admin.user.id, summary };
+}
+
+// ---- Milestone 5b peer-layer helper ----
+
+/** Create `n` student users (with PII), returning their ids — a peer cohort. */
+export async function makeStudents(ctx: AppContext, schoolId: string, n: number): Promise<string[]> {
+  const ids: string[] = [];
+  for (let i = 0; i < n; i++) ids.push((await makeUser(ctx, schoolId, `stud${i}-${newId()}@riverbank.edu`)).id);
+  return ids;
+}
+
+/**
+ * Stand up a school with a signed graph, a teacher, and approved+mapped content
+ * on a skill node — the substrate a peer test grounds on. `sections` sets the
+ * grounding capacity (for the insufficient-content edge).
+ */
+export async function setupPeerClass(opts: { students?: number; sections?: number } = {}) {
+  const { ctx, clock } = makeHarness();
+  // Unique name: some tests build two peer schools, which would collide on the
+  // shared Postgres backend (in-memory gets a fresh store per harness).
+  const { school } = await seedSchoolWithAdmin(ctx, `Peer School ${newId()}`);
+  const versionId = await setupSignedGraph(ctx, school.id);
+  const skillNodes = (await ctx.skillGraphStore.listNodes(versionId)).filter((n) => n.type === "skill");
+  const nodeId = skillNodes[0]!.id;
+  const teacher = await makeTeacher(ctx, school.id, `peer-teacher-${newId()}@riverbank.edu`);
+  await makeMappedContent(ctx, school.id, teacher.user.id, nodeId, { sections: opts.sections ?? 4 });
+  const students = await makeStudents(ctx, school.id, opts.students ?? 8);
+  return { ctx, clock, schoolId: school.id, teacherId: teacher.user.id, nodeId, students };
 }

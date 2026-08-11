@@ -1,3 +1,66 @@
+# Handoff — Milestone 5b  (Milestone 5 complete — CHECKPOINT NEXT)
+
+**Date:** 2026-08-11
+**Milestone:** 5b — Peer Benchmarking, Peer Review & Peer Testing — **COMPLETE**
+**Suite:** `npm test` → **156** (151 `services/api` + 5 `infra`); the same 151
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The gate
+
+No false external precondition — 5b's precondition ("5a passes") is genuinely met.
+Modeling decisions were surfaced and recorded (ADR-0022): peer-test submissions
+carry the graded score (auto-grading is out of 5b scope); "calendar" is
+represented by per-student dashboard **placements** (full calendar = M7); the
+`locked-computed` design token becomes load-bearing; provisional
+`PEER_THRESHOLDS.minCohort` = 5 (re-validate after M7).
+
+## What was built (every acceptance row tested — 19 rows)
+
+The plan's hard constraint held throughout: **a genuinely separate
+publish-or-withhold code path**, never edit-then-approve, no reuse of the
+"AI draft, editable" component.
+- **FR-PEER-001** (`m5b-peer-001-benchmark.test.ts`) — teacher-facing percentile
+  bands; softened non-ranked student signal (no rank/figure/named peer);
+  small-cohort suppression; withheld by default.
+- **FR-PEER-002** (`m5b-peer-002-review.test.ts`) — anonymised peer review;
+  approve/reject before release; reject-not-rewrite (moderate has no text param);
+  anonymity-risk flag; zero-reviews neutral state.
+- **FR-PEER-003** (`m5b-peer-003-builder.test.ts`) — builder; accommodation-vs-
+  anonymity tension warning; insufficient-content shortfall (not a silent thin test).
+- **FR-PEER-004** (`m5b-peer-004-delivery.test.ts`) — launch → dashboard/calendar
+  placements; cohort locked at launch; clean cancellation.
+- **FR-PEER-005** (`m5b-peer-005-results.test.ts`) — completion + benchmark +
+  explicit publish decision; partial-completion rate; **edit blocked → logged
+  correction path only** (original submission untouched, correction audited);
+  never-published → no auto-release even after a year.
+
+## New this milestone
+
+`domain/peer.ts` (types + `PEER_THRESHOLDS` + `computeBenchmark`/`softenedSignalFor`/
+`anonymityRisk`), `PeerStore` port (in-memory + Postgres), `PeerTestService`,
+`PeerReviewService`, migration `0008_peer.sql` (peer_tests / submissions /
+corrections / reviews / placements, with status + publish CHECK constraints).
+A cross-backend bug was caught and fixed: two peer schools in one test collided on
+the shared Postgres DB → `setupPeerClass` now uses a unique school name.
+
+## Deferred (M5b)
+
+- Peer screens in the preview console (UI still deferred generally).
+- Auto-grading of peer-test answers (out of 5b scope — submissions carry scores).
+- Full student calendar (M7); placements stand in for the dashboard/calendar entry.
+
+## Next — the validation checkpoint (Section 5), NOT M6
+
+Milestones 0–5 are the validation MVP. Before any M6–M11 work there is a **formal
+checkpoint**: evidence that pilot teachers publish AI-drafted assessments with
+meaningful edit rates (not rubber-stamps) and act on class-focus/cohort
+suggestions. Do NOT build ahead of the checkpoint. Milestone 11's governance
+verification remains non-negotiable before any real-student pilot regardless of
+checkpoint outcome.
+
+---
+
 # Handoff — Milestone 5a
 
 **Date:** 2026-08-10

@@ -5,13 +5,13 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 5a complete** — the Teacher-facing intelligence layer
-> (mastery heatmaps + flags, class-level focus areas, suggested cohorts, and the
-> adaptive engine) built against the M4 seeded data, on top of Milestones 0–4
-> (skeleton, Content Studio, Skill Graph, Assessment Builder, synthetic activity).
-> Every suggestion is a draft requiring an explicit teacher action — auto-assign
-> is blocked by design. **Milestone 5b (peer benchmarking/review/testing) is not
-> started**; a formal validation checkpoint follows Milestone 5.
+> **Status: Milestone 5 complete (5a + 5b) — the validation MVP is built.** On top
+> of the Teacher intelligence layer (5a), the peer layer (5b) adds peer
+> benchmarking, anonymised peer review, and the peer-test lifecycle — on a
+> deliberately separate **publish-or-withhold** governance path (computed results
+> are immutable; corrections go through a logged path only; nothing is
+> auto-released to students). **Next is the formal validation checkpoint
+> (Section 5)** before the Milestone 6–11 expansion; do not build ahead.
 
 ## See it running — the preview console
 
@@ -92,13 +92,13 @@ npm install
 npm test
 ```
 
-Expected: **137 passing tests** — 132 in `services/api` (every M0 FR-ADM/FR-ONB,
-M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP
-acceptance row, the M4 synthetic-seed + quarantine tests, plus the approved-pool
-/ sign-off / draft-until-publish / auto-assign-blocked gates, acyclicity
-validation, the AI-service-layer audit path, and the foundations) and 5 in
-`infra` (region pinning). The **same 132 tests also run against Postgres**
-(see below). Type-check with:
+Expected: **156 passing tests** — 151 in `services/api` (every M0 FR-ADM/FR-ONB,
+M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP, M5b
+FR-PEER acceptance row, the M4 synthetic-seed + quarantine tests, plus the
+approved-pool / sign-off / draft-until-publish / auto-assign-blocked /
+publish-or-withhold gates, acyclicity validation, the AI-service-layer audit
+path, and the foundations) and 5 in `infra` (region pinning). The **same 151
+tests also run against Postgres** (see below). Type-check with:
 
 ```bash
 npm run typecheck
@@ -111,7 +111,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 132 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 151 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -241,9 +241,32 @@ Decision 7). The M4 substrate was extended **additively** to carry a mastery
 `history` (trend) and an `assisted_score` (conflicting signals) — see ADR-0020;
 all M4 tests remain green.
 
+## Milestone 5b — Peer Benchmarking, Peer Review & Peer Testing
+
+The peer-comparison layer, on its own **publish-or-withhold** governance path
+(never edit-then-approve). Computed results are immutable by construction:
+
+- **FR-PEER-001** — teacher-facing cohort benchmarks (percentile bands); when
+  published, students see only a **softened, non-ranked** signal ("above/at/below
+  the cohort average"); small cohorts are **suppressed**; benchmarks are
+  **withheld by default** and never auto-released (`PeerTestService`).
+- **FR-PEER-002** — anonymised **peer review** with teacher moderation before
+  release; a teacher can reject/hide but **never rewrite** wording; anonymity-risk
+  flagging in small cohorts; a neutral "no peer feedback this round" for zero
+  reviews (`PeerReviewService`).
+- **FR-PEER-003** — the **Peer Test Builder** (questions, rubric, cohort,
+  anonymity, accommodations); the **accommodation-vs-anonymity** tension is warned,
+  and an over-scoped test tells the teacher what content is missing.
+- **FR-PEER-004** — **delivery**: launch places the test on each student's
+  dashboard/calendar; cohort membership **locks at launch**; cancel removes it
+  cleanly.
+- **FR-PEER-005** — **results**: completion status + benchmark with an explicit
+  publish/withhold decision; **no direct editing** of computed figures — a genuine
+  correction goes through a separate, **logged** path (`recordCorrection`).
+
 ## What is intentionally NOT here yet
 
-Milestone **5b** (peer benchmarking / peer review / peer testing — a separate
-publish-or-withhold governance path), the post-M5 validation checkpoint, then M6
-onward: parent/principal dashboards, reporting, live Bedrock calls, CSV import and
-SSO (FR-ADM-003 / FR-INT-001, plan-deferred), and the web UI screens.
+The post-M5 **validation checkpoint** (Section 5), then Milestones 6–11:
+parent/principal dashboards, reporting, live Bedrock calls, CSV import and SSO
+(FR-ADM-003 / FR-INT-001, plan-deferred), and the production web UI screens (the
+preview console does not yet include peer screens).

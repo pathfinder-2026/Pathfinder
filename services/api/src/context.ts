@@ -15,12 +15,14 @@ import { InMemorySkillGraphStore } from "./adapters/memory/inMemorySkillGraphSto
 import { InMemoryAssessmentStore } from "./adapters/memory/inMemoryAssessmentStore";
 import { InMemoryActivityStore } from "./adapters/memory/inMemoryActivityStore";
 import { InMemoryDashboardStore } from "./adapters/memory/inMemoryDashboardStore";
+import { InMemoryPeerStore } from "./adapters/memory/inMemoryPeerStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
 import type { AssessmentStore } from "./ports/assessmentStore";
 import type { ActivityStore } from "./ports/activityStore";
 import type { DashboardStore } from "./ports/dashboardStore";
+import type { PeerStore } from "./ports/peerStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -44,6 +46,8 @@ import { SyntheticService } from "./services/syntheticService";
 import { TeacherDashboardService } from "./services/teacherDashboardService";
 import { CohortService } from "./services/cohortService";
 import { AdaptiveEngine } from "./services/adaptiveEngine";
+import { PeerTestService } from "./services/peerTestService";
+import { PeerReviewService } from "./services/peerReviewService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -53,6 +57,7 @@ export interface AppContext {
   assessmentStore: AssessmentStore;
   activityStore: ActivityStore;
   dashboardStore: DashboardStore;
+  peerStore: PeerStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -78,6 +83,8 @@ export interface AppContext {
   dashboard: TeacherDashboardService;
   cohorts: CohortService;
   adaptive: AdaptiveEngine;
+  peerTests: PeerTestService;
+  peerReviews: PeerReviewService;
 }
 
 export interface BuildContextOptions {
@@ -87,6 +94,7 @@ export interface BuildContextOptions {
   assessmentStore?: AssessmentStore;
   activityStore?: ActivityStore;
   dashboardStore?: DashboardStore;
+  peerStore?: PeerStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -112,6 +120,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const assessmentStore = options.assessmentStore ?? new InMemoryAssessmentStore();
   const activityStore = options.activityStore ?? new InMemoryActivityStore();
   const dashboardStore = options.dashboardStore ?? new InMemoryDashboardStore();
+  const peerStore = options.peerStore ?? new InMemoryPeerStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -135,6 +144,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     assessmentStore,
     activityStore,
     dashboardStore,
+    peerStore,
     storage,
     scanner,
     extractor,
@@ -160,5 +170,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     dashboard: new TeacherDashboardService(activityStore, dashboardStore, skillGraphStore, contentService, store, clock, audit),
     cohorts: new CohortService(activityStore, dashboardStore, store, clock, audit),
     adaptive: new AdaptiveEngine(activityStore, assessmentStore, store, clock, audit, notifications),
+    peerTests: new PeerTestService(peerStore, contentService, contentStore, skillGraphStore, store, clock, audit),
+    peerReviews: new PeerReviewService(peerStore, store, clock, audit),
   };
 }

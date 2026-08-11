@@ -94,6 +94,45 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0022 — Peer layer as a separate publish-or-withhold governance path (M5b)
+Milestone 5b (Peer Benchmarking, Peer Review, Peer Testing — FR-PEER-001–005)
+completes Milestone 5. Its governance pattern is deliberately DIFFERENT from the
+rest of the platform, and the plan's key design decision warns not to let it leak
+into the generic "AI draft, editable" component. How that was honoured:
+- **Computed results are immutable BY CONSTRUCTION.** Benchmarks are computed on
+  read from submissions (+ corrections); they are never stored, so there is
+  nothing to hand-edit and no "edit result" method exists. The only decisions on
+  results are `publish` / `withhold` (default **withheld**).
+- **Never auto-released.** `studentSignal` gates purely on the publish state;
+  there is no timer anywhere. A test advances the clock a year and the result
+  stays withheld.
+- **Corrections go through a separate, logged path.** `recordCorrection` writes an
+  audited `PeerCorrection` and requires a reason; it never overwrites the original
+  submission (which stays auditable) — the benchmark reflects the correction via
+  that logged path. This is the ONLY way a figure changes.
+- **Student-facing signal is softened + non-ranked** — "above/at/below the cohort
+  average", never a rank, raw figure, or named-peer comparison (asserted: the
+  message contains no digits and no "rank").
+- **Small cohorts are suppressed** (below `PEER_THRESHOLDS.minCohort` = 5,
+  provisional, re-validate after M7): no per-student figures, since small groups
+  weaken both anonymity and reliability. The same threshold drives the anonymity
+  risk flag on peer review and the accommodation-vs-anonymity tension warning.
+- **Peer review is peer-authored.** `moderate(approve|reject)` has NO text
+  parameter — a teacher can reject/hide but never rewrite wording; only approved
+  reviews reach the reviewed student; zero reviews → a neutral "no peer feedback
+  this round" state (not an empty screen).
+- **Cohort locks at launch.** `addToCohort` is refused once launched; launch
+  creates per-student dashboard/calendar **placements**; cancel (pre-launch)
+  removes them cleanly with no partial artifacts. (The full calendar is M7; a
+  placement represents the dashboard/calendar entry.)
+- **Recorded defaults:** peer-test submissions carry the graded score (auto-grading
+  itself is out of 5b scope — the milestone is about the benchmark/publish
+  governance); FR-PEER-001's "common assessment" is the peer test's submissions,
+  one coherent model. New `PeerStore` port (in-memory + Postgres), migration 0008.
+- **This completes the validation MVP.** A formal checkpoint (Section 5) precedes
+  M6–M11: evidence that pilot teachers publish AI-drafted assessments with real
+  edit rates and act on class-focus/cohort suggestions. Do not build ahead.
+
 ## ADR-0021 — Preview / validation console (post-M5a UI)
 The plan defers production web screens (ADR-0012), but the post-M5 checkpoint is
 defined as *pilot teachers using the product* — impossible against a headless

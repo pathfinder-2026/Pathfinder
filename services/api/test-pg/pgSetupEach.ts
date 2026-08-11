@@ -7,6 +7,7 @@ import { afterAll, beforeEach } from "vitest";
  * per test; this mirrors that for Postgres).
  */
 const TABLES = [
+  "peer_placements", "peer_corrections", "peer_reviews", "peer_test_submissions", "peer_tests",
   "focus_dismissals", "group_assignments",
   "mastery_records", "misconception_signals",
   "assessment_attempts", "assessment_questions", "assessment_versions", "assessments",

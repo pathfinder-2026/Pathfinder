@@ -231,3 +231,47 @@ automated test. All run against both the in-memory and the Postgres backend.
 | Edge — persistent misconception → escalate to Teacher, not loop remediation | "edge — a persistent misconception escalates to the Teacher instead of auto-remediating" |
 | Edge — conflicting signals → weigh both, not only the latest score | "edge — conflicting signals: the recommendation weighs both, not only the latest score" |
 | Edge — spaced revision during assessment → deferred, not interrupting | "edge — a spaced-revision reminder is deferred while an assessment is in progress" |
+
+# Milestone 5b traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 5b section maps to exactly one
+automated test. All run against both the in-memory and the Postgres backend.
+
+### FR-PEER-001 — cohort benchmarking  (`m5b-peer-001-benchmark.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — full cohort comparison (percentile bands) for every student | "happy path — full cohort comparison (percentile bands) for every student" |
+| Edge — published to students → softened, non-ranked signal only | "edge — published to students: only a softened, non-ranked signal…" |
+| Edge — cannot edit results (publish/withhold don't change figures) | "edge — cannot edit results: publish/withhold don't change the computed figures…" |
+| Edge — small cohort suppressed/flagged | "edge — small cohort: suppressed/flagged as statistically unreliable…" |
+| Edge — withheld by default, never auto-released | "edge — withheld by default: benchmarking is teacher-only and never auto-released" |
+
+### FR-PEER-002 — anonymised peer review  (`m5b-peer-002-review.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — hidden until the teacher approves | "happy path — reviews are hidden until the teacher approves them" |
+| Edge — inappropriate comment rejected/hidden, never rewritten | "edge — inappropriate comment: rejected/hidden but never rewritten…" |
+| Edge — anonymity breach risk flagged in a small cohort | "edge — anonymity breach risk: flagged in a small cohort, not in a large one" |
+| Edge — zero reviews → neutral 'no peer feedback this round' | "edge — zero reviews: a neutral 'no peer feedback this round'…" |
+
+### FR-PEER-003 — peer test builder  (`m5b-peer-003-builder.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — draft peer test created matching the configuration | "happy path — a draft peer test is created matching the configuration" |
+| Edge — accommodation vs anonymity tension warned, not silent | "edge — accommodation vs anonymity tension: the teacher is warned…" |
+| Edge — insufficient content → told what's missing, not a thin test | "edge — insufficient content for scope: the teacher is told what's missing…" |
+
+### FR-PEER-004 — peer test delivery  (`m5b-peer-004-delivery.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — launched test appears on each student's dashboard/calendar | "happy path — a launched test appears on each selected student's dashboard/calendar" |
+| Edge — cohort locks at launch (added-before included, added-after blocked) | "edge — cohort change after scheduling: included only if added before launch…" |
+| Edge — cancelled before launch → removed cleanly, no artifacts | "edge — cancelled before launch: removed cleanly with no partial artifacts" |
+
+### FR-PEER-005 — peer test results  (`m5b-peer-005-results.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — full completion + benchmark, explicit publish decision required | "happy path — full completion + benchmark, with an explicit publish decision required" |
+| Edge — partial completion rate shown clearly | "edge — partial completion: the completion rate is shown clearly" |
+| Edge — edit attempted → separate, logged correction path only | "edge — edit attempted: no direct edit; a genuine correction goes through a separate, logged path" |
+| Edge — never published → teacher-only, no auto-release after time passes | "edge — never published: results stay teacher-only with no auto-release…" |

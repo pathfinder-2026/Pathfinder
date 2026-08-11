@@ -13,6 +13,7 @@ import { PgAssessmentStore } from "../src/adapters/postgres/pgAssessmentStore";
 import { PgActivityStore } from "../src/adapters/postgres/pgActivityStore";
 import { PgDashboardStore } from "../src/adapters/postgres/pgDashboardStore";
 import { PgPeerStore } from "../src/adapters/postgres/pgPeerStore";
+import { PgAgentStore } from "../src/adapters/postgres/pgAgentStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -43,6 +44,7 @@ export function makeHarness(): TestHarness {
       activityStore: new PgActivityStore(sql),
       dashboardStore: new PgDashboardStore(sql),
       peerStore: new PgPeerStore(sql),
+      agentStore: new PgAgentStore(sql),
     });
     return { ctx, clock };
   }
@@ -252,4 +254,23 @@ export async function setupPeerClass(opts: { students?: number; sections?: numbe
   await makeMappedContent(ctx, school.id, teacher.user.id, nodeId, { sections: opts.sections ?? 4 });
   const students = await makeStudents(ctx, school.id, opts.students ?? 8);
   return { ctx, clock, schoolId: school.id, teacherId: teacher.user.id, nodeId, students };
+}
+
+// ---- Milestone 6 Teacher-Agent helper ----
+
+/**
+ * A school with a signed graph and a teacher, plus two skill nodes: `nodeId`
+ * (map approved content to it) and `emptyNodeId` (deliberately no content, for the
+ * decline path). Content mapping is left to the test.
+ */
+export async function setupAgentSchool() {
+  const { ctx, clock } = makeHarness();
+  const { school, campus } = await seedSchoolWithAdmin(ctx, `Agent School ${newId()}`);
+  const versionId = await setupSignedGraph(ctx, school.id);
+  const skills = (await ctx.skillGraphStore.listNodes(versionId)).filter((n) => n.type === "skill");
+  const teacher = await makeTeacher(ctx, school.id, `agent-teacher-${newId()}@riverbank.edu`);
+  return {
+    ctx, clock, schoolId: school.id, campusId: campus.id, teacherId: teacher.user.id,
+    nodeId: skills[0]!.id, emptyNodeId: skills[1]!.id,
+  };
 }

@@ -1,3 +1,61 @@
+# Handoff — Milestone 6 — Teacher Agent
+
+**Date:** 2026-08-11
+**Milestone:** 6 — Teacher Agent — **COMPLETE**
+**Suite:** `npm test` → **165** (160 `services/api` + 5 `infra`); the same 160
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## Checkpoint note (read first)
+
+Milestone 5 completed the validation MVP, and the plan puts a **formal validation
+checkpoint (Section 5)** before M6–M11. M6 was built **at the product owner's
+explicit direction**, proceeding past that checkpoint. The checkpoint is a
+pilot/business gate (evidence pilot teachers publish AI-drafted assessments with
+real edit rates and act on suggestions), not a code milestone — and M11's
+governance verification stays non-negotiable before any real-student pilot.
+
+## What was built (every acceptance row tested — 9 rows)
+
+The Teacher Agent (`AgentService`) drafts through the single AI service layer
+(every call audited); the deterministic local provider gained an `agent.generate`
+purpose (live Bedrock still deferred, ADR-0013).
+- **FR-TAG-001/002** (`m6-tag-001-planning.test.ts`) — unit sequence / lesson plan
+  grounded in approved content; **no grounding content → declined honestly**;
+  no capability data → **generic differentiation, labelled not-yet-personalised**.
+- **FR-TAG-003** (`m6-tag-003-drafts.test.ts`) — parent summary / feedback are
+  **editable drafts, never auto-sent**, persist unsent (a year later still there);
+  **behavioural/social observations separated + flagged**, never inlined into the
+  academic body.
+- **FR-TAG-004** (`m6-tag-004-grounding.test.ts`) — every suggestion **shows its
+  grounding** (no exceptions); **all** sources listed; a source **archived after
+  the fact keeps a (now-archived) reference**, not a broken link.
+
+## New this milestone
+
+`domain/agent.ts` (AgentSuggestion / GroundingRef / SensitiveSection / AgentResult),
+`AgentStore` port (in-memory + Postgres), `AgentService`, migration `0009_agent.sql`
+(`agent_suggestions`, grounding + sensitive sections as jsonb), and an
+`agent.generate` branch in `LocalClassifierProvider`.
+
+## Deferred (M6)
+
+- Agent screens in the preview console (UI still deferred generally).
+- Actually sending parent comms (M8); M6 drafts persist unsent only.
+- Behavioural taxonomy + consent gate (later); M6 takes structured observations
+  with a category and separates/flags them.
+- A persisted student link on suggestions (arrives with M8 parent comms).
+
+## Next
+
+Return to the **Section 5 checkpoint** (real-world validation) unless the owner
+directs otherwise. The plan's next code milestone is **Milestone 7 — Student
+Workspace + Ask for Help** (note: FR-SAF-002 safeguarding workflow requires legal
+review before M7 builds against it; Ask-for-Help guarantees are state-layer
+enforcement + an adversarial test suite). Do not build ahead without direction.
+
+---
+
 # Handoff — Milestone 5b  (Milestone 5 complete — CHECKPOINT NEXT)
 
 **Date:** 2026-08-11

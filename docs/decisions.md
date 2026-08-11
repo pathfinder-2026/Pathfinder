@@ -94,6 +94,40 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0023 — Teacher Agent: grounded-or-declined, drafts-only (M6)
+Milestone 6 (Teacher Agent — FR-TAG-001–004) is a curriculum/lesson-planning
+assistant grounded in everything built so far. It was built at the product
+owner's explicit direction, proceeding past the Section 5 validation checkpoint
+(the checkpoint is a pilot/business gate, not a code milestone; M11's governance
+verification remains non-negotiable before any real-student pilot). Decisions:
+- **Grounding is mandatory, no exceptions (FR-TAG-004 / DoD).** Every suggestion
+  is created with a non-empty `grounding` snapshot of the approved content it drew
+  on. There is no code path that produces an ungrounded suggestion.
+- **No grounding content → decline honestly.** `generateGrounded` returns
+  `{status:"declined", reason:"no_grounding_content"}` and audits it, instead of
+  inventing a plan. All generation goes through the single AI service layer
+  (Decision 2), so every call is audited (Decision 3); the deterministic local
+  provider gained an `agent.generate` purpose (live Bedrock still deferred, ADR-0013).
+- **Grounding refs survive archiving.** A ref snapshots `{contentItemId, title}`
+  at creation; on view the `archived` flag is re-resolved live from the content
+  store, so a source archived after the fact still shows as a (now-archived)
+  reference rather than a broken link. (`approvedPool` excludes archived, so new
+  grounding is always from approved content; only prior refs can be archived.)
+- **Drafts never auto-send.** Parent comms / feedback / plans persist with
+  `sent:false`; there is deliberately no auto-send path (actually sending parent
+  comms is M8). The teacher can `editDraft` before sending; a draft left untouched
+  for a year is still retrievable and unsent.
+- **Sensitive material is separated and flagged (Decision 7).** Behavioural/social
+  observations are split into `sensitiveSections` (flagged for extra review) and
+  are NEVER inlined into the academic body or sent to the AI draft prompt.
+- **No capability data → generic + labelled.** Differentiation for a class with no
+  mastery data yet returns `personalised:false` with a note, rather than faking
+  personalisation.
+- **Recorded defaults:** observations are supplied structured with a category (the
+  behavioural taxonomy + consent gate is later, v1.3); suggestions don't persist a
+  student link yet (that association arrives with M8 parent comms). New
+  `AgentStore` port (in-memory + Postgres), migration 0009.
+
 ## ADR-0022 — Peer layer as a separate publish-or-withhold governance path (M5b)
 Milestone 5b (Peer Benchmarking, Peer Review, Peer Testing — FR-PEER-001–005)
 completes Milestone 5. Its governance pattern is deliberately DIFFERENT from the

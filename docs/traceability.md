@@ -275,3 +275,29 @@ automated test. All run against both the in-memory and the Postgres backend.
 | Edge — partial completion rate shown clearly | "edge — partial completion: the completion rate is shown clearly" |
 | Edge — edit attempted → separate, logged correction path only | "edge — edit attempted: no direct edit; a genuine correction goes through a separate, logged path" |
 | Edge — never published → teacher-only, no auto-release after time passes | "edge — never published: results stay teacher-only with no auto-release…" |
+
+# Milestone 6 traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 6 section maps to exactly one
+automated test. All run against both the in-memory and the Postgres backend.
+
+### FR-TAG-001 / FR-TAG-002 — planning  (`m6-tag-001-planning.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — unit sequence grounded in approved curriculum content | "happy path — a unit sequence is drafted, grounded in the school's approved curriculum content" |
+| Edge — no grounding content → declines honestly (no invented plan) | "edge — no grounding content: the agent declines honestly instead of inventing an ungrounded plan" |
+| Edge — no capability data → general plan, noted as not personalised | "edge — no capability data yet: a general differentiation plan, noted as not yet personalised" |
+
+### FR-TAG-003 — drafts  (`m6-tag-003-drafts.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — parent summary is an editable draft (not sent) | "happy path — a parent progress summary is a draft the teacher can edit before sending" |
+| Edge — sensitive content separated from academic + flagged | "edge — sensitive content: behavioural observations are separated from academic content and flagged" |
+| Edge — draft never sent → persists, never auto-sent | "edge — draft never sent: it persists and remains accessible later, never auto-sent" |
+
+### FR-TAG-004 — grounding sources  (`m6-tag-004-grounding.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — suggestion shows exactly which approved content grounded it | "happy path — a suggestion shows exactly which approved content it was grounded in" |
+| Edge — multiple sources → all listed, not just one | "edge — multiple sources: all of them are listed, not just one" |
+| Edge — source later archived → reference retained (flagged archived) | "edge — source later archived: the suggestion retains a reference (now flagged archived), not a broken link" |

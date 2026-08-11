@@ -60,7 +60,35 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "assessment.generate") {
       return { text: JSON.stringify(this.generateQuestion(request.input)) };
     }
+    if (request.purpose === "agent.generate") {
+      return { text: this.agentDraft(request.input) };
+    }
     return { text: "" };
+  }
+
+  /**
+   * Deterministically draft Teacher-Agent prose GROUNDED in the supplied approved
+   * sources (never invented from nothing — the caller declines when there are no
+   * sources). Academic only; sensitive observations are separated by the service.
+   */
+  private agentDraft(input: unknown): string {
+    const f = (input ?? {}) as { kind?: string; topic?: string; term?: string; sources?: string[]; personalised?: boolean };
+    const topic = f.topic ?? "the topic";
+    const sources = (f.sources ?? []).join("; ") || "the approved content";
+    switch (f.kind) {
+      case "unit_sequence":
+        return `Draft unit sequence for ${f.term ?? "the term"} on "${topic}", grounded in ${sources}. Week 1 introduces core ideas; subsequent weeks build toward mastery with checkpoints.`;
+      case "lesson_plan":
+        return `Draft lesson plan on "${topic}", grounded in ${sources}. Starter, guided practice, independent task, and an exit check.`;
+      case "differentiation":
+        return `Differentiation plan for "${topic}", grounded in ${sources}. ${f.personalised ? "Tiered to the class's current mastery data." : "A general three-tier plan (support / core / extension)."}`;
+      case "parent_summary":
+        return `Draft progress summary on "${topic}", grounded in ${sources}. The student has engaged with the core concepts and is progressing.`;
+      case "feedback":
+        return `Draft feedback on "${topic}", grounded in ${sources}. Strengths noted; next steps suggested.`;
+      default:
+        return `Draft grounded in ${sources}.`;
+    }
   }
 
   /**

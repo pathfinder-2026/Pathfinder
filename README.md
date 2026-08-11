@@ -5,13 +5,14 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 5 complete (5a + 5b) — the validation MVP is built.** On top
-> of the Teacher intelligence layer (5a), the peer layer (5b) adds peer
-> benchmarking, anonymised peer review, and the peer-test lifecycle — on a
-> deliberately separate **publish-or-withhold** governance path (computed results
-> are immutable; corrections go through a logged path only; nothing is
-> auto-released to students). **Next is the formal validation checkpoint
-> (Section 5)** before the Milestone 6–11 expansion; do not build ahead.
+> **Status: Milestone 6 complete — Teacher Agent.** A curriculum/lesson-planning
+> assistant grounded in everything built so far: every suggestion shows its
+> approved-content grounding (no exceptions), no-grounding requests are declined
+> honestly, and drafts (parent comms, lesson plans, feedback) persist unsent with
+> sensitive material separated and flagged. Built on top of the complete
+> validation MVP (Milestones 0–5). **The Section 5 validation checkpoint remains
+> the real-world gate** (M6 was built at the owner's direction); Milestone 11's
+> governance verification is non-negotiable before any real-student pilot.
 
 ## See it running — the preview console
 
@@ -92,13 +93,14 @@ npm install
 npm test
 ```
 
-Expected: **156 passing tests** — 151 in `services/api` (every M0 FR-ADM/FR-ONB,
+Expected: **165 passing tests** — 160 in `services/api` (every M0 FR-ADM/FR-ONB,
 M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP, M5b
-FR-PEER acceptance row, the M4 synthetic-seed + quarantine tests, plus the
-approved-pool / sign-off / draft-until-publish / auto-assign-blocked /
-publish-or-withhold gates, acyclicity validation, the AI-service-layer audit
-path, and the foundations) and 5 in `infra` (region pinning). The **same 151
-tests also run against Postgres** (see below). Type-check with:
+FR-PEER, M6 FR-TAG acceptance row, the M4 synthetic-seed + quarantine tests, plus
+the approved-pool / sign-off / draft-until-publish / auto-assign-blocked /
+publish-or-withhold / grounded-or-declined gates, acyclicity validation, the
+AI-service-layer audit path, and the foundations) and 5 in `infra` (region
+pinning). The **same 160 tests also run against Postgres** (see below).
+Type-check with:
 
 ```bash
 npm run typecheck
@@ -111,7 +113,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 151 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 160 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -264,9 +266,27 @@ The peer-comparison layer, on its own **publish-or-withhold** governance path
   publish/withhold decision; **no direct editing** of computed figures — a genuine
   correction goes through a separate, **logged** path (`recordCorrection`).
 
+## Milestone 6 — Teacher Agent
+
+A curriculum/lesson-planning assistant grounded in everything built so far
+(`AgentService`), through the single AI service layer (audited):
+
+- **FR-TAG-001 / FR-TAG-002** — draft **unit sequences, lesson plans, and
+  differentiated activities** grounded in approved content; a request with **no
+  grounding content is declined honestly** (never an invented plan); differentiation
+  for a class with no capability data is **generic and labelled** as not yet
+  personalised.
+- **FR-TAG-003** — draft **parent communications and feedback** (drafts only):
+  editable before sending, **never auto-sent**, persist unsent; **behavioural/social
+  observations are separated** from academic content and **flagged for extra review**.
+- **FR-TAG-004** — **every suggestion shows its approved-content grounding** (no
+  exceptions); **all** sources are listed when several are used; a source archived
+  after the fact keeps a (now-archived) **reference rather than a broken link**.
+
 ## What is intentionally NOT here yet
 
-The post-M5 **validation checkpoint** (Section 5), then Milestones 6–11:
-parent/principal dashboards, reporting, live Bedrock calls, CSV import and SSO
-(FR-ADM-003 / FR-INT-001, plan-deferred), and the production web UI screens (the
-preview console does not yet include peer screens).
+The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate), then
+Milestones 7–11: Student Workspace + Ask-for-Help, parent/principal dashboards,
+reporting, live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
+plan-deferred), and the production web UI screens (the preview console does not yet
+include peer or agent screens).

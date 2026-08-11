@@ -22,7 +22,11 @@ export type NotificationType =
   // Milestone 5a — Teacher-facing alerts (the first non-invite consumer of the
   // single notification/event service). Escalations surface on the dashboard AND
   // notify the class Teacher rather than the engine looping remediation forever.
-  | "alert.teacher";
+  | "alert.teacher"
+  // Milestone 7 — an overdue task notifies the assigning teacher; a safeguarding
+  // classifier hit escalates to the school's safeguarding contact (FR-SAF-002).
+  | "alert.overdue"
+  | "alert.safeguarding";
 
 export interface NotificationMessage {
   id: string;

@@ -1,3 +1,75 @@
+# Handoff — Milestone 7 — Student Workspace + Ask for Help (highest-risk)
+
+**Date:** 2026-08-11
+**Milestone:** 7 — Student Workspace + Ask for Help — **COMPLETE**
+**Suite:** `npm test` → **183** (178 `services/api` + 5 `infra`); the same 178
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The gate (verified, not assumed)
+
+The kickoff asserted "the safeguarding configuration step exists in Admin
+onboarding." It did NOT: onboarding had a generic `configure-operations` step but
+**no safeguarding data model**. Surfaced and built: `SafeguardingConfig` (contact,
+role, SLA, after-hours policy) set at `configure-operations`; **Ask for Help
+hard-refuses for any school without it**. Also added the missing `ClassRoom.yearGroup`
+(FR-STU-004 restricted events). ADMIN_STEPS unchanged (no M0 breakage).
+
+## What was built (every acceptance row tested — 11 rows + safety/gate/adversarial)
+
+- **FR-STU-001/003** (`m7-stu-001-dashboard.test.ts`) — low-analytics dashboard;
+  "nothing assigned yet"; overdue without shaming + teacher notified once.
+- **FR-STU-004** (`m7-stu-004-calendar.test.ts`) — calendar; wrong-year-group events
+  invisible; reschedule flagged changed.
+- **FR-STU-002/SAG-001/002** (`m7-sag-help.test.ts`) — grounded hints never the
+  answer; **assessment lockout at the task-state layer**; off-topic redirect;
+  direct-answer refusal; **transcripts teacher-only, Principal hard-denied**; safety
+  filter (unsafe/diagnostic) blocked+logged; safeguarding disclosure escalates to the
+  configured contact; no-config gate.
+- **Adversarial** (`m7-sag-adversarial.test.ts`) — >100 extraction attempts, ≥95%
+  refused, 0% leak; off-topic redirection ≥95%.
+
+## Safety design (why it's safe to ship)
+
+The student message is **never** sent to the model; the tutor only ever receives the
+task's grounding chunk + topic and is asked for a hint — so it structurally cannot
+leak an answer. The assessment lockout and the safeguarding-config gate are decided
+in application state before any AI call. Off-topic/direct-answer/unsafe/safeguarding
+are deterministic, priority-ordered classifiers (`domain/askForHelp.ts`).
+
+## Independent verification (DoD)
+
+An independent reviewer (separate agent, did not build it) adversarially reviewed the
+Ask-for-Help path: all six non-negotiables PASS. It surfaced one real safety-cost gap
+— the safeguarding lexicon missed paraphrases ("abuses me", "beats me", "neglected")
+— now fixed and covered by a new test.
+
+## New this milestone
+
+`domain/safeguarding.ts`, `domain/studentWorkspace.ts`, `domain/askForHelp.ts`;
+`WorkspaceStore` port (in-memory + Postgres); `SafeguardingService`,
+`StudentWorkspaceService`, `AskForHelpService`; DataStore safeguarding-config
+methods; `ClassRoom.yearGroup` + `createClass` param; `help.hint` provider purpose;
+`alert.overdue` / `alert.safeguarding` notification types; migration
+`0010_student_workspace.sql`.
+
+## Deferred (M7)
+
+- Full FR-SAF-002 disclosure workflow (Milestone 11); M7 logs + escalates to the contact.
+- Student/peer/agent screens in the preview console (UI still deferred generally).
+- Minor review notes (accepted): session `teacherId` snapshot at creation; off-topic
+  overlap keys off the task title only (biases toward safe over-refusal).
+
+## Next
+
+The plan's next code milestone is **Milestone 8 — Parent Dashboard** (parent cadence
+/ digest via the notification service; safeguarding items escalate immediately via
+FR-SAF-002, everything else in the digest). The Section 5 checkpoint and M11
+governance verification still gate a real-student pilot. Do not build ahead without
+direction.
+
+---
+
 # Handoff — Milestone 6 — Teacher Agent
 
 **Date:** 2026-08-11

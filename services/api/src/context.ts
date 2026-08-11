@@ -17,6 +17,7 @@ import { InMemoryActivityStore } from "./adapters/memory/inMemoryActivityStore";
 import { InMemoryDashboardStore } from "./adapters/memory/inMemoryDashboardStore";
 import { InMemoryPeerStore } from "./adapters/memory/inMemoryPeerStore";
 import { InMemoryAgentStore } from "./adapters/memory/inMemoryAgentStore";
+import { InMemoryWorkspaceStore } from "./adapters/memory/inMemoryWorkspaceStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
@@ -25,6 +26,7 @@ import type { ActivityStore } from "./ports/activityStore";
 import type { DashboardStore } from "./ports/dashboardStore";
 import type { PeerStore } from "./ports/peerStore";
 import type { AgentStore } from "./ports/agentStore";
+import type { WorkspaceStore } from "./ports/workspaceStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -51,6 +53,9 @@ import { AdaptiveEngine } from "./services/adaptiveEngine";
 import { PeerTestService } from "./services/peerTestService";
 import { PeerReviewService } from "./services/peerReviewService";
 import { AgentService } from "./services/agentService";
+import { SafeguardingService } from "./services/safeguardingService";
+import { StudentWorkspaceService } from "./services/studentWorkspaceService";
+import { AskForHelpService } from "./services/askForHelpService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -62,6 +67,7 @@ export interface AppContext {
   dashboardStore: DashboardStore;
   peerStore: PeerStore;
   agentStore: AgentStore;
+  workspaceStore: WorkspaceStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -90,6 +96,9 @@ export interface AppContext {
   peerTests: PeerTestService;
   peerReviews: PeerReviewService;
   agent: AgentService;
+  safeguarding: SafeguardingService;
+  studentWorkspace: StudentWorkspaceService;
+  askForHelp: AskForHelpService;
 }
 
 export interface BuildContextOptions {
@@ -101,6 +110,7 @@ export interface BuildContextOptions {
   dashboardStore?: DashboardStore;
   peerStore?: PeerStore;
   agentStore?: AgentStore;
+  workspaceStore?: WorkspaceStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -128,6 +138,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const dashboardStore = options.dashboardStore ?? new InMemoryDashboardStore();
   const peerStore = options.peerStore ?? new InMemoryPeerStore();
   const agentStore = options.agentStore ?? new InMemoryAgentStore();
+  const workspaceStore = options.workspaceStore ?? new InMemoryWorkspaceStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -153,6 +164,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     dashboardStore,
     peerStore,
     agentStore,
+    workspaceStore,
     storage,
     scanner,
     extractor,
@@ -181,5 +193,8 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     peerTests: new PeerTestService(peerStore, contentService, contentStore, skillGraphStore, store, clock, audit),
     peerReviews: new PeerReviewService(peerStore, store, clock, audit),
     agent: new AgentService(agentStore, ai, contentService, contentStore, skillGraphStore, activityStore, store, clock, audit),
+    safeguarding: new SafeguardingService(store, clock, audit),
+    studentWorkspace: new StudentWorkspaceService(workspaceStore, store, clock, audit, notifications),
+    askForHelp: new AskForHelpService(workspaceStore, store, assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit, notifications),
   };
 }

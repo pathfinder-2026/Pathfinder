@@ -5,14 +5,16 @@ strictly against the **MVP Build Plan v1.4** (a planning artifact kept outside
 the codebase). Features are added milestone by milestone; nothing is built ahead
 of the current milestone.
 
-> **Status: Milestone 6 complete — Teacher Agent.** A curriculum/lesson-planning
-> assistant grounded in everything built so far: every suggestion shows its
-> approved-content grounding (no exceptions), no-grounding requests are declined
-> honestly, and drafts (parent comms, lesson plans, feedback) persist unsent with
-> sensitive material separated and flagged. Built on top of the complete
-> validation MVP (Milestones 0–5). **The Section 5 validation checkpoint remains
-> the real-world gate** (M6 was built at the owner's direction); Milestone 11's
-> governance verification is non-negotiable before any real-student pilot.
+> **Status: Milestone 7 complete — Student Workspace + Ask for Help** (the plan's
+> highest-risk milestone). Real students see a low-analytics dashboard and calendar
+> of teacher-assigned tasks, with a **task-gated tutor**: the assessment-in-progress
+> lockout is enforced at the task-state layer, the tutor is grounded (never given
+> the answer), off-topic/direct-answer resistance is verified against an adversarial
+> suite (>100 attempts, ≥95% refusal, 0% leak), transcripts are teacher-only (never
+> a Principal), and Ask for Help won't enable without a configured safeguarding
+> contact + SLA. Built on M0–M6. **The Section 5 checkpoint remains the real-world
+> gate**; Milestone 11's governance verification is non-negotiable before any
+> real-student pilot.
 
 ## See it running — the preview console
 
@@ -93,13 +95,14 @@ npm install
 npm test
 ```
 
-Expected: **165 passing tests** — 160 in `services/api` (every M0 FR-ADM/FR-ONB,
+Expected: **183 passing tests** — 178 in `services/api` (every M0 FR-ADM/FR-ONB,
 M1 FR-CONT/FR-ING, M2 FR-SKG, M3 FR-ASM, M5a FR-TDB/FR-CAP/FR-COH/FR-ADP, M5b
-FR-PEER, M6 FR-TAG acceptance row, the M4 synthetic-seed + quarantine tests, plus
-the approved-pool / sign-off / draft-until-publish / auto-assign-blocked /
-publish-or-withhold / grounded-or-declined gates, acyclicity validation, the
+FR-PEER, M6 FR-TAG, M7 FR-STU/FR-SAG acceptance row, the M4 synthetic-seed +
+quarantine tests and the Ask-for-Help adversarial suite, plus the approved-pool /
+sign-off / draft-until-publish / auto-assign-blocked / publish-or-withhold /
+grounded-or-declined / state-layer-lockout gates, acyclicity validation, the
 AI-service-layer audit path, and the foundations) and 5 in `infra` (region
-pinning). The **same 160 tests also run against Postgres** (see below).
+pinning). The **same 178 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash
@@ -113,7 +116,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 160 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 178 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -283,10 +286,28 @@ A curriculum/lesson-planning assistant grounded in everything built so far
   exceptions); **all** sources are listed when several are used; a source archived
   after the fact keeps a (now-archived) **reference rather than a broken link**.
 
+## Milestone 7 — Student Workspace + Ask for Help (highest-risk)
+
+Real students (not synthetic) see and complete teacher-assigned tasks, with the
+task-gated tutor:
+
+- **FR-STU-001 / FR-STU-003** — a **low-analytics dashboard** of today's/this-week's
+  tasks and assessments; a friendly "nothing assigned yet" state; **overdue marked
+  without shaming** and the assigning teacher notified (`StudentWorkspaceService`).
+- **FR-STU-004** — a **calendar** of permitted events; events **restricted to another
+  year group are invisible**; a rescheduled event updates and is **flagged as changed**.
+- **FR-STU-002 / FR-SAG-001 / FR-SAG-002** — **Ask for Help** (`AskForHelpService`):
+  scoped hints grounded in the task's approved content, **never the answer**; the
+  **assessment-in-progress lockout is enforced at the task-state layer** (not a
+  prompt); off-topic and direct-answer-extraction attempts are **refused**
+  (deterministic classifiers, verified by a >100-attempt adversarial suite at ≥95%
+  refusal, 0% leak); **transcripts are visible to the assigning teacher, never to a
+  Principal**; a **safeguarding disclosure escalates** to the configured contact; and
+  the tutor **won't enable without a configured safeguarding contact + SLA**.
+
 ## What is intentionally NOT here yet
 
 The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate), then
-Milestones 7–11: Student Workspace + Ask-for-Help, parent/principal dashboards,
-reporting, live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
-plan-deferred), and the production web UI screens (the preview console does not yet
-include peer or agent screens).
+Milestones 8–11: parent/principal dashboards, reporting, live Bedrock calls, CSV
+import and SSO (FR-ADM-003 / FR-INT-001, plan-deferred), and the production web UI
+screens (the preview console does not yet include peer, agent, or student screens).

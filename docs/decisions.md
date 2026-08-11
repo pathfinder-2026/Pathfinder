@@ -94,6 +94,42 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0024 — Student Workspace + Ask for Help: state-layer safety (M7)
+Milestone 7 (FR-STU-001–004, FR-SAG-001/002) is the plan's highest-risk milestone.
+Gate + gaps surfaced and handled:
+- **The asserted "safeguarding config step exists" was only half-true.** Onboarding
+  had a generic `configure-operations` step but NO safeguarding data model. Added
+  `SafeguardingConfig` (contact, role, SLA hours, after-hours policy) via
+  `SafeguardingService.setConfig` (admin-only, set during `configure-operations`),
+  stored on the DataStore. **Ask for Help hard-refuses** (`safeguarding_not_configured`)
+  for any school without it. ADMIN_STEPS was left unchanged (no M0 test breakage).
+- **No year-group data existed** for FR-STU-004's restricted-event edge → added
+  `ClassRoom.yearGroup` (migration 0010 `ALTER classes`); a student's year group is
+  their class's, and events restricted to another year group are invisible (not greyed).
+- **Assessment-in-progress lockout is enforced at the TASK-STATE layer**, never a
+  prompt: `ask()` returns `not_homework_or_practice` for an assessment task and
+  `assessment_in_progress` when the student has any in-progress attempt — both
+  decided from task/attempt state BEFORE any model call.
+- **Structural answer-safety.** The tutor is only ever given the task's approved-content
+  grounding chunk and asked for a HINT (local provider `help.hint`); it is never given
+  the answer, so it cannot leak one. Off-topic / direct-answer / unsafe / safeguarding
+  are DETERMINISTIC classifiers (domain/askForHelp), so they are testable and
+  prompt-independent; every message is recorded in the transcript.
+- **Adversarial suite** (>100 varied extraction attempts incl. persona/role-play/coercion):
+  ≥95% explicitly refused, 100% no-answer-leak (structural), misses fall through to a
+  safe hint and are surfaced in the transcript. Documented as risk reduction backed by
+  monitoring, not an absolute guarantee (v1.3).
+- **Transcript visibility**: assigning teacher only; a Principal is HARD-denied
+  (`PRINCIPAL_FORBIDDEN`), other teachers denied (`NOT_ASSIGNING_TEACHER`).
+- **Safeguarding classifier hits** log + escalate to the configured contact via the
+  notification service (`alert.safeguarding`); the full FR-SAF-002 disclosure workflow
+  is Milestone 11.
+- **Independent verification** (DoD: "verified by someone other than whoever built it")
+  performed via an independent review pass over the Ask-for-Help path.
+- **Recorded defaults:** overdue notifies the assigning teacher once (`overdueNotified`
+  flag); calendar placement/full calendar remains lightweight (co-curricular etc. as
+  events). New `WorkspaceStore` port (in-memory + Postgres), migration 0010.
+
 ## ADR-0023 — Teacher Agent: grounded-or-declined, drafts-only (M6)
 Milestone 6 (Teacher Agent — FR-TAG-001–004) is a curriculum/lesson-planning
 assistant grounded in everything built so far. It was built at the product

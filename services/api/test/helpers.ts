@@ -14,6 +14,7 @@ import { PgActivityStore } from "../src/adapters/postgres/pgActivityStore";
 import { PgDashboardStore } from "../src/adapters/postgres/pgDashboardStore";
 import { PgPeerStore } from "../src/adapters/postgres/pgPeerStore";
 import { PgAgentStore } from "../src/adapters/postgres/pgAgentStore";
+import { PgWorkspaceStore } from "../src/adapters/postgres/pgWorkspaceStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -45,6 +46,7 @@ export function makeHarness(): TestHarness {
       dashboardStore: new PgDashboardStore(sql),
       peerStore: new PgPeerStore(sql),
       agentStore: new PgAgentStore(sql),
+      workspaceStore: new PgWorkspaceStore(sql),
     });
     return { ctx, clock };
   }
@@ -272,5 +274,38 @@ export async function setupAgentSchool() {
   return {
     ctx, clock, schoolId: school.id, campusId: campus.id, teacherId: teacher.user.id,
     nodeId: skills[0]!.id, emptyNodeId: skills[1]!.id,
+  };
+}
+
+// ---- Milestone 7 Student Workspace / Ask-for-Help helper ----
+
+/**
+ * A school with a signed graph, a year-8 class, an assigning teacher, and a real
+ * (non-synthetic) enrolled student. Safeguarding is configured by default (Ask for
+ * Help's hard precondition); pass `safeguarding: false` to leave it unconfigured.
+ */
+export async function setupStudentSchool(opts: { safeguarding?: boolean; yearGroup?: string } = {}) {
+  const { ctx, clock } = makeHarness();
+  const { school, campus, admin } = await seedSchoolWithAdmin(ctx, `Student School ${newId()}`);
+  const versionId = await setupSignedGraph(ctx, school.id);
+  const nodeId = (await ctx.skillGraphStore.listNodes(versionId)).filter((n) => n.type === "skill")[0]!.id;
+  const yearGroup = opts.yearGroup ?? "8";
+  const klass = await ctx.schools.createClass(school.id, campus.id, "8A", admin.user.id, yearGroup);
+  const teacher = await makeTeacher(ctx, school.id, `sw-teacher-${newId()}@r.edu`, { classId: klass.id });
+
+  const student = await makeUser(ctx, school.id, `sw-stud-${newId()}@r.edu`);
+  await ctx.store.insertMembership({
+    id: newId(), userId: student.id, schoolId: school.id, role: "student", campusId: campus.id, classId: klass.id, department: null,
+  });
+  await ctx.store.insertEnrolment({ id: newId(), studentId: student.id, classId: klass.id, schoolId: school.id, active: true });
+
+  if (opts.safeguarding !== false) {
+    await ctx.safeguarding.setConfig(admin.user.id, school.id, {
+      contactName: "Sam Safe", contactRole: "Designated Safeguarding Lead", slaHours: 24, afterHoursPolicy: "On-call DSL phone",
+    });
+  }
+  return {
+    ctx, clock, schoolId: school.id, campusId: campus.id, adminId: admin.user.id,
+    teacherId: teacher.user.id, studentId: student.id, classId: klass.id, nodeId, yearGroup,
   };
 }

@@ -177,6 +177,7 @@ export class SchoolService {
     campusId: string,
     name: string,
     actorId: string | null = null,
+    yearGroup: string | null = null,
   ): Promise<ClassRoom> {
     const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
@@ -190,6 +191,7 @@ export class SchoolService {
       schoolId,
       campusId,
       name: name.trim(),
+      yearGroup,
       createdAt: this.clock.isoNow(),
     };
     await this.store.insertClass(klass);

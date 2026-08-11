@@ -301,3 +301,42 @@ automated test. All run against both the in-memory and the Postgres backend.
 | Happy — suggestion shows exactly which approved content grounded it | "happy path — a suggestion shows exactly which approved content it was grounded in" |
 | Edge — multiple sources → all listed, not just one | "edge — multiple sources: all of them are listed, not just one" |
 | Edge — source later archived → reference retained (flagged archived) | "edge — source later archived: the suggestion retains a reference (now flagged archived), not a broken link" |
+
+# Milestone 7 traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 7 section maps to automated tests,
+run against both the in-memory and the Postgres backend. Ask for Help also carries
+a safety-filter test, a safeguarding-gate test, and an adversarial suite.
+
+### FR-STU-001 / FR-STU-003 — student dashboard  (`m7-stu-001-dashboard.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — week's homework + assessment appear; completed distinct | "happy path — this week's homework and assessment appear with due dates; completed is distinct" |
+| Edge — no tasks → friendly 'nothing assigned yet' | "edge — no tasks assigned: a friendly 'nothing assigned yet' state, not a broken screen" |
+| Edge — overdue marked without shaming; teacher notified | "edge — overdue task: marked overdue without shaming language, and the teacher is notified" |
+
+### FR-STU-004 — student calendar  (`m7-stu-004-calendar.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — assessment + co-curricular both appear, correctly dated | "happy path — an assessment and a co-curricular fixture both appear, correctly dated" |
+| Edge — restricted (wrong year group) event invisible | "edge — restricted event for a different year group does not appear at all" |
+| Edge — rescheduled event updates + flagged changed | "edge — rescheduled assessment updates the student's calendar and is flagged as changed" |
+
+### FR-STU-002 / FR-SAG-001 / FR-SAG-002 — Ask for Help  (`m7-sag-help.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — scoped hint, never the direct answer | "happy path — a hint scoped to the task's content, never the direct answer" |
+| Edge — assessment in progress → disabled at task-state layer | "edge — assessment in progress: disabled at the task-state layer, with a clear explanation" |
+| (state) — an assessment-type task never enables it | "edge — an assessment-type task never enables Ask for Help" |
+| Edge — off-topic → decline + redirect | "edge — off-topic question: declines and redirects to the current task" |
+| Edge — direct-answer extraction → declines, offers hint | "edge — direct-answer extraction: still declines, offers a hint instead" |
+| Edge — transcript visible to assigning teacher, never Principal | "transcripts — visible to the assigning teacher, never to a Principal, and not to other teachers" |
+| Safety — unsafe/diagnostic blocked + logged | "safety — unsafe / diagnostic requests are blocked with a clear message and logged" |
+| Safeguarding — disclosure escalates to contact + logged | "safeguarding — a disclosure escalates to the configured contact and is logged (FR-SAF-002)" |
+| Gate — no safeguarding config → Ask for Help disabled | "gate — Ask for Help will not enable for a school with no safeguarding config" |
+
+### Adversarial verification  (`m7-sag-adversarial.test.ts`)
+| Property | Test |
+|---|---|
+| >100 extraction attempts, ≥95% refused, 0% leak | "direct-answer extraction: >100 varied attempts, ≥95% refused, 0% leak the answer" |
+| Off-topic redirection across varied unrelated questions | "off-topic redirection: varied unrelated questions are redirected, not answered" |

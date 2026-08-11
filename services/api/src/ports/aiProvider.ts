@@ -63,7 +63,23 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "agent.generate") {
       return { text: this.agentDraft(request.input) };
     }
+    if (request.purpose === "help.hint") {
+      return { text: this.helpHint(request.input) };
+    }
     return { text: "" };
+  }
+
+  /**
+   * A HINT grounded in the task's approved content — never the answer. The tutor
+   * is given only the grounding chunk (never a solution), so it structurally
+   * cannot leak one; it nudges the student toward the next step.
+   */
+  private helpHint(input: unknown): string {
+    const f = (input ?? {}) as { chunk?: string; topic?: string };
+    const topic = (f.topic ?? "this task").trim();
+    const chunk = (f.chunk ?? "").trim();
+    const anchor = chunk ? chunk.split(/\s+/).slice(0, 10).join(" ") : topic;
+    return `Here's a hint on ${topic}: revisit "${anchor}". Try the first step yourself and check it against the approved material — I can nudge you if you get stuck, but I won't do it for you.`;
   }
 
   /**

@@ -65,6 +65,8 @@ export interface ClassRoom {
   schoolId: string;
   campusId: string;
   name: string;
+  /** Year group (e.g. "8"); drives restricted calendar-event visibility (M7). */
+  yearGroup?: string | null;
   createdAt: string;
 }
 

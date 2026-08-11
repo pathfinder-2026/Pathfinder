@@ -13,6 +13,7 @@ import type {
   User,
 } from "../../domain/types";
 import type { Credential, DataStore, OnboardingProgress, Session } from "../../ports/dataStore";
+import type { SafeguardingConfig } from "../../domain/safeguarding";
 import { iso, isoOrNull, type Sql } from "./pgClient";
 
 /** PostgreSQL DataStore adapter (Amazon RDS/Aurora, ap-southeast-2). */
@@ -71,8 +72,8 @@ export class PgDataStore implements DataStore {
 
   // Classes
   async insertClass(k: ClassRoom): Promise<void> {
-    await this.sql`insert into classes (id,school_id,campus_id,name,created_at)
-      values (${k.id},${k.schoolId},${k.campusId},${k.name},${k.createdAt})`;
+    await this.sql`insert into classes (id,school_id,campus_id,name,year_group,created_at)
+      values (${k.id},${k.schoolId},${k.campusId},${k.name},${k.yearGroup ?? null},${k.createdAt})`;
   }
   async getClass(id: string): Promise<ClassRoom | undefined> {
     return mapClass((await this.sql`select * from classes where id=${id}`)[0]);
@@ -220,6 +221,24 @@ export class PgDataStore implements DataStore {
       on conflict (school_id) do update set completed_steps=${this.sql.json(p.completedSteps)},
         workspace_entered=${p.workspaceEntered}`;
   }
+
+  async getSafeguardingConfig(schoolId: string): Promise<SafeguardingConfig | undefined> {
+    const r = (await this.sql`select * from safeguarding_configs where school_id=${schoolId}`)[0];
+    return r
+      ? {
+          schoolId: r.school_id, contactName: r.contact_name, contactRole: r.contact_role,
+          slaHours: Number(r.sla_hours), afterHoursPolicy: r.after_hours_policy,
+          configuredBy: r.configured_by, configuredAt: iso(r.configured_at),
+        }
+      : undefined;
+  }
+  async saveSafeguardingConfig(c: SafeguardingConfig): Promise<void> {
+    await this.sql`insert into safeguarding_configs
+      (school_id,contact_name,contact_role,sla_hours,after_hours_policy,configured_by,configured_at)
+      values (${c.schoolId},${c.contactName},${c.contactRole},${c.slaHours},${c.afterHoursPolicy},${c.configuredBy},${c.configuredAt})
+      on conflict (school_id) do update set contact_name=${c.contactName},contact_role=${c.contactRole},
+        sla_hours=${c.slaHours},after_hours_policy=${c.afterHoursPolicy},configured_by=${c.configuredBy},configured_at=${c.configuredAt}`;
+  }
 }
 
 // ---- row mappers ----
@@ -238,7 +257,7 @@ function mapTerm(r: Row): Term {
   return { id: r!.id, academicYearId: r!.academic_year_id, name: r!.name, startDate: asDate(r!.start_date), endDate: asDate(r!.end_date) };
 }
 function mapClass(r: Row): ClassRoom | undefined {
-  return r && { id: r.id, schoolId: r.school_id, campusId: r.campus_id, name: r.name, createdAt: iso(r.created_at) };
+  return r && { id: r.id, schoolId: r.school_id, campusId: r.campus_id, name: r.name, yearGroup: r.year_group ?? null, createdAt: iso(r.created_at) };
 }
 function mapUser(r: Row): User | undefined {
   return r && { id: r.id, schoolId: r.school_id, status: r.status, synthetic: r.synthetic, createdAt: iso(r.created_at) };

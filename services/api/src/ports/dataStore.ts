@@ -12,6 +12,7 @@ import type {
   Term,
   User,
 } from "../domain/types";
+import type { SafeguardingConfig } from "../domain/safeguarding";
 
 /** Stored password credential (scrypt hash + salt). */
 export interface Credential {
@@ -111,4 +112,8 @@ export interface DataStore {
   // Onboarding
   getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined>;
   saveOnboarding(progress: OnboardingProgress): Promise<void>;
+
+  // Safeguarding config (M7 — a hard precondition for Ask for Help)
+  getSafeguardingConfig(schoolId: string): Promise<SafeguardingConfig | undefined>;
+  saveSafeguardingConfig(config: SafeguardingConfig): Promise<void>;
 }

@@ -7,6 +7,7 @@ import { afterAll, beforeEach } from "vitest";
  * per test; this mirrors that for Postgres).
  */
 const TABLES = [
+  "behavioural_observations", "cocurricular_records", "teacher_comments", "licences",
   "school_policies", "parent_children",
   "help_messages", "help_sessions", "calendar_events", "student_tasks", "safeguarding_configs",
   "agent_suggestions",

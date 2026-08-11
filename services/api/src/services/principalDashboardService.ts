@@ -1,6 +1,7 @@
 import { ConflictError, NotFoundError } from "../domain/errors";
 import { latestPerPair, masteryLevel } from "../domain/insights";
 import {
+  defaultSchoolPolicy,
   mean,
   PRINCIPAL_THRESHOLDS,
   type ClassDrillView,
@@ -213,7 +214,8 @@ export class PrincipalDashboardService {
 
   async setPolicy(adminId: string, schoolId: string, input: { teacherComparisonEnabled: boolean }): Promise<SchoolPolicy> {
     await this.requireAdmin(adminId, schoolId);
-    const policy: SchoolPolicy = { schoolId, teacherComparisonEnabled: input.teacherComparisonEnabled, updatedAt: this.clock.isoNow() };
+    // Merge onto the existing policy so behavioural gates are preserved.
+    const policy: SchoolPolicy = { ...(await this.policy(schoolId)), teacherComparisonEnabled: input.teacherComparisonEnabled, updatedAt: this.clock.isoNow() };
     await this.store.saveSchoolPolicy(policy);
     this.audit.append({ action: "principal.policy.set", actorId: adminId, subjectType: "school", subjectId: schoolId, metadata: { teacherComparisonEnabled: input.teacherComparisonEnabled } });
     return policy;
@@ -222,7 +224,7 @@ export class PrincipalDashboardService {
   // ---- helpers ----
 
   private async policy(schoolId: string): Promise<SchoolPolicy> {
-    return (await this.store.getSchoolPolicy(schoolId)) ?? { schoolId, teacherComparisonEnabled: false, updatedAt: null };
+    return (await this.store.getSchoolPolicy(schoolId)) ?? defaultSchoolPolicy(schoolId);
   }
 
   private async classStudentIds(schoolId: string, classId: string): Promise<Set<string>> {

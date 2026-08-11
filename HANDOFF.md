@@ -1,3 +1,58 @@
+# Handoff — Milestone 10 — Reporting
+
+**Date:** 2026-08-11
+**Milestone:** 10 — Reporting (academic, co-curricular, behavioural/social) — **COMPLETE**
+**Suite:** `npm test` → **223** (218 `services/api` + 5 `infra`); the same 218
+acceptance tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run
+test:db` → 8. `npm run typecheck` clean.
+
+## The gate (behavioural/social)
+
+The plan flags behavioural/social as needing a pre-build policy sign-off; the v1.3
+MVP default is implemented exactly (a school may tighten, not loosen). Behavioural
+data is a **separate model** from academic mastery; the four categories only; **no
+AI inference** (no auto-scoring code path; `autoScore()` throws
+`BEHAVIOURAL_INFERENCE_BLOCKED`); **collection is consent-gated**
+(`CONSENT_NOT_CONFIGURED` until `configureConsent`); per-persona visibility (author
+Teacher + Admin notes, Principal aggregate, Parent hidden until enabled). The gates
+live on `school_policies`.
+
+## What was built (every acceptance row tested — 13 rows)
+
+- **FR-REP-001** (`m10-rep-001-teacher.test.ts`) — growth report reflects mastery
+  change; partial-term flagged limited/early.
+- **FR-REP-002** (`m10-rep-002-principal.test.ts`) — school-level aggregate; prorated
+  partial-month cost.
+- **FR-REP-004** (`m10-rep-004-parent.test.ts`) — strengths/focus/comments; no-comments
+  section omitted.
+- **FR-CAP-002** (`m10-cap-002-cocurricular.test.ts`) — co-curricular in its own simpler
+  structure, separate from academic; no-data omitted; free-text skill (no node id).
+- **FR-BSS-001/002** (`m10-bss-observations.test.ts`) — teacher-authored + separate;
+  inference blocked + four-categories-only; per-persona visibility; consent gate.
+
+## New this milestone
+
+`domain/reporting.ts` (co-curricular / behavioural / comment / licence types + cost
+proration), `ReportingStore` port (in-memory + Postgres), `BehaviouralService`,
+`CoCurricularService`, `ReportingService`, migration `0013_reporting.sql`, and
+`SchoolPolicy` extended (`behaviouralConsentConfigured`, `behaviouralParentVisible`;
+both the M9 and M10 policy setters read-modify-write to preserve each other's gates).
+
+## Deferred (M10)
+
+- Reporting screens in the preview console (UI still deferred generally).
+- "turnaround" and richer usage/cost analytics (usage is an assessment/agent-draft
+  proxy; NFR-COST-001 AI usage guardrails are M11).
+
+## Next
+
+The plan's next code milestone is **Milestone 11 — Governance / audit hardening pass**
+(FR-GOV-001..007, FR-SAF-002, NFR-PERF-001, NFR-COST-001). **This is the non-negotiable
+gate before any real-student pilot**, regardless of the Section 5 checkpoint outcome.
+Do not build ahead without direction.
+
+---
+
 # Handoff — Milestone 9 — Principal Dashboard (school-level)
 
 **Date:** 2026-08-11

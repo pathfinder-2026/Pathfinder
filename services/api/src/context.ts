@@ -19,6 +19,7 @@ import { InMemoryPeerStore } from "./adapters/memory/inMemoryPeerStore";
 import { InMemoryAgentStore } from "./adapters/memory/inMemoryAgentStore";
 import { InMemoryWorkspaceStore } from "./adapters/memory/inMemoryWorkspaceStore";
 import { InMemoryParentStore } from "./adapters/memory/inMemoryParentStore";
+import { InMemoryReportingStore } from "./adapters/memory/inMemoryReportingStore";
 import type { DataStore } from "./ports/dataStore";
 import type { ContentStore } from "./ports/contentStore";
 import type { SkillGraphStore } from "./ports/skillGraphStore";
@@ -29,6 +30,7 @@ import type { PeerStore } from "./ports/peerStore";
 import type { AgentStore } from "./ports/agentStore";
 import type { WorkspaceStore } from "./ports/workspaceStore";
 import type { ParentStore } from "./ports/parentStore";
+import type { ReportingStore } from "./ports/reportingStore";
 import type { StoragePort } from "./ports/storagePort";
 import type { ScannerPort } from "./ports/scannerPort";
 import type { TextExtractorPort } from "./ports/textExtractorPort";
@@ -60,6 +62,9 @@ import { StudentWorkspaceService } from "./services/studentWorkspaceService";
 import { AskForHelpService } from "./services/askForHelpService";
 import { ParentService } from "./services/parentService";
 import { PrincipalDashboardService } from "./services/principalDashboardService";
+import { BehaviouralService } from "./services/behaviouralService";
+import { CoCurricularService } from "./services/coCurricularService";
+import { ReportingService } from "./services/reportingService";
 
 /** Everything an application entrypoint (HTTP, tests) needs, wired together. */
 export interface AppContext {
@@ -73,6 +78,7 @@ export interface AppContext {
   agentStore: AgentStore;
   workspaceStore: WorkspaceStore;
   parentStore: ParentStore;
+  reportingStore: ReportingStore;
   storage: StoragePort;
   scanner: ScannerPort;
   extractor: TextExtractorPort;
@@ -106,6 +112,9 @@ export interface AppContext {
   askForHelp: AskForHelpService;
   parents: ParentService;
   principalDashboard: PrincipalDashboardService;
+  behavioural: BehaviouralService;
+  coCurricular: CoCurricularService;
+  reporting: ReportingService;
 }
 
 export interface BuildContextOptions {
@@ -119,6 +128,7 @@ export interface BuildContextOptions {
   agentStore?: AgentStore;
   workspaceStore?: WorkspaceStore;
   parentStore?: ParentStore;
+  reportingStore?: ReportingStore;
   storage?: StoragePort;
   scanner?: ScannerPort;
   extractor?: TextExtractorPort;
@@ -148,6 +158,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const agentStore = options.agentStore ?? new InMemoryAgentStore();
   const workspaceStore = options.workspaceStore ?? new InMemoryWorkspaceStore();
   const parentStore = options.parentStore ?? new InMemoryParentStore();
+  const reportingStore = options.reportingStore ?? new InMemoryReportingStore();
   const storage = options.storage ?? new InMemoryStorage();
   const scanner = options.scanner ?? new InMemoryScanner();
   const extractor = options.extractor ?? new InMemoryTextExtractor();
@@ -175,6 +186,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     agentStore,
     workspaceStore,
     parentStore,
+    reportingStore,
     storage,
     scanner,
     extractor,
@@ -208,5 +220,8 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     askForHelp: new AskForHelpService(workspaceStore, store, assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit, notifications),
     parents: new ParentService(parentStore, store, activityStore, workspaceStore, skillGraphStore, ai, clock, audit, notifications),
     principalDashboard: new PrincipalDashboardService(store, activityStore, assessmentStore, agentStore, workspaceStore, clock, audit),
+    behavioural: new BehaviouralService(reportingStore, store, clock, audit),
+    coCurricular: new CoCurricularService(reportingStore, store, clock, audit),
+    reporting: new ReportingService(reportingStore, activityStore, assessmentStore, agentStore, parentStore, store, skillGraphStore, clock, audit),
   };
 }

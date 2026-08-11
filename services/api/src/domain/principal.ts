@@ -15,7 +15,16 @@ export interface SchoolPolicy {
   schoolId: string;
   /** FR-PDB-006: teacher-to-teacher comparison is disabled unless the school enables it. */
   teacherComparisonEnabled: boolean;
+  /** M10 FR-BSS: behavioural/social collection is off until parental consent is configured. */
+  behaviouralConsentConfigured: boolean;
+  /** M10 FR-BSS: behavioural notes stay hidden from Parents until the school enables it. */
+  behaviouralParentVisible: boolean;
   updatedAt: string | null;
+}
+
+/** A SchoolPolicy with all gates at their safe defaults (off). */
+export function defaultSchoolPolicy(schoolId: string): SchoolPolicy {
+  return { schoolId, teacherComparisonEnabled: false, behaviouralConsentConfigured: false, behaviouralParentVisible: false, updatedAt: null };
 }
 
 export interface TeacherMetrics {

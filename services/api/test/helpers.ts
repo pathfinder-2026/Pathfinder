@@ -16,6 +16,7 @@ import { PgPeerStore } from "../src/adapters/postgres/pgPeerStore";
 import { PgAgentStore } from "../src/adapters/postgres/pgAgentStore";
 import { PgWorkspaceStore } from "../src/adapters/postgres/pgWorkspaceStore";
 import { PgParentStore } from "../src/adapters/postgres/pgParentStore";
+import { PgReportingStore } from "../src/adapters/postgres/pgReportingStore";
 
 export interface TestHarness {
   ctx: AppContext;
@@ -49,6 +50,7 @@ export function makeHarness(): TestHarness {
       agentStore: new PgAgentStore(sql),
       workspaceStore: new PgWorkspaceStore(sql),
       parentStore: new PgParentStore(sql),
+      reportingStore: new PgReportingStore(sql),
     });
     return { ctx, clock };
   }

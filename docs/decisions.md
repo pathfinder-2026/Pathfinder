@@ -94,6 +94,38 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0027 — Reporting + co-curricular + behavioural/social (M10)
+Milestone 10 (FR-REP-001/002/004, FR-CAP-002, FR-BSS-001/002). Decisions:
+- **Behavioural/social is a SEPARATE data model** (`behavioural_observations`, migration
+  0013) from academic mastery, everywhere it appears (the DoD). It carries only
+  {category, note, authorTeacherId} — deliberately **no score/inference field**.
+- **The v1.3 MVP default is implemented exactly** (a school may tighten, not loosen):
+  - **Four categories only** (collaboration/communication/resilience/participation) —
+    a 5th is rejected.
+  - **Zero AI inference, blocked by design** — there is no auto-scoring code path;
+    `autoScore()` exists solely to make the guarantee explicit and throws
+    `BEHAVIOURAL_INFERENCE_BLOCKED`.
+  - **Collection is consent-gated** — `recordObservation` throws
+    `CONSENT_NOT_CONFIGURED` until an Admin calls `configureConsent` (the parental-
+    consent mechanism sign-off). Gates live on `school_policies`
+    (`behavioural_consent_configured`, `behavioural_parent_visible`).
+  - **Per-persona visibility**: authoring Teacher + Admin see notes; Principal sees an
+    aggregate (counts) only; Parent is hidden until the school enables it.
+  - The pre-build policy sign-off remains a per-school runtime action, not bypassed.
+- **Co-curricular capability (FR-CAP-002)** uses its own SIMPLER structure
+  (`cocurricular_records`: domain sport/arts/music + free-text skill + level) — NOT
+  the academic skill graph (no node id) — and is kept separate from academic mastery.
+- **Reports** (`ReportingService`): teacher growth reflects mastery change and is
+  **flagged limited/early** when the data window is < 6 weeks; the school report is
+  **school-level only**; the **cost report prorates** a partial month
+  (`proratedCost`); the parent report includes strengths/focus/teacher-comments/
+  co-curricular and **omits empty sections gracefully** (empty arrays, never a broken
+  placeholder). Parent report is gated on a verified parent-child link (M8).
+- **Recorded defaults:** teacher comments are a small `teacher_comments` model; usage
+  = counts of AI-generated assessments + agent drafts (proxy); licences drive cost.
+  New `ReportingStore` (in-memory + Postgres); `SchoolPolicy` extended (both M9 and
+  M10 setters read-modify-write to preserve each other's gates).
+
 ## ADR-0026 — Principal Dashboard: transcript-proof by construction (M9)
 Milestone 9 (FR-PDB-001..006), a whole-school view scoped to one school. Decisions:
 - **Ask-for-Help transcripts are unreachable from EVERY Principal surface, by

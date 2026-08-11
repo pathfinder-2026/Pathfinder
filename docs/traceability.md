@@ -417,3 +417,41 @@ automated test. All run against both the in-memory and the Postgres backend.
 |---|---|
 | Happy — disabled comparison view does not appear | "happy path — with teacher-to-teacher comparison disabled, that view does not appear at all" |
 | Edge — enabling mid-term makes it available going forward | "edge — enabling the comparison mid-term makes it available going forward" |
+
+# Milestone 10 traceability — every Given/When/Then → test
+
+Each acceptance row from the plan's Milestone 10 section maps to exactly one
+automated test. All run against both the in-memory and the Postgres backend.
+
+### FR-REP-001 — teacher growth report  (`m10-rep-001-teacher.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — full-term report reflects mastery changes | "happy path — a full-term growth report reflects that term's mastery changes" |
+| Edge — partial-term data stated as limited/early | "edge — partial-term data is clearly stated as limited/early" |
+
+### FR-REP-002 — school report + prorated cost  (`m10-rep-002-principal.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — aggregates all classes in this single school | "happy path — a whole-school report aggregates all classes within this single school" |
+| Edge — mid-month licence prorated, not flat | "edge — a licence added mid-month is prorated, not charged a flat full-month cost" |
+
+### FR-REP-004 — parent report  (`m10-rep-004-parent.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — strengths / focus / teacher comments in plain language | "happy path — strengths, focus areas and teacher comments in plain language" |
+| Edge — no teacher comments → section omitted gracefully | "edge — no teacher comments: that section is omitted gracefully (empty, not broken)" |
+
+### FR-CAP-002 — co-curricular capability  (`m10-cap-002-cocurricular.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — recorded skill in capability data, separate from academic | "happy path — a recorded instrument skill appears in capability data, separate from academic mastery" |
+| Edge — no co-curricular data → section omitted | "edge — no co-curricular data: the report section is omitted, not a misleading 'no progress'" |
+| Edge — no curriculum mapping → free-text, not skill-graph shape | "edge — no formal curriculum mapping: uses a free-text skill, not the academic skill-graph shape" |
+
+### FR-BSS-001/002 — behavioural observations  (`m10-bss-observations.test.ts`)
+| Row | Test |
+|---|---|
+| Happy — teacher-authored, stored separately from academic mastery | "happy path — a teacher-authored observation is stored separately from academic mastery" |
+| Edge — AI inference blocked; only four categories accepted | "edge — AI inference is blocked by design; only the four categories are accepted" |
+| Edge — per-persona visibility (Teacher notes / Principal aggregate / Parent hidden) | "edge — visibility differs per persona (author Teacher notes; Principal aggregate; Parent hidden)" |
+| Edge — collection disabled without configured consent | "edge — collection does not go live for a school without its consent mechanism configured" |

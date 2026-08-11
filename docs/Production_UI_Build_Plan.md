@@ -11,6 +11,20 @@ product behaviour — it exposes existing, governed functionality.
 
 ---
 
+## Build status (live)
+
+**✅ Built & pushed** (`feature/appendix-a-csv-sso`):
+- Foundation: S-AUTH-1 (sign in / create), S-AUTH-2 (accept invite), S-ONB-ROLE
+  (role onboarding + honest role home), S-SHELL (role-aware routing + admin hub nav).
+- Admin: ADM-1 (onboarding trail), ADM-2 (school structure), ADM-3 (people: roles+names),
+  ADM-4 (Principal multi-campus assign), ADM-5 (CSV import), ADM-6 (SSO), ADM-7 (branding).
+
+**⬜ Next (run tomorrow via the prompts below):** ADM-8/9/10/11; all Teacher (TCH-*),
+Student (STU-*), Parent (PAR-*), Principal (PRB-*) screens; S-NOTIF; the a11y pass.
+See §12 for order; each screen's **Build prompt** is paste-ready (prepend §13).
+
+---
+
 ## 0. How to use this document
 
 - Screens are grouped by persona (§4–§9) and cross-cutting concerns (§10).

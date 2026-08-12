@@ -383,7 +383,36 @@ export const api = {
     request<{ id: string; verified: boolean }>("POST", `/api/v1/schools/${s.schoolId}/parent-links/${linkId}/verify`, {}, s.token),
   runParentDigest: (s: Session) =>
     request<{ sent: number; skippedNoActivity: number }>("POST", `/api/v1/schools/${s.schoolId}/parent-digest/run`, {}, s.token),
+
+  // ---- Principal (PRB-1..5) ----
+  principalTeacherReport: (s: Session) => request<PrincipalTeacherReport>("GET", `/api/v1/schools/${s.schoolId}/principal/teacher-report`, undefined, s.token),
+  principalMastery: (s: Session) =>
+    request<{ classes: { classId: string; name: string; studentCount: number; avgScore: number; belowMasteryFraction: number; atRiskCount: number; outlier: boolean }[]; schoolWide: { avgScore: number; atRiskCount: number; classCount: number } }>(
+      "GET", `/api/v1/schools/${s.schoolId}/principal/mastery`, undefined, s.token,
+    ),
+  principalDrillClass: (s: Session, classId: string) =>
+    request<{ classId: string; name: string; students: { studentId: string; name: string | null; avgScore: number; atRisk: boolean }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/principal/classes/${classId}`, undefined, s.token,
+    ),
+  principalDrillStudent: (s: Session, studentId: string) =>
+    request<{ studentId: string; name: string | null; avgScore: number; skills: { nodeId: string; score: number; level: string }[]; tasksCompleted: number; askForHelpExcluded: true }>(
+      "GET", `/api/v1/schools/${s.schoolId}/principal/students/${studentId}`, undefined, s.token,
+    ),
+  principalAlerts: (s: Session) =>
+    request<{ kind: string; classId: string; message: string; delta: number }[]>("GET", `/api/v1/schools/${s.schoolId}/principal/alerts`, undefined, s.token),
+  setPrincipalPolicy: (s: Session, teacherComparisonEnabled: boolean) =>
+    request<{ teacherComparisonEnabled: boolean }>("POST", `/api/v1/schools/${s.schoolId}/principal-policy`, { teacherComparisonEnabled }, s.token),
 };
+
+export interface PrincipalTeacherReport {
+  teachers: {
+    teacherId: string; name: string | null; coverage: number; assessmentsAuthored: number;
+    assessmentsPublished: number; aiApprovalRate: number; editRate: number; engagement: number;
+    workload: number; newTeacher: boolean; windowDays: number; lowEngagementOutlier: boolean;
+  }[];
+  schoolWide: { teacherCount: number; avgEngagement: number; avgAiApprovalRate: number; coverage: number };
+  comparison: { ranking: { teacherId: string; name: string | null; engagement: number }[] } | null;
+}
 
 export interface StudentTaskView {
   id: string;

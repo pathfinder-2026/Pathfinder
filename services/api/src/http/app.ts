@@ -13,6 +13,7 @@ import { registerAdminApi } from "./adminApi";
 import { registerTeacherApi } from "./teacherApi";
 import { registerStudentApi } from "./studentApi";
 import { registerParentApi } from "./parentApi";
+import { registerPrincipalApi } from "./principalApi";
 
 /**
  * Minimal HTTP surface for Milestone 0. It exposes just enough of the core
@@ -102,6 +103,9 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
 
   // Production Parent API (PAR-1..5, verification-before-data), consumed by apps/app.
   registerParentApi(app, context);
+
+  // Production Principal API (PRB-1..5; transcripts unreachable by construction).
+  registerPrincipalApi(app, context);
 
   // Preview/validation console API (M0–M5a). Routes register immediately; the
   // demo world bootstraps lazily on first /api call, so tests are unaffected.

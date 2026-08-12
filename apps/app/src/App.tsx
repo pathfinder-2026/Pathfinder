@@ -22,13 +22,14 @@ import { TeacherTranscripts } from "./screens/TeacherTranscripts";
 import { TeacherRecords } from "./screens/TeacherRecords";
 import { StudentHome } from "./screens/StudentHome";
 import { ParentHome } from "./screens/ParentHome";
+import { PrincipalHome } from "./screens/PrincipalHome";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
   | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights" | "teacher-peer"
   | "teacher-agent" | "teacher-transcripts" | "teacher-records"
-  | "student-home" | "parent-home";
+  | "student-home" | "parent-home" | "principal-home";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -86,8 +87,10 @@ export function App() {
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
   if (view === "role-home") {
-    // Teachers, students and parents have real workspaces; Principal arrives next.
+    // Every persona now has a real workspace. A dual-role Principal-Teacher
+    // enters via their Teacher capacity (the M9 transcript rule).
     const enterView: View | undefined = roles.includes("teacher") ? "teacher-home"
+      : roles.includes("principal") ? "principal-home"
       : roles.includes("student") ? "student-home"
       : roles.includes("parent") ? "parent-home" : undefined;
     return <RoleHome session={session} displayName={displayName} onSignOut={onSignOut}
@@ -111,6 +114,9 @@ export function App() {
 
   // ---- Parent persona (verification-before-data; guarded server-side) ----
   if (view === "parent-home") return <ParentHome session={session} displayName={displayName} onSignOut={onSignOut} />;
+
+  // ---- Principal persona (transcripts unreachable by construction) ----
+  if (view === "principal-home") return <PrincipalHome session={session} displayName={displayName} onSignOut={onSignOut} />;
 
   // ---- Admin persona ----
   const back = () => setView("workspace");

@@ -8,8 +8,8 @@ import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
  * this screen is a suggestion; work reaches students only through an explicit
  * teacher action, and the platform blocks auto-assign beneath this UI too.
  */
-export function TeacherInsights({ session, displayName, onBack, onSignOut }: {
-  session: Session; displayName: string; onBack: () => void; onSignOut: () => void;
+export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpenContent }: {
+  session: Session; displayName: string; onBack: () => void; onSignOut: () => void; onOpenContent?: () => void;
 }) {
   const [classes, setClasses] = useState<{ id: string; name: string }[] | null>(null);
   const [classId, setClassId] = useState("");
@@ -102,7 +102,10 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut }: {
                   <span className="person__meta">{a.belowCount} of {a.total} below mastery ({pct(a.belowFraction)})</span>
                   <span className="spacer" />
                   {a.contentGap ? (
-                    <Chip state="draft">Content gap — nothing mapped to reteach</Chip>
+                    <>
+                      <Chip state="draft">Content gap — nothing mapped to reteach</Chip>
+                      {onOpenContent && <button className="linkish" onClick={onOpenContent}>Add material in Content Studio →</button>}
+                    </>
                   ) : (
                     a.suggested.map((c) => (
                       <Button key={c.id} onClick={() => act(async () => {

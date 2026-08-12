@@ -231,6 +231,7 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
         const pii = await ctx.store.getPersonalData(m.userId);
         return {
           membershipId: m.id, userId: m.userId, role: m.role, campusId: m.campusId,
+          classId: m.classId ?? null,
           firstName: pii?.firstName ?? null, lastName: pii?.lastName ?? null, email: pii?.email ?? null,
           status: user?.status ?? "unknown",
         };
@@ -447,6 +448,18 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     // Active records return the confirmation prompt; PII-only erasure preserves
     // audited facts and the hash chain (retained-audit summary in the response).
     const result = await ctx.governance.eraseStudent(auth.user.id, schoolId, studentId, { confirm });
+    return reply.send(result);
+  });
+
+  // ---- Teacher-absence cover: hand a class + its data to a covering teacher ----
+  // NOT login sharing (that would corrupt audit attribution): the covering
+  // teacher receives the class, the absent teacher's tasks, and the help
+  // sessions (which follow their tasks) through their OWN login.
+  app.post("/api/v1/schools/:schoolId/handover", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { fromTeacherId, toTeacherId } = req.body as { fromTeacherId: string; toTeacherId: string };
+    const result = await ctx.handover.coverClass(auth.user.id, schoolId, fromTeacherId, toTeacherId);
     return reply.send(result);
   });
 

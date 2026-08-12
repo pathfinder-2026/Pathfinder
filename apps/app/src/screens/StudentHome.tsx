@@ -316,26 +316,20 @@ function Attempt({ session, assessmentId, taskId, onBack }: {
   );
 }
 
+/**
+ * Peer-test panel. The student sees the delivered test and — only once the
+ * teacher explicitly publishes — the softened, non-ranked signal. Student-
+ * authored peer reviews were removed from this surface at the owner's
+ * direction (2026-08-13); the FR-PEER-002 review/moderation backend remains
+ * intact and tested, so the panel can regain the form if that decision flips.
+ */
 function PeerPanel({ session, peerTestId, onBack }: { session: Session; peerTestId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.studentPeerTest>> | null>(null);
-  const [feedback, setFeedback] = useState<Awaited<ReturnType<typeof api.studentPeerFeedback>> | null>(null);
-  const [review, setReview] = useState({ targetStudentId: "", text: "" });
-  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.studentPeerTest(session, peerTestId).then(setDetail).catch((e) => setError((e as Error).message));
-    api.studentPeerFeedback(session).then(setFeedback).catch(() => setFeedback(null));
   }, [session, peerTestId]);
-
-  const send = async () => {
-    setError(null); setNotice(null);
-    try {
-      const r = await api.submitPeerReview(session, peerTestId, review.targetStudentId, review.text);
-      setNotice(r.message);
-      setReview({ targetStudentId: "", text: "" });
-    } catch (e) { setError((e as Error).message); }
-  };
 
   return (
     <>
@@ -343,45 +337,12 @@ function PeerPanel({ session, peerTestId, onBack }: { session: Session; peerTest
       <h1 style={{ marginTop: 10 }}>{detail?.title ?? "…"}</h1>
       {detail && <p className="lede">{detail.questionCount} question{detail.questionCount === 1 ? "" : "s"}{detail.rubric ? ` · ${detail.rubric}` : ""}</p>}
       {error && <Banner kind="error">{error}</Banner>}
-      {notice && <Banner kind="brand">{notice}</Banner>}
 
       {detail && (
         <Card>
           <div className="card__head"><h2 className="section">How you went</h2></div>
           {/* Softened, non-ranked, and only what the teacher explicitly published. */}
           <Banner kind="brand">{detail.signal.message}</Banner>
-        </Card>
-      )}
-
-      {detail && detail.peers.length > 0 && (
-        <Card>
-          <div className="card__head">
-            <h2 className="section">Review a classmate's work</h2>
-            <p className="muted">Say something helpful and kind. Your teacher reads every review before your classmate sees it, and your name isn't shown.</p>
-          </div>
-          <Field label="Classmate" htmlFor="pr-target">
-            <select id="pr-target" className="select" style={{ maxWidth: 340 }} value={review.targetStudentId} onChange={(e) => setReview({ ...review, targetStudentId: e.target.value })}>
-              <option value="">Choose…</option>
-              {detail.peers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Your feedback" htmlFor="pr-text">
-            <textarea id="pr-text" className="input" style={{ minHeight: 70 }} value={review.text} onChange={(e) => setReview({ ...review, text: e.target.value })} />
-          </Field>
-          <Button variant="primary" onClick={send} disabled={!review.targetStudentId || !review.text.trim()}>Send for review</Button>
-        </Card>
-      )}
-
-      {feedback && (
-        <Card>
-          <div className="card__head"><h2 className="section">What classmates said about your work</h2></div>
-          {!feedback.hasFeedback ? (
-            <p className="muted">{feedback.message}</p>
-          ) : (
-            <ul className="people">
-              {feedback.reviews.map((r, i) => <li className="person" key={i}><span>“{r.text}”</span></li>)}
-            </ul>
-          )}
         </Card>
       )}
     </>

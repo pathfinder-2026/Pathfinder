@@ -308,6 +308,81 @@ describe("Production Admin API — onboarding over HTTP", () => {
     await a.close();
   });
 
+  it("hands an absent teacher's class + tasks + transcripts to a covering teacher, via their OWN login", async () => {
+    const ctx = buildContext({ clock: new FixedClock() });
+    const a = buildApp({}, ctx);
+    const started = (await a.inject({ method: "POST", url: "/api/v1/onboarding/start", payload: START })).json();
+    const auth = { authorization: `Bearer ${started.token}` };
+    const schoolId = started.schoolId as string;
+    const campusId = started.campusId as string;
+
+    // Class, two teachers (absent + covering) and a student in the class.
+    const cls = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A", yearGroup: "8" } });
+    const classId = cls.json().id as string;
+    const people: Record<string, { token: string; userId: string }> = {};
+    for (const [key, role, email] of [["absent", "teacher", "abs@r.edu"], ["cover", "teacher", "cov@r.edu"], ["kid", "student", "kid2@r.edu"]] as const) {
+      const inv = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/invites`, headers: auth, payload: { role, email, firstName: "P", lastName: key } });
+      const rows = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/invites`, headers: auth })).json() as { id: string; inviteToken: string | null }[];
+      const token = rows.find((r) => r.id === inv.json().inviteId)!.inviteToken!;
+      const acc = await a.inject({ method: "POST", url: "/api/v1/invites/accept", payload: { token, password: "password123" } });
+      const me = (await a.inject({ method: "GET", url: "/api/v1/me", headers: { authorization: `Bearer ${acc.json().token}` } })).json();
+      people[key] = { token: acc.json().token as string, userId: me.userId as string };
+    }
+    const accounts = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/accounts`, headers: auth })).json() as any[];
+    const membershipOf = (userId: string) => accounts.find((r) => r.userId === userId)!.membershipId as string;
+    // Absent teacher owns the class; student is in it (classId now flows through the PATCH).
+    await a.inject({ method: "PATCH", url: `/api/v1/schools/${schoolId}/memberships/${membershipOf(people.absent.userId)}/role`, headers: auth, payload: { role: "teacher", campusId, classId } });
+    await a.inject({ method: "PATCH", url: `/api/v1/schools/${schoolId}/memberships/${membershipOf(people.kid.userId)}/role`, headers: auth, payload: { role: "student", campusId, classId } });
+
+    // The absent teacher assigns a task; the student asks for help on it.
+    await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/safeguarding`, headers: auth,
+      payload: { contactName: "Sam Safe", contactRole: "DSL", slaHours: 24, afterHoursPolicy: "On-call" },
+    });
+    const task = await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/tasks`, headers: { authorization: `Bearer ${people.absent.token}` },
+      payload: { studentId: people.kid.userId, classId, type: "homework", title: "Cover task", dueDate: "2026-09-01" },
+    });
+    await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/student/tasks/${task.json().id}/help`,
+      headers: { authorization: `Bearer ${people.kid.token}` }, payload: { message: "Where do I start?" },
+    });
+
+    // A non-admin cannot hand over.
+    const denied = await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/handover`,
+      headers: { authorization: `Bearer ${people.cover.token}` },
+      payload: { fromTeacherId: people.absent.userId, toTeacherId: people.cover.userId },
+    });
+    expect(denied.statusCode).toBe(401);
+
+    // Admin hands over: class + task + help session all move.
+    const result = await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/handover`, headers: auth,
+      payload: { fromTeacherId: people.absent.userId, toTeacherId: people.cover.userId },
+    });
+    expect(result.json()).toMatchObject({ classId, tasksTransferred: 1, helpSessionsTransferred: 1 });
+
+    // The covering teacher — with their OWN login — now sees the class and the transcript.
+    const after = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/accounts`, headers: auth })).json() as any[];
+    expect(after.find((r) => r.userId === people.cover.userId).classId).toBe(classId);
+    expect(after.find((r) => r.userId === people.absent.userId).classId).toBeNull();
+    const coverAuth = { authorization: `Bearer ${people.cover.token}` };
+    const sessions = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions`, headers: coverAuth })).json() as any[];
+    expect(sessions).toHaveLength(1);
+    const transcript = await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions/${sessions[0].sessionId}/transcript`, headers: coverAuth });
+    expect(transcript.statusCode).toBe(200);
+
+    // The absent teacher is no longer the assigning teacher — the M7/M9 rule holds.
+    const absentRead = await a.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions/${sessions[0].sessionId}/transcript`,
+      headers: { authorization: `Bearer ${people.absent.token}` },
+    });
+    expect(absentRead.statusCode).toBe(409);
+    expect(absentRead.json().code).toBe("NOT_ASSIGNING_TEACHER");
+    await a.close();
+  });
+
   it("rejects onboarding reads without a valid session, and across schools", async () => {
     const a = app();
     const { schoolId } = await start(a);

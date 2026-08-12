@@ -34,12 +34,20 @@ export function Workspace({ session, displayName, onNavigate, onSignOut }: { ses
           <Banner kind="brand">Setup complete — your school is ready for teachers to start building content.</Banner>
 
           <Card>
-            <div className="card__head"><h2 className="section">At a glance</h2></div>
+            <div className="card__head"><h2 className="section">At a glance</h2><p className="muted">Every tile opens the place you manage it.</p></div>
             <div className="tiles">
-              <div className="tile"><div className="tile__num">{summary?.counts.classes ?? "—"}</div><div className="tile__label">Classes</div></div>
-              <div className="tile"><div className="tile__num">{summary?.counts.teachers ?? "—"}</div><div className="tile__label">Teachers</div></div>
-              <div className="tile"><div className="tile__num">{summary?.counts.students ?? "—"}</div><div className="tile__label">Students</div></div>
-              <div className="tile"><div className="tile__num">{summary?.counts.parents ?? "—"}</div><div className="tile__label">Parents</div></div>
+              {([
+                { num: summary?.counts.classes, label: "Classes", view: "structure" },
+                { num: summary?.counts.teachers, label: "Teachers", view: "people" },
+                { num: summary?.counts.students, label: "Students", view: "people" },
+                { num: summary?.counts.parents, label: "Parents", view: "people" },
+              ] as { num: number | undefined; label: string; view: View }[]).map((t) => (
+                <button key={t.label} className="tile" style={{ textAlign: "left", cursor: "pointer", background: "var(--pf-card)" }}
+                  onClick={() => onNavigate(t.view)} aria-label={`${t.label} — open`}>
+                  <div className="tile__num">{t.num ?? "—"}</div>
+                  <div className="tile__label">{t.label}</div>
+                </button>
+              ))}
             </div>
           </Card>
 

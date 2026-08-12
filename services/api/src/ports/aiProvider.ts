@@ -13,6 +13,8 @@
  * docs/decisions.md ADR-0013); until then the local provider backs everything.
  */
 
+import { ValidationError } from "../domain/errors";
+
 export type ProviderDescriptor =
   | { kind: "local"; provider: string }
   | {
@@ -71,7 +73,10 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "parent.summary") {
       return { text: this.parentSummary(request.input) };
     }
-    return { text: "" };
+    // An unknown purpose is a programmer error (e.g. a typo'd purpose string).
+    // Failing loudly beats silently returning "" that becomes an empty draft
+    // or a failed JSON parse far from its cause.
+    throw new ValidationError(`Unknown AI purpose "${request.purpose}" — no deterministic behaviour is defined for it.`);
   }
 
   /**

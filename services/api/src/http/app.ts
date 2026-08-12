@@ -5,6 +5,7 @@ import {
   ConflictError,
   DomainError,
   NotFoundError,
+  ServiceUnavailableError,
   ValidationError,
 } from "../domain/errors";
 import { buildContext, type AppContext, type BuildContextOptions } from "../context";
@@ -42,6 +43,11 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
     }
     if (error instanceof ConflictError) {
       return reply.status(409).send({ code: error.code, message: error.message });
+    }
+    // A down dependency (IdP outage, AI provider unavailable) is a 503 —
+    // "try again", never a caller mistake.
+    if (error instanceof ServiceUnavailableError) {
+      return reply.status(503).send({ code: error.code, message: error.message });
     }
     if (error instanceof DomainError) {
       return reply.status(400).send({ code: error.code, message: error.message });

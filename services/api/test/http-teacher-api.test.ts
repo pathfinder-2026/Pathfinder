@@ -393,4 +393,175 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     expect(foreign.statusCode).toBe(404);
     await app.close();
   });
+
+  /** Import n students into class 8A via CSV; returns their ids from the picker. */
+  async function importStudents(
+    app: ReturnType<typeof buildApp>, schoolId: string, classId: string,
+    adminAuth: Record<string, string>, teacherAuth: Record<string, string>, n: number,
+  ) {
+    const rows = ["firstName,lastName,email,role,class"];
+    for (let i = 1; i <= n; i++) rows.push(`Stu,Dent${i},s${i}-${newId()}@t.edu,student,8A`);
+    const imp = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/import/users`, headers: adminAuth, payload: { csv: rows.join("\n") } });
+    expect(imp.json().imported).toHaveLength(n);
+    const picker = await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/classes/${classId}/students`, headers: teacherAuth });
+    return (picker.json() as { id: string; label: string }[]).map((s) => s.id);
+  }
+
+  it("peer builder surfaces shortfall + anonymity tension; cohort locks at launch; cancel is pre-launch only (TCH-10/11)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const students = await importStudents(app, schoolId, classId, auth, teacher.auth, 6);
+    // Two groundable sections only -> a 5-question request is an honest shortfall.
+    await approveAndMap(app, schoolId, teacher.auth, {
+      title: "Peer grounding", nodeId: NODE,
+      text: "# Topic A\nExplain the idea clearly in prose.\n# Topic B\nExplain the idea clearly in prose.",
+    });
+    const base = `/api/v1/schools/${schoolId}/peer-tests`;
+
+    // Small anonymous cohort + accommodation -> BOTH warnings surface, never silent.
+    const built = await app.inject({
+      method: "POST", url: base, headers: teacher.auth,
+      payload: {
+        title: "Fractions peer check", nodeId: NODE, questionCount: 5,
+        cohort: students.slice(0, 3), anonymity: "anonymous",
+        accommodations: [{ studentId: students[0], kind: "extra-time" }],
+      },
+    });
+    expect(built.statusCode).toBe(201);
+    const test = built.json();
+    expect(test.status).toBe("draft");
+    expect(test.benchmarkPublish).toBe("withheld"); // default: nothing auto-releases
+    expect(test.warnings.some((w: string) => w.startsWith("insufficient_content"))).toBe(true);
+    expect(test.warnings.some((w: string) => w.startsWith("accommodation_anonymity_tension"))).toBe(true);
+    expect(test.questionCount).toBe(2); // clamped to the groundable capacity
+
+    // Pre-launch: cohort is editable; a clean cancel leaves no placements.
+    await app.inject({ method: "POST", url: `${base}/${test.id}/cohort`, headers: teacher.auth, payload: { studentId: students[3] } });
+    const cancelled = await app.inject({ method: "POST", url: `${base}/${test.id}/cancel`, headers: teacher.auth });
+    expect(cancelled.json().status).toBe("cancelled");
+
+    // A second test: launch locks the cohort; cancel is refused after launch.
+    const second = (await app.inject({
+      method: "POST", url: base, headers: teacher.auth,
+      payload: { title: "Round 2", nodeId: NODE, questionCount: 2, cohort: students.slice(0, 5), anonymity: "named" },
+    })).json();
+    const launched = await app.inject({ method: "POST", url: `${base}/${second.id}/launch`, headers: teacher.auth });
+    expect(launched.json().status).toBe("launched");
+    const lockedAdd = await app.inject({ method: "POST", url: `${base}/${second.id}/cohort`, headers: teacher.auth, payload: { studentId: students[5] } });
+    expect(lockedAdd.statusCode).toBe(409);
+    expect(lockedAdd.json().code).toBe("COHORT_LOCKED");
+    const lateCancel = await app.inject({ method: "POST", url: `${base}/${second.id}/cancel`, headers: teacher.auth });
+    expect(lateCancel.statusCode).toBe(409);
+    expect(lateCancel.json().code).toBe("ALREADY_LAUNCHED");
+    // Launch placed it on each cohort student's dashboard (delivery record).
+    expect(await ctx.peerTests.deliveriesForStudent(students[0])).toHaveLength(1);
+    await app.close();
+  });
+
+  it("peer results: withheld by default, explicit publish, logged correction path, small cohort suppressed (TCH-12)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const students = await importStudents(app, schoolId, classId, auth, teacher.auth, 6);
+    await approveAndMap(app, schoolId, teacher.auth, {
+      title: "Peer grounding", nodeId: NODE,
+      text: "# Topic A\nProse here.\n# Topic B\nProse here.",
+    });
+    const base = `/api/v1/schools/${schoolId}/peer-tests`;
+    const test = (await app.inject({
+      method: "POST", url: base, headers: teacher.auth,
+      payload: { title: "Benchmarked", nodeId: NODE, questionCount: 2, cohort: students.slice(0, 5), anonymity: "named" },
+    })).json();
+    await app.inject({ method: "POST", url: `${base}/${test.id}/launch`, headers: teacher.auth });
+    // Students complete it (student-side submission arrives with STU-5; seeded via ctx).
+    const scores = [0.9, 0.8, 0.7, 0.6, 0.5];
+    for (const [i, sid] of students.slice(0, 5).entries()) await ctx.peerTests.recordSubmission(test.id, sid, scores[i]);
+
+    // Results: full figures for the teacher, decision explicitly required.
+    let results = (await app.inject({ method: "GET", url: `${base}/${test.id}/results`, headers: teacher.auth })).json();
+    expect(results).toMatchObject({ publishState: "withheld", requiresPublishDecision: true });
+    expect(results.completion).toMatchObject({ completed: 5, total: 5 });
+    expect(results.benchmark.suppressed).toBe(false);
+    expect(results.benchmark.students).toHaveLength(5);
+    expect(results.benchmark.students[0].label).toBeTruthy();
+
+    // Correction goes through the LOGGED path and requires a reason.
+    const noReason = await app.inject({
+      method: "POST", url: `${base}/${test.id}/corrections`, headers: teacher.auth,
+      payload: { studentId: students[0], correctedScore: 0.95, reason: "  " },
+    });
+    expect(noReason.statusCode).toBe(409);
+    await app.inject({
+      method: "POST", url: `${base}/${test.id}/corrections`, headers: teacher.auth,
+      payload: { studentId: students[0], correctedScore: 0.95, reason: "Grading error on Q2" },
+    });
+    results = (await app.inject({ method: "GET", url: `${base}/${test.id}/results`, headers: teacher.auth })).json();
+    expect(results.benchmark.students.find((s: any) => s.studentId === students[0]).score).toBe(0.95);
+
+    // Publish is an explicit action; the student signal stays softened + non-ranked.
+    const pub = await app.inject({ method: "POST", url: `${base}/${test.id}/publish-benchmark`, headers: teacher.auth });
+    expect(pub.json().benchmarkPublish).toBe("published");
+    const signal = await ctx.peerTests.studentSignal(test.id, students[4]);
+    expect(signal.visible).toBe(true);
+    expect(signal.message).not.toMatch(/\d/); // no figures, no rank
+
+    // A cohort below the minimum is suppressed with an honest reason.
+    const small = (await app.inject({
+      method: "POST", url: base, headers: teacher.auth,
+      payload: { title: "Tiny cohort", nodeId: NODE, questionCount: 1, cohort: students.slice(0, 3), anonymity: "named" },
+    })).json();
+    await app.inject({ method: "POST", url: `${base}/${small.id}/launch`, headers: teacher.auth });
+    for (const sid of students.slice(0, 3)) await ctx.peerTests.recordSubmission(small.id, sid, 0.5);
+    const smallResults = (await app.inject({ method: "GET", url: `${base}/${small.id}/results`, headers: teacher.auth })).json();
+    expect(smallResults.benchmark.suppressed).toBe(true);
+    expect(smallResults.benchmark.students).toHaveLength(0);
+    await app.close();
+  });
+
+  it("moderates peer reviews approve/reject-only with anonymised text (TCH-12)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const students = await importStudents(app, schoolId, classId, auth, teacher.auth, 6);
+    await approveAndMap(app, schoolId, teacher.auth, { title: "G", nodeId: NODE, text: "# Topic A\nProse." });
+    const base = `/api/v1/schools/${schoolId}/peer-tests`;
+    const test = (await app.inject({
+      method: "POST", url: base, headers: teacher.auth,
+      payload: { title: "Reviewed", nodeId: NODE, questionCount: 1, cohort: students.slice(0, 5), anonymity: "anonymous" },
+    })).json();
+    await app.inject({ method: "POST", url: `${base}/${test.id}/launch`, headers: teacher.auth });
+
+    // Two students review a peer (student-side submission arrives with STU-5).
+    await ctx.peerReviews.submitReview(students[1], schoolId, test.id, students[0], "Clear working, nice diagrams.");
+    await ctx.peerReviews.submitReview(students[2], schoolId, test.id, students[0], "This is rubbish.");
+
+    const pending = (await app.inject({ method: "GET", url: `${base}/${test.id}/reviews/pending`, headers: teacher.auth })).json();
+    expect(pending.reviews).toHaveLength(2);
+    // Anonymised: the moderation payload never exposes reviewer identity.
+    expect(JSON.stringify(pending.reviews)).not.toContain(students[1]);
+    expect(JSON.stringify(pending.reviews)).not.toContain(students[2]);
+
+    const nice = pending.reviews.find((r: any) => r.text.includes("diagrams"));
+    const mean = pending.reviews.find((r: any) => r.text.includes("rubbish"));
+    const approved = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/peer-reviews/${nice.id}/moderate`, headers: teacher.auth, payload: { decision: "approve" } });
+    expect(approved.json().moderationState).toBe("approved");
+    const rejected = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/peer-reviews/${mean.id}/moderate`, headers: teacher.auth, payload: { decision: "reject" } });
+    expect(rejected.json().moderationState).toBe("rejected");
+
+    // The reviewed student sees only the approved, anonymised text.
+    const feedback = await ctx.peerReviews.feedbackForStudent(students[0]);
+    expect(feedback.hasFeedback).toBe(true);
+    expect(feedback.reviews).toEqual([{ text: "Clear working, nice diagrams." }]);
+    await app.close();
+  });
 });

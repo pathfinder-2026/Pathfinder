@@ -250,7 +250,52 @@ export const api = {
     request<AdaptivePanel>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/adaptive`, undefined, s.token),
   nextAction: (s: Session, classId: string, studentId: string, nodeId: string) =>
     request<NextActionResult>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/adaptive/next-action?studentId=${encodeURIComponent(studentId)}&nodeId=${encodeURIComponent(nodeId)}`, undefined, s.token),
+
+  // ---- Teacher: peer suite (TCH-10..12) ----
+  classStudents: (s: Session, classId: string) =>
+    request<{ id: string; label: string }[]>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/students`, undefined, s.token),
+  listPeerTests: (s: Session) => request<PeerTestRow[]>("GET", `/api/v1/schools/${s.schoolId}/peer-tests`, undefined, s.token),
+  buildPeerTest: (s: Session, body: {
+    title: string; nodeId: string; questionCount: number; rubric?: string | null;
+    cohort: string[]; anonymity: "named" | "anonymous"; accommodations?: { studentId: string; kind: string }[];
+  }) => request<PeerTestRow>("POST", `/api/v1/schools/${s.schoolId}/peer-tests`, body, s.token),
+  peerTestAction: (s: Session, id: string, action: "launch" | "cancel" | "close" | "publish-benchmark" | "withhold-benchmark", body: Record<string, unknown> = {}) =>
+    request<PeerTestRow>("POST", `/api/v1/schools/${s.schoolId}/peer-tests/${id}/${action}`, body, s.token),
+  peerCorrection: (s: Session, id: string, body: { studentId: string; correctedScore: number; reason: string }) =>
+    request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/peer-tests/${id}/corrections`, body, s.token),
+  peerResults: (s: Session, id: string) => request<PeerResults>("GET", `/api/v1/schools/${s.schoolId}/peer-tests/${id}/results`, undefined, s.token),
+  peerPendingReviews: (s: Session, id: string) =>
+    request<{ anonymityRisk: boolean; reviews: { id: string; text: string; createdAt: string }[] }>("GET", `/api/v1/schools/${s.schoolId}/peer-tests/${id}/reviews/pending`, undefined, s.token),
+  moderateReview: (s: Session, reviewId: string, decision: "approve" | "reject") =>
+    request<{ id: string; moderationState: string }>("POST", `/api/v1/schools/${s.schoolId}/peer-reviews/${reviewId}/moderate`, { decision }, s.token),
 };
+
+export interface PeerTestRow {
+  id: string;
+  title: string;
+  nodeId: string;
+  questionCount: number;
+  cohortSize: number;
+  cohort: string[];
+  anonymity: "named" | "anonymous";
+  accommodations: number;
+  status: "draft" | "scheduled" | "launched" | "closed" | "cancelled";
+  benchmarkPublish: "withheld" | "published";
+  scheduledStart: string | null;
+  warnings: string[];
+  createdAt: string;
+}
+
+export interface PeerResults {
+  completion: { completed: number; total: number; rate: number };
+  publishState: "withheld" | "published";
+  requiresPublishDecision: boolean;
+  benchmark: {
+    suppressed: boolean;
+    suppressionReason: string | null;
+    students: { studentId: string; label: string; score: number; percentile: number; band: "above" | "at" | "below" }[];
+  };
+}
 
 export interface FocusAreaRow {
   nodeId: string;

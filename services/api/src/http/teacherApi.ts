@@ -3,6 +3,7 @@ import { AuthError, NotFoundError } from "../domain/errors";
 import type { AppContext } from "../context";
 import type { ContentItem } from "../domain/content";
 import type { Assessment } from "../domain/assessment";
+import { anonymityRisk, PEER_THRESHOLDS, type PeerTest } from "../domain/peer";
 
 /**
  * Production HTTP surface for the Teacher workflow thread (TCH-1/3/4/5/6):
@@ -478,5 +479,132 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     }
     const action = await ctx.adaptive.nextAction(schoolId, studentId, nodeId);
     return reply.send(action);
+  });
+
+  // ---- Peer suite (TCH-10..12): builder, delivery, results, review moderation ----
+  // Computed benchmarks follow publish-or-withhold (default withheld, never
+  // auto-released); corrections go through the separate logged path; peer
+  // reviews are moderated approve/reject only — never rewritten.
+
+  /** Class students (id + no-PII label) — the cohort picker for the builder. */
+  app.get("/api/v1/schools/:schoolId/classes/:classId/students", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const labels = await studentLabelMap(schoolId, classId);
+    return reply.send((await classStudentIds(schoolId, classId)).map((id) => ({ id, label: labels[id] })));
+  });
+
+  const peerTestRow = (t: PeerTest) => ({
+    id: t.id, title: t.title, nodeId: t.nodeId, questionCount: t.questionCount,
+    cohortSize: t.cohort.length, cohort: t.cohort, anonymity: t.anonymity,
+    accommodations: t.accommodations.length, status: t.status,
+    benchmarkPublish: t.benchmarkPublish, scheduledStart: t.scheduledStart,
+    warnings: t.warnings, createdAt: t.createdAt,
+  });
+
+  app.get("/api/v1/schools/:schoolId/peer-tests", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireTeacherOf(req, schoolId);
+    const tests = await ctx.peerStore.listPeerTestsBySchool(schoolId);
+    return reply.send(tests.map(peerTestRow));
+  });
+
+  app.post("/api/v1/schools/:schoolId/peer-tests", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const body = req.body as {
+      title: string; nodeId: string; questionCount: number; rubric?: string | null;
+      cohort: string[]; anonymity: "named" | "anonymous";
+      accommodations?: { studentId: string; kind: string }[];
+    };
+    const test = await ctx.peerTests.buildPeerTest(auth.user.id, schoolId, {
+      title: body.title, nodeId: body.nodeId, questionCount: body.questionCount,
+      rubric: body.rubric ?? null, cohort: body.cohort ?? [],
+      anonymity: body.anonymity, accommodations: body.accommodations ?? [],
+    });
+    // Warnings (shortfall / accommodation-vs-anonymity) surface in the response —
+    // the test is still created as a draft; nothing is silently applied.
+    return reply.status(201).send(peerTestRow(test));
+  });
+
+  /** Lifecycle actions share one wrapper: each is an explicit teacher action. */
+  const peerAction = (
+    path: string,
+    run: (teacherId: string, id: string, body: Record<string, unknown>) => Promise<unknown>,
+  ) => {
+    app.post(`/api/v1/schools/:schoolId/peer-tests/:id/${path}`, async (req, reply) => {
+      const { schoolId, id } = req.params as { schoolId: string; id: string };
+      const auth = await requireTeacherOf(req, schoolId);
+      const test = await ctx.peerStore.getPeerTest(id);
+      if (!test || test.schoolId !== schoolId) throw new NotFoundError("Peer test not found.");
+      const result = await run(auth.user.id, id, (req.body ?? {}) as Record<string, unknown>);
+      return reply.send(result);
+    });
+  };
+
+  peerAction("schedule", async (tid, id, b) => peerTestRow(await ctx.peerTests.schedule(tid, id, String(b.scheduledStart))));
+  peerAction("cohort", async (tid, id, b) => peerTestRow(await ctx.peerTests.addToCohort(tid, id, String(b.studentId))));
+  peerAction("launch", async (tid, id) => peerTestRow(await ctx.peerTests.launch(tid, id)));
+  peerAction("cancel", async (tid, id) => peerTestRow(await ctx.peerTests.cancel(tid, id)));
+  peerAction("close", async (tid, id) => peerTestRow(await ctx.peerTests.close(tid, id)));
+  peerAction("publish-benchmark", async (tid, id) => peerTestRow(await ctx.peerTests.publish(tid, id)));
+  peerAction("withhold-benchmark", async (tid, id) => peerTestRow(await ctx.peerTests.withhold(tid, id)));
+  peerAction("corrections", async (tid, id, b) => {
+    await ctx.peerTests.recordCorrection(tid, id, String(b.studentId), Number(b.correctedScore), String(b.reason ?? ""));
+    return { ok: true };
+  });
+
+  app.get("/api/v1/schools/:schoolId/peer-tests/:id/results", async (req, reply) => {
+    const { schoolId, id } = req.params as { schoolId: string; id: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const test = await ctx.peerStore.getPeerTest(id);
+    if (!test || test.schoolId !== schoolId) throw new NotFoundError("Peer test not found.");
+    const results = await ctx.peerTests.results(auth.user.id, id);
+    // Resolve benchmark student ids to no-PII labels for display.
+    const labels: Record<string, string> = {};
+    let position = 0;
+    for (const sid of test.cohort) {
+      position += 1;
+      const pii = await ctx.store.getPersonalData(sid);
+      labels[sid] = pii ? `${pii.firstName} ${pii.lastName}` : `Student ${String(position).padStart(2, "0")}`;
+    }
+    return reply.send({
+      completion: results.completion,
+      publishState: results.publishState,
+      requiresPublishDecision: results.requiresPublishDecision,
+      benchmark: {
+        suppressed: results.benchmark.suppressed,
+        suppressionReason: results.benchmark.suppressionReason,
+        students: results.benchmark.students.map((s) => ({
+          studentId: s.studentId, label: labels[s.studentId] ?? s.studentId,
+          score: s.score, percentile: s.percentile, band: s.band,
+        })),
+      },
+    });
+  });
+
+  app.get("/api/v1/schools/:schoolId/peer-tests/:id/reviews/pending", async (req, reply) => {
+    const { schoolId, id } = req.params as { schoolId: string; id: string };
+    await requireTeacherOf(req, schoolId);
+    const test = await ctx.peerStore.getPeerTest(id);
+    if (!test || test.schoolId !== schoolId) throw new NotFoundError("Peer test not found.");
+    const pending = await ctx.peerReviews.pendingForTest(id);
+    // Reviewer identity is NEVER included — moderation is on the text alone.
+    return reply.send({
+      anonymityRisk: anonymityRisk(test.cohort.length, PEER_THRESHOLDS),
+      reviews: pending.map((r) => ({ id: r.id, text: r.text, createdAt: r.createdAt })),
+    });
+  });
+
+  app.post("/api/v1/schools/:schoolId/peer-reviews/:reviewId/moderate", async (req, reply) => {
+    const { schoolId, reviewId } = req.params as { schoolId: string; reviewId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const review = await ctx.peerStore.getReview(reviewId);
+    if (!review || review.schoolId !== schoolId) throw new NotFoundError("Review not found.");
+    const { decision } = req.body as { decision: "approve" | "reject" };
+    // approve | reject only — there is deliberately no way to edit the text.
+    const moderated = await ctx.peerReviews.moderate(auth.user.id, reviewId, decision);
+    return reply.send({ id: moderated.id, moderationState: moderated.moderationState });
   });
 }

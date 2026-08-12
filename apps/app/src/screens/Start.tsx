@@ -33,11 +33,8 @@ function SignIn({ onStarted, onCreate }: { onStarted: (s: Session) => void; onCr
     setError(null);
     setBusy(true);
     try {
+      // Any role signs in here — the app router sends each role to its own home.
       const res = await api.login(email, password);
-      if (!res.roles.includes("admin")) {
-        setError("This sign-in is for school administrators. Teacher, Student and Parent sign-in arrives in a later release.");
-        return;
-      }
       onStarted({ token: res.token, schoolId: res.schoolId, campusId: res.campusId ?? "" });
     } catch (err) {
       setError((err as Error).message);
@@ -50,7 +47,7 @@ function SignIn({ onStarted, onCreate }: { onStarted: (s: Session) => void; onCr
     <>
       <p className="eyebrow">Welcome back</p>
       <h1>Sign in</h1>
-      <p className="lede">Sign in to your school's administrator workspace.</p>
+      <p className="lede">Sign in to your Pathfinder workspace.</p>
       <Card>
         <form onSubmit={submit}>
           {error && <Banner kind="error">{error}</Banner>}

@@ -16,11 +16,12 @@ import { TeacherContent } from "./screens/TeacherContent";
 import { TeacherAssessments } from "./screens/TeacherAssessments";
 import { TeacherDashboard } from "./screens/TeacherDashboard";
 import { TeacherInsights } from "./screens/TeacherInsights";
+import { TeacherPeer } from "./screens/TeacherPeer";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
-  | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights";
+  | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights" | "teacher-peer";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -90,6 +91,7 @@ export function App() {
   if (view === "teacher-assessments") return <TeacherAssessments session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-dashboard") return <TeacherDashboard session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-insights") return <TeacherInsights session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+  if (view === "teacher-peer") return <TeacherPeer session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
 
   // ---- Admin persona ----
   const back = () => setView("workspace");

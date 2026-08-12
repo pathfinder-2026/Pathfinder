@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, type ContentRow, type Session, type SkillsResult, type UploadResult } from "../api";
+import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillsResult, type UploadResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
 
 const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md"] as const;
@@ -25,6 +25,14 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   const [busy, setBusy] = useState<string | null>(null); // itemId (or "upload") in flight
   const [open, setOpen] = useState<string | null>(null); // expanded item
   const [mapNode, setMapNode] = useState("");
+  // TCH-2/3 detail state for the expanded item
+  const [detail, setDetail] = useState<{
+    versions: Awaited<ReturnType<typeof api.contentVersions>>;
+    mappings: MappingRow[];
+    classes: { id: string; name: string }[];
+  } | null>(null);
+  const [overrideNode, setOverrideNode] = useState("");
+  const [remapPrompt, setRemapPrompt] = useState<{ mappingId: string; newNodeId: string } | null>(null);
 
   // Upload form
   const [title, setTitle] = useState("");
@@ -39,6 +47,37 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   }, [session]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // Load the expanded item's detail (versions, mappings, share targets).
+  useEffect(() => {
+    if (!open) { setDetail(null); return; }
+    setRemapPrompt(null); setOverrideNode("");
+    Promise.all([api.contentVersions(session, open), api.contentMappings(session, open), api.teacherClasses(session)])
+      .then(([versions, mappings, classes]) => setDetail({ versions, mappings, classes }))
+      .catch(() => setDetail(null)); // pre-pipeline items may not resolve yet — the panel just hides
+  }, [session, open, rows]);
+
+  const share = async (itemId: string, value: string) => {
+    setError(null);
+    try {
+      const shareScope = value === "private" ? { type: "private" as const }
+        : value.startsWith("class:") ? { type: "class" as const, classId: value.slice(6) }
+        : { type: "department" as const, department: value.slice(11) };
+      await api.setContentShare(session, itemId, shareScope);
+      setNotice("Sharing updated.");
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const override = async (mappingId: string, newNodeId: string, remapHistorical?: boolean) => {
+    setError(null); setNotice(null);
+    try {
+      const result = await api.overrideMapping(session, mappingId, newNodeId, remapHistorical);
+      if (result.requiresDecision) { setRemapPrompt({ mappingId, newNodeId }); return; }
+      setRemapPrompt(null); setOverrideNode("");
+      setNotice("Mapping overridden — reflected everywhere this content is used.");
+      await refresh();
+    } catch (e) { setError((e as Error).message); }
+  };
 
   const upload = async () => {
     setError(null); setNotice(null); setBusy("upload");
@@ -169,6 +208,55 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                             </>
                           )}
                         </div>
+
+                        {detail && (
+                          <div style={{ marginTop: 14, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
+                            <p className="person__meta" style={{ margin: "0 0 6px" }}>
+                              Versions: {detail.versions.map((v) => `v${v.versionNumber}${v.current ? " (current)" : ""}`).join(" · ") || "—"}
+                            </p>
+                            <div className="btn-row" style={{ marginTop: 6 }}>
+                              <label className="person__meta" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                Sharing
+                                <select className="select" style={{ width: "auto" }} defaultValue="" onChange={(e) => e.target.value && share(r.id, e.target.value)} aria-label="Sharing scope">
+                                  <option value="" disabled>Change…</option>
+                                  <option value="private">Private (only me)</option>
+                                  {detail.classes.map((c) => <option key={c.id} value={`class:${c.id}`}>Class: {c.name}</option>)}
+                                  <option value="department:Mathematics">Department: Mathematics</option>
+                                </select>
+                              </label>
+                            </div>
+                            {detail.mappings.length > 0 && (
+                              <div style={{ marginTop: 10 }}>
+                                <p className="person__meta" style={{ margin: "0 0 6px" }}>Skill mappings — overriding re-points this content everywhere it's used:</p>
+                                <ul className="people">
+                                  {detail.mappings.map((m) => (
+                                    <li className="person" key={m.mappingId} style={{ flexWrap: "wrap" }}>
+                                      <span style={{ fontSize: 12 }}>{m.chain.join(" → ")}</span>
+                                      {m.overriddenFromNodeId && <Chip state="pending">overridden</Chip>}
+                                      {m.flags.map((f) => <Chip key={f} state="draft">{f.replace(/_/g, " ")}</Chip>)}
+                                      <span className="spacer" />
+                                      <select className="select" style={{ width: "auto", maxWidth: 220 }} value={overrideNode} onChange={(e) => setOverrideNode(e.target.value)} aria-label="Override to skill">
+                                        <option value="">Override to…</option>
+                                        {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                                      </select>
+                                      <Button onClick={() => override(m.mappingId, overrideNode)} disabled={!overrideNode}>Override</Button>
+                                    </li>
+                                  ))}
+                                </ul>
+                                {remapPrompt && (
+                                  <Banner kind="warn">
+                                    Historical mastery data exists against the current skill. Remap it to the new skill, or keep it where it is?
+                                    <span className="btn-row" style={{ marginTop: 8 }}>
+                                      <Button variant="primary" onClick={() => override(remapPrompt.mappingId, remapPrompt.newNodeId, true)}>Remap history</Button>
+                                      <Button onClick={() => override(remapPrompt.mappingId, remapPrompt.newNodeId, false)}>Keep history on the old skill</Button>
+                                      <Button variant="ghost" onClick={() => setRemapPrompt(null)}>Cancel</Button>
+                                    </span>
+                                  </Banner>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </li>

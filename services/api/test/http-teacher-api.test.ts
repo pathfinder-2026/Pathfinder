@@ -702,4 +702,131 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     expect(pRead.statusCode).toBe(401);
     await app.close();
   });
+
+  it("content detail: versions + sharing; mapping override honours the remap-historical + bulk-confirm prompts (TCH-2/3)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const itemId = await approveAndMap(app, schoolId, teacher.auth, {
+      title: "Mapped pack", nodeId: NODE, text: "# Topic A\nProse here.",
+    });
+    const base = `/api/v1/schools/${schoolId}`;
+
+    // Version history exists and marks the current version.
+    const versions = (await app.inject({ method: "GET", url: `${base}/content/${itemId}/versions`, headers: teacher.auth })).json();
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({ versionNumber: 1, current: true });
+
+    // Share to a class; the scope reads back.
+    const cls = await app.inject({ method: "POST", url: `${base}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const shared = await app.inject({
+      method: "POST", url: `${base}/content/${itemId}/share`, headers: teacher.auth,
+      payload: { type: "class", classId: cls.json().id },
+    });
+    expect(shared.json().share).toMatchObject({ type: "class" });
+
+    // Mapping views carry the full chain; override with history prompts first.
+    const mappings = (await app.inject({ method: "GET", url: `${base}/content/${itemId}/mappings`, headers: teacher.auth })).json();
+    expect(mappings).toHaveLength(1);
+    expect(mappings[0].chain.length).toBeGreaterThan(1);
+    const mappingId = mappings[0].mappingId as string;
+
+    // Plant historical mastery against the old node -> the override must prompt.
+    await ctx.skillGraphStore.recordMastery(itemId, NODE);
+    const prompted = await app.inject({
+      method: "POST", url: `${base}/mappings/${mappingId}/override`, headers: teacher.auth,
+      payload: { newNodeId: "skill-simplify-fractions" },
+    });
+    expect(prompted.json()).toMatchObject({ requiresDecision: true, prompt: "remap-historical-data" });
+
+    // The teacher decides -> applied, with the old node retained as provenance.
+    const applied = await app.inject({
+      method: "POST", url: `${base}/mappings/${mappingId}/override`, headers: teacher.auth,
+      payload: { newNodeId: "skill-simplify-fractions", remapHistorical: true },
+    });
+    expect(applied.json().mapping).toMatchObject({ nodeId: "skill-simplify-fractions", overriddenFromNodeId: NODE });
+
+    // Bulk override asks for a single confirmation first (FR-SKG-004).
+    const bulkPrompt = await app.inject({
+      method: "POST", url: `${base}/mappings/bulk-override`, headers: teacher.auth,
+      payload: { mappingIds: [mappingId], newNodeId: NODE },
+    });
+    expect(bulkPrompt.json()).toMatchObject({ requiresConfirmation: true, count: 1 });
+    const bulkApplied = await app.inject({
+      method: "POST", url: `${base}/mappings/bulk-override`, headers: teacher.auth,
+      payload: { mappingIds: [mappingId], newNodeId: NODE, confirm: true },
+    });
+    expect(bulkApplied.json()).toMatchObject({ applied: 1 });
+    await app.close();
+  });
+
+  it("growth report flags limited data; behavioural is consent-gated + no-score; calendar reschedule flags change (TCH-15/16/18)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const students = await importStudents(app, schoolId, classId, auth, teacher.auth, 1);
+    const base = `/api/v1/schools/${schoolId}`;
+
+    // One real (non-synthetic) mastery record from "today" -> the window is
+    // shorter than a term, so the report is honestly limited, not padded.
+    await ctx.activityStore.insertMastery({
+      id: newId(), studentId: students[0], schoolId, nodeId: NODE,
+      level: "developing", score: 0.5, dataPoints: 4, lastActivityAt: ctx.clock.isoNow(), synthetic: false,
+    } as never);
+    const growth = (await app.inject({ method: "GET", url: `${base}/classes/${classId}/growth-report`, headers: teacher.auth })).json();
+    expect(growth.limited).toBe(true);
+    expect(growth.note).toBeTruthy();
+    expect(growth.growth[0]).toMatchObject({ nodeId: NODE });
+
+    // Behavioural collection is BLOCKED until the school configures consent.
+    const blocked = await app.inject({
+      method: "POST", url: `${base}/students/${students[0]}/behavioural`, headers: teacher.auth,
+      payload: { category: "collaboration", note: "Works well with a partner." },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().code).toBe("CONSENT_NOT_CONFIGURED");
+
+    // Admin configures consent -> the teacher records a note (fixed categories only).
+    await app.inject({ method: "POST", url: `${base}/behavioural/consent`, headers: auth, payload: {} });
+    const note = await app.inject({
+      method: "POST", url: `${base}/students/${students[0]}/behavioural`, headers: teacher.auth,
+      payload: { category: "collaboration", note: "Works well with a partner." },
+    });
+    expect(note.statusCode).toBe(201);
+    const badCategory = await app.inject({
+      method: "POST", url: `${base}/students/${students[0]}/behavioural`, headers: teacher.auth,
+      payload: { category: "leadership", note: "x" },
+    });
+    expect(badCategory.statusCode).toBe(400);
+
+    // Co-curricular is a separate structure (domain + free-text skill/level).
+    await app.inject({
+      method: "POST", url: `${base}/students/${students[0]}/cocurricular`, headers: teacher.auth,
+      payload: { domain: "music", skill: "violin - grade 3", level: "intermediate" },
+    });
+    const records = (await app.inject({ method: "GET", url: `${base}/students/${students[0]}/records`, headers: teacher.auth })).json();
+    expect(records.behavioural.notes).toHaveLength(1);
+    // No score field anywhere on a behavioural note (FR-BSS-001).
+    expect(Object.keys(records.behavioural.notes[0])).not.toContain("score");
+    expect(records.coCurricular[0]).toMatchObject({ domain: "music", skill: "violin - grade 3" });
+
+    // Calendar: create + reschedule flags the change for student views.
+    const ev = await app.inject({
+      method: "POST", url: `${base}/calendar`, headers: teacher.auth,
+      payload: { title: "Fractions revision", type: "class", eventDate: "2026-09-10" },
+    });
+    expect(ev.statusCode).toBe(201);
+    const moved = await app.inject({
+      method: "POST", url: `${base}/calendar/${ev.json().id}/reschedule`, headers: teacher.auth,
+      payload: { newDate: "2026-09-12" },
+    });
+    expect(moved.json()).toMatchObject({ eventDate: "2026-09-12", changed: true });
+    const list = (await app.inject({ method: "GET", url: `${base}/calendar`, headers: teacher.auth })).json();
+    expect(list.find((e: any) => e.id === ev.json().id).changed).toBe(true);
+    await app.close();
+  });
 });

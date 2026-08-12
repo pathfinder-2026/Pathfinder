@@ -693,4 +693,158 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const messages = await ctx.askForHelp.transcript(auth.user.id, sessionId);
     return reply.send(messages.map((m) => ({ role: m.role, kind: m.kind, text: m.text, at: m.createdAt })));
   });
+
+  // ---- Content detail: versions + sharing + orphaned questions (TCH-2) ----
+
+  app.get("/api/v1/schools/:schoolId/content/:itemId/versions", async (req, reply) => {
+    const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
+    await requireTeacherOf(req, schoolId);
+    const item = await requireItemIn(schoolId, itemId);
+    const versions = await ctx.contentStore.listVersionsByItem(itemId);
+    return reply.send(versions.map((v) => ({
+      id: v.id, versionNumber: v.versionNumber, fileType: v.fileType, sizeBytes: v.sizeBytes,
+      current: v.id === item.currentVersionId,
+    })));
+  });
+
+  app.post("/api/v1/schools/:schoolId/content/:itemId/share", async (req, reply) => {
+    const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireItemIn(schoolId, itemId);
+    const share = req.body as { type: "private" } | { type: "class"; classId: string } | { type: "department"; department: string };
+    const item = await ctx.content.setShare(itemId, auth.user.id, share);
+    return reply.send({ share: item.share });
+  });
+
+  /** Questions not yet linked to any outcome — the orphaned-question view. */
+  app.get("/api/v1/schools/:schoolId/knowledge/orphaned-questions", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireTeacherOf(req, schoolId);
+    const questions = await ctx.knowledge.needsLinking(schoolId);
+    return reply.send(questions.map((q) => ({ id: q.id, text: q.text })));
+  });
+
+  // ---- Mapping overrides (full TCH-3, FR-SKG-004) ----
+
+  app.get("/api/v1/schools/:schoolId/content/:itemId/mappings", async (req, reply) => {
+    const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
+    await requireTeacherOf(req, schoolId);
+    await requireItemIn(schoolId, itemId);
+    const views = await ctx.mapping.mappingViews(itemId);
+    return reply.send(views.map((v) => ({
+      mappingId: v.mapping.id,
+      nodeId: v.mapping.nodeId,
+      overriddenFromNodeId: v.mapping.overriddenFromNodeId ?? null,
+      source: v.mapping.source,
+      flags: v.mapping.flags,
+      chain: v.chain.map((n) => n.label),
+    })));
+  });
+
+  app.post("/api/v1/schools/:schoolId/mappings/:mappingId/override", async (req, reply) => {
+    const { schoolId, mappingId } = req.params as { schoolId: string; mappingId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const mapping = await ctx.skillGraphStore.getMapping(mappingId);
+    if (!mapping) throw new NotFoundError("Mapping not found.");
+    const item = await ctx.contentStore.getContentItem(mapping.contentItemId);
+    if (!item || item.schoolId !== schoolId) throw new NotFoundError("Mapping not found in this school.");
+    const { newNodeId, remapHistorical } = req.body as { newNodeId: string; remapHistorical?: boolean };
+    // With historical mastery on the old node, the service returns the
+    // remap-historical decision prompt instead of silently applying (FR-SKG-004).
+    const result = await ctx.mapping.overrideMapping(mappingId, newNodeId, auth.user.id, { remapHistorical });
+    return reply.send(result);
+  });
+
+  app.post("/api/v1/schools/:schoolId/mappings/bulk-override", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { mappingIds, newNodeId, confirm } = req.body as { mappingIds: string[]; newNodeId: string; confirm?: boolean };
+    for (const id of mappingIds ?? []) {
+      const mapping = await ctx.skillGraphStore.getMapping(id);
+      const item = mapping ? await ctx.contentStore.getContentItem(mapping.contentItemId) : undefined;
+      if (!item || item.schoolId !== schoolId) throw new NotFoundError("Mapping not found in this school.");
+    }
+    // Without confirm:true the service answers with the single-confirmation prompt.
+    const result = await ctx.mapping.bulkOverride(mappingIds ?? [], newNodeId, auth.user.id, { confirm });
+    return reply.send(result);
+  });
+
+  // ---- Growth report (TCH-15, FR-REP-001) ----
+
+  app.get("/api/v1/schools/:schoolId/classes/:classId/growth-report", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const report = await ctx.reporting.teacherGrowthReport(auth.user.id, schoolId, classId);
+    const nodeLabels = await nodeLabelMap(schoolId);
+    return reply.send({
+      classId: report.classId,
+      className: report.className,
+      limited: report.limited,
+      note: report.note,
+      growth: report.growth.map((g) => ({ ...g, nodeLabel: nodeLabels[g.nodeId] ?? g.nodeId })),
+    });
+  });
+
+  // ---- Behavioural + co-curricular records (TCH-16, FR-BSS / FR-CAP-002) ----
+  // Behavioural notes are teacher-authored with NO score field anywhere; the
+  // service enforces the four fixed categories, the consent gate and per-persona
+  // visibility. Co-curricular is a deliberately separate, simpler structure.
+
+  app.get("/api/v1/schools/:schoolId/students/:studentId/records", async (req, reply) => {
+    const { schoolId, studentId } = req.params as { schoolId: string; studentId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const behavioural = await ctx.behavioural.observationsFor(auth.user.id, schoolId, studentId);
+    const coCurricular = await ctx.reportingStore.listCoCurricularByStudent(studentId);
+    return reply.send({
+      behavioural: {
+        visibility: behavioural.visibility,
+        notes: behavioural.notes.map((n) => ({ id: n.id, category: n.category, note: n.note, createdAt: n.createdAt })),
+      },
+      coCurricular: coCurricular.map((c) => ({ id: c.id, domain: c.domain, skill: c.skill, level: c.level, createdAt: c.createdAt })),
+    });
+  });
+
+  app.post("/api/v1/schools/:schoolId/students/:studentId/behavioural", async (req, reply) => {
+    const { schoolId, studentId } = req.params as { schoolId: string; studentId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { category, note } = req.body as { category: string; note: string };
+    const observation = await ctx.behavioural.recordObservation(auth.user.id, schoolId, { studentId, category: category as never, note });
+    return reply.status(201).send({ id: observation.id, category: observation.category });
+  });
+
+  app.post("/api/v1/schools/:schoolId/students/:studentId/cocurricular", async (req, reply) => {
+    const { schoolId, studentId } = req.params as { schoolId: string; studentId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { domain, skill, level } = req.body as { domain: string; skill: string; level: string };
+    const record = await ctx.coCurricular.recordCapability(auth.user.id, schoolId, { studentId, domain: domain as never, skill, level });
+    return reply.status(201).send({ id: record.id, domain: record.domain });
+  });
+
+  // ---- Teacher calendar (TCH-18) ----
+
+  app.get("/api/v1/schools/:schoolId/calendar", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireTeacherOf(req, schoolId);
+    const events = await ctx.workspaceStore.listEventsBySchool(schoolId);
+    return reply.send(events.map((e) => ({
+      id: e.id, title: e.title, type: e.type, eventDate: e.eventDate,
+      yearGroup: e.yearGroup, changed: e.changed,
+    })));
+  });
+
+  app.post("/api/v1/schools/:schoolId/calendar", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { title, type, eventDate, yearGroup } = req.body as { title: string; type: string; eventDate: string; yearGroup?: string | null };
+    const event = await ctx.studentWorkspace.createEvent(auth.user.id, schoolId, { title, type: type as never, eventDate, yearGroup: yearGroup ?? null });
+    return reply.status(201).send({ id: event.id, title: event.title, eventDate: event.eventDate });
+  });
+
+  app.post("/api/v1/schools/:schoolId/calendar/:eventId/reschedule", async (req, reply) => {
+    const { schoolId, eventId } = req.params as { schoolId: string; eventId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { newDate } = req.body as { newDate: string };
+    const event = await ctx.studentWorkspace.rescheduleEvent(auth.user.id, schoolId, eventId, newDate);
+    return reply.send({ id: event.id, eventDate: event.eventDate, changed: event.changed });
+  });
 }

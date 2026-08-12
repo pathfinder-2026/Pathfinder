@@ -282,7 +282,52 @@ export const api = {
     request<{ sessionId: string; taskTitle: string; studentLabel: string; createdAt: string }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions`, undefined, s.token),
   helpTranscript: (s: Session, sessionId: string) =>
     request<{ role: "student" | "assistant"; kind: string; text: string; at: string }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions/${sessionId}/transcript`, undefined, s.token),
+
+  // ---- Teacher: content detail + mapping overrides (TCH-2 / full TCH-3) ----
+  contentVersions: (s: Session, itemId: string) =>
+    request<{ id: string; versionNumber: number; fileType: string; sizeBytes: number; current: boolean }[]>("GET", `/api/v1/schools/${s.schoolId}/content/${itemId}/versions`, undefined, s.token),
+  setContentShare: (s: Session, itemId: string, share: { type: "private" } | { type: "class"; classId: string } | { type: "department"; department: string }) =>
+    request<{ share: { type: string } }>("POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/share`, share, s.token),
+  contentMappings: (s: Session, itemId: string) =>
+    request<MappingRow[]>("GET", `/api/v1/schools/${s.schoolId}/content/${itemId}/mappings`, undefined, s.token),
+  overrideMapping: (s: Session, mappingId: string, newNodeId: string, remapHistorical?: boolean) =>
+    request<OverrideOutcome>("POST", `/api/v1/schools/${s.schoolId}/mappings/${mappingId}/override`, { newNodeId, remapHistorical }, s.token),
+
+  // ---- Teacher: reports, records, calendar (TCH-15/16/18) ----
+  growthReport: (s: Session, classId: string) =>
+    request<{ classId: string; className: string; limited: boolean; note: string | null; growth: { nodeId: string; nodeLabel: string; baseline: number; current: number; change: number }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/growth-report`, undefined, s.token,
+    ),
+  studentRecords: (s: Session, studentId: string) =>
+    request<{ behavioural: { visibility: string; notes: { id: string; category: string; note: string; createdAt: string }[] }; coCurricular: { id: string; domain: string; skill: string; level: string; createdAt: string }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/students/${studentId}/records`, undefined, s.token,
+    ),
+  recordBehavioural: (s: Session, studentId: string, category: string, note: string) =>
+    request<{ id: string }>("POST", `/api/v1/schools/${s.schoolId}/students/${studentId}/behavioural`, { category, note }, s.token),
+  recordCoCurricular: (s: Session, studentId: string, body: { domain: string; skill: string; level: string }) =>
+    request<{ id: string }>("POST", `/api/v1/schools/${s.schoolId}/students/${studentId}/cocurricular`, body, s.token),
+  teacherCalendar: (s: Session) =>
+    request<{ id: string; title: string; type: string; eventDate: string; yearGroup: string | null; changed: boolean }[]>("GET", `/api/v1/schools/${s.schoolId}/calendar`, undefined, s.token),
+  createCalendarEvent: (s: Session, body: { title: string; type: string; eventDate: string; yearGroup?: string | null }) =>
+    request<{ id: string }>("POST", `/api/v1/schools/${s.schoolId}/calendar`, body, s.token),
+  rescheduleCalendarEvent: (s: Session, eventId: string, newDate: string) =>
+    request<{ id: string; eventDate: string; changed: boolean }>("POST", `/api/v1/schools/${s.schoolId}/calendar/${eventId}/reschedule`, { newDate }, s.token),
+  configureBehaviouralConsent: (s: Session) =>
+    request<{ configured: boolean }>("POST", `/api/v1/schools/${s.schoolId}/behavioural/consent`, {}, s.token),
 };
+
+export interface MappingRow {
+  mappingId: string;
+  nodeId: string;
+  overriddenFromNodeId: string | null;
+  source: string;
+  flags: string[];
+  chain: string[];
+}
+
+export type OverrideOutcome =
+  | { requiresDecision: true; prompt: string; oldNodeId: string; newNodeId: string }
+  | { requiresDecision: false; mapping: { nodeId: string } };
 
 export interface AgentSuggestionRow {
   id: string;

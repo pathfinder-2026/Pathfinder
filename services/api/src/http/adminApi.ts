@@ -374,6 +374,14 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     return reply.send({ versionId: version.id, status: version.status, signedOffBy: version.signedOffBy });
   });
 
+  // ---- Behavioural consent gate (FR-BSS-001): collection stays blocked until configured ----
+  app.post("/api/v1/schools/:schoolId/behavioural/consent", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    await ctx.behavioural.configureConsent(auth.user.id, schoolId);
+    return reply.status(201).send({ configured: true });
+  });
+
   // ---- Workspace summary ----
   app.get("/api/v1/schools/:schoolId/summary", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };

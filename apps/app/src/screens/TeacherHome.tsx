@@ -11,6 +11,7 @@ const TOOLS: { view: View; title: string; desc: string }[] = [
   { view: "teacher-peer", title: "Peer testing", desc: "Benchmarks, reviews, publish/withhold" },
   { view: "teacher-agent", title: "Teacher Agent", desc: "Grounded drafts — plans, comms, feedback" },
   { view: "teacher-transcripts", title: "Help transcripts", desc: "Ask-for-Help sessions you assigned" },
+  { view: "teacher-records", title: "Records & reports", desc: "Growth, behavioural, co-curricular, calendar" },
 ];
 
 /** The Teacher persona home — hub for the content -> assessment -> dashboard thread. */
@@ -75,13 +76,6 @@ export function TeacherHome({ session, displayName, onNavigate, onSignOut }: {
                 </button>
               ))}
             </div>
-          </Card>
-
-          <Card>
-            <div className="card__head"><h2 className="section">Coming next</h2></div>
-            <ul className="people">
-              <li className="person"><span>Reports · behavioural records · calendar</span><span className="spacer" /><Chip state="pending">Next slice</Chip></li>
-            </ul>
           </Card>
 
           <div className="btn-row"><span className="spacer" /><Button variant="ghost" onClick={onSignOut}>Sign out</Button></div>

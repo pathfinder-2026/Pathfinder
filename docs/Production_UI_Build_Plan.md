@@ -20,21 +20,29 @@ product behaviour — it exposes existing, governed functionality.
 - Admin: ADM-1 (onboarding trail), ADM-2 (school structure **+ curriculum skill-graph
   import & human sign-off card**), ADM-3 (people: roles+names), ADM-4 (Principal
   multi-campus assign), ADM-5 (CSV import), ADM-6 (SSO), ADM-7 (branding).
-- **Teacher core loop:** TCH-1 (Content Studio: upload → ingest → classify →
-  approve-classification → attest → approve, with fixed governance chips + block
-  reasons), TCH-3 *minimal* (map approved content to signed-off graph nodes;
-  unsigned graph honestly blocked), TCH-4 (Assessment Builder: grounded drafts,
-  shortfall + clean failed states, grounding sources shown), TCH-5 (review-ack gate →
-  publish, reversible before start), TCH-6 (Dashboard mastery heatmap with trend +
-  intervention/extension flags and the not-enough-data empty state).
+- **Teacher persona: COMPLETE (TCH-1..18).** TCH-1 (Content Studio pipeline with
+  fixed governance chips + block reasons), TCH-2 (versions, sharing, orphaned
+  questions), TCH-3 full (mapping + per-mapping override with the remap-historical
+  prompt + single-confirm bulk override; unsigned graph honestly blocked), TCH-4/5
+  (grounded Assessment Builder, shortfall + clean-failed states, review-ack →
+  publish, reversible before start), TCH-6 (mastery heatmap), TCH-7/8/9 (Class
+  insights: focus areas / editable cohorts / adaptive escalations + next actions),
+  TCH-10..12 (peer suite: warnings surfaced, cohort locks at launch, locked-computed
+  benchmarks publish-or-withhold, logged corrections, approve/reject-only review
+  moderation), TCH-13 (Teacher Agent: grounded-or-declined drafts, never auto-sent,
+  sensitive sections separated), TCH-14 (assigning-teacher-only transcripts,
+  Principal back-door tested), TCH-15 (growth report with limited/early flag),
+  TCH-16 (behavioural: 4 fixed categories, no score, consent-gated + co-curricular
+  as its own structure), TCH-17 (parent-comms drafts via the Agent), TCH-18
+  (calendar with reschedule-flags-change).
 - Server: `services/api/src/http/teacherApi.ts` (teacher-role-guarded, school-scoped
-  `/api/v1` surface) + admin skill-graph endpoints; invite list now returns the
-  single-use `inviteToken` (out-of-band delivery until real email exists); branding
-  READ opened to all school members (white-label themes every persona surface).
+  `/api/v1` surface) + admin skill-graph endpoints + behavioural-consent endpoint;
+  invite list returns the single-use `inviteToken` (out-of-band delivery until real
+  email exists — a real SES adapter exists behind the notification port, env-gated,
+  ADR-0032); branding READ opened to all school members.
 
-**⬜ Next (via the prompts below):** TCH-2 (content detail/versions), full TCH-3
-(overrides/bulk remap), TCH-7..18; ADM-8/9/10/11; Student (STU-*), Parent (PAR-*),
-Principal (PRB-*) screens; S-NOTIF; the a11y pass.
+**⬜ Next (via the prompts below):** Student (STU-1..4, safety-critical), Parent
+(PAR-*), Principal (PRB-*); ADM-8/9/10/11; S-NOTIF; the a11y pass.
 See §12 for order; each screen's **Build prompt** is paste-ready (prepend §13).
 
 ---

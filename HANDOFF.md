@@ -1,3 +1,117 @@
+# Handoff — Production UI Slice 3: Teacher workflow thread (TCH-1/3/4/5/6)
+
+**Date:** 2026-08-12
+**Scope:** The Teacher persona's core loop in the production app — content → approve →
+map → assessment → publish → dashboard — per `docs/Production_UI_Build_Plan.md` §12
+step 3 (+ the curriculum sign-off gate it depends on). Additive; no domain service
+changed. **Suite:** `npm test` → **279** (274 `services/api` + 5 `infra`); the same 274
+pass **vs Postgres**; `npm run typecheck` clean (api + infra + app); `apps/app`
+`vite build` clean; the whole thread was driven live in the browser (admin sign-off →
+invite accept → upload → 5 governance steps → map → generate → review-ack → publish →
+heatmap empty state).
+
+## What was built
+- **`services/api/src/http/teacherApi.ts`** — teacher-role-guarded (`TEACHER_ROLE_REQUIRED`),
+  school-scoped `/api/v1` surface wrapping tested services only: content library/upload
+  (server-side FNV content hash; per-item reject stays HTTP 200), per-step pipeline
+  endpoints (ingest / classify / classification-approve / attest / approve — each an
+  explicit teacher action, Decision 7), map-to-skills, skills node picker (honest
+  `signedOff:false` state), assessments (list/generate/detail with grounding-source
+  titles/ack/publish/unpublish), teacher classes + class mastery heatmap (synthetic
+  students keep positional labels — no fabricated PII).
+- **Admin skill-graph governance endpoints** (`adminApi.ts`): status / import-seed
+  (draft, ADR-0015) / **sign-off by the signed-in admin** (the human action the program
+  never self-certifies) + `configureCurriculum`. Surfaced as a "Curriculum skill graph"
+  card on the Structure screen.
+- **Invite list now returns `inviteToken`** for pending invites — the admin delivers
+  the link out-of-band until real email transport exists (single-use; gone once accepted).
+- **Branding READ opened to all school members** (config stays admin-only): white-label
+  must theme teacher/student/parent surfaces too (found live — teachers got default
+  branding; fixed + regression-tested).
+- **`apps/app` Teacher UI:** role routing (teacher "Enter" → TeacherHome hub), Content
+  Studio (upload + expandable pipeline rows, fixed governance chips, low-confidence
+  classification warning, block reasons, skill mapping), Assessments (generate with
+  shortfall/failed honesty, draft review with grounding sources, review-ack gate →
+  publish → reversible unpublish), Class dashboard (student × skill heatmap: level as
+  text + trend glyph + ●/★ flags — never colour-only; stale + no-data states).
+
+## Files & wiring
+- **New:** `http/teacherApi.ts`, `test/http-teacher-api.test.ts` (7 tests);
+  `apps/app/src/screens/{TeacherHome,TeacherContent,TeacherAssessments,TeacherDashboard}.tsx`.
+- **Changed:** `http/app.ts` (registerTeacherApi), `http/adminApi.ts` (graph endpoints,
+  inviteToken, branding read guard), `apps/app/src/{App.tsx,api.ts,components.tsx
+  (PageShell roleTag/backLabel),styles.css (heatmap)}`, `screens/{RoleHome,Structure}.tsx`,
+  `docs/Production_UI_Build_Plan.md` (status).
+
+## How to run / verify
+`npm run dev:api` + `npm run dev:app` → http://localhost:5174. Create a school, sign off
+the graph under **School structure → Curriculum skill graph**, invite a teacher (grab the
+invite link token from `GET /api/v1/schools/:id/invites`), open `/?token=…`, and walk the
+thread. Tests: `npm test` · `npm run test:pg-suite --workspace services/api` · `npm run
+typecheck`.
+
+## Deferred
+TCH-2 (content detail/versioning), full TCH-3 (mapping overrides/bulk remap), TCH-7..18
+(focus areas, cohorts, adaptive, peer, agent, reports, behavioural), student/parent/
+principal personas, S-NOTIF, the a11y pass — each has a paste-ready prompt in the build
+plan. Real teacher-class assignment UI (heatmap currently lists all school classes).
+
+---
+
+# Handoff — Production web app: School-Admin onboarding slice (FR-ADM / FR-ONB)
+
+**Date:** 2026-08-11
+**Scope:** First slice of the deferred production persona UIs (ADR-0012) — a fresh
+production app (`apps/app`) rendering the School-Admin onboarding journey end-to-end.
+Additive; no earlier milestone changed. Built at owner direction to test-drive a pilot.
+**Suite:** `npm test` → **271** (266 `services/api` + 5 `infra`); the same 266 also pass
+**vs Postgres**; `npm run typecheck` clean (api + infra + app); `apps/app` production
+`vite build` clean; the flow was driven live over HTTP.
+
+**Update (same slice, extended):** added **sign-in** for an existing admin
+(`POST /api/v1/auth/login`, resolves school + campus) with a sign-in/create toggle on the
+entry screen; and **account management** — a **People** screen that assigns roles
+(`PATCH .../memberships/:id/role`, FR-ADM-002; Principal per campus, FR-ADM-007) and edits
+names (`PATCH .../users/:id/name` -> new `AccountService.updateName`). The only-admin
+demotion guard surfaces as a 409. Covered by 2 more `http-admin-api.test.ts` cases (5 total).
+
+## What was built
+- **Production HTTP surface** `services/api/src/http/adminApi.ts` under `/api/v1`
+  (session-guarded, admin-scoped, same-school checked), wired into `buildApp`. Endpoints:
+  onboarding/start, onboarding state, complete-step, enter-workspace, classes, invites,
+  safeguarding, branding (get/set), summary. Only HTTP plumbing over tested services.
+- **Admin self-registration** `AuthService.setInitialPassword` (validated + hashed +
+  audited) so `POST /api/v1/onboarding/start` = createSchool + createAccount + password +
+  login -> session.
+- **Fresh production app `apps/app`** (React 19 + Vite, :5174, proxies /api -> :3000):
+  design tokens (`theme.css`) split themeable BRAND (`--pf-brand*`) from fixed GOVERNANCE
+  (`--gov-*`, never derived from brand — FR-WL-004 in the UI); screens Start (create
+  school + admin), Onboarding (the 7-step "waypoint trail" with a panel per step:
+  configure classes, invite teachers/students/parents, operations+branding, go-live with
+  zero-teacher confirm), Workspace (live summary). Live white-label theming + AA-floor
+  guardrail surfaced from the API.
+
+## Files & wiring
+- **New:** `http/adminApi.ts`, `test/http-admin-api.test.ts` (3 tests); `apps/app/*`
+  (package.json, tsconfig, vite.config, index.html, src/{main,App,api,brand,components,
+  theme.css,styles.css}, src/screens/{Start,Onboarding,Workspace}).
+- **Changed:** `authService.ts` (+setInitialPassword, +NotFoundError import), `http/app.ts`
+  (registerAdminApi), root `package.json` (+apps/app workspace, +dev:app), README, ADR-0031.
+
+## How to run / verify
+Two terminals: `npm run dev:api` then `npm run dev:app`, open http://localhost:5174.
+Tests: `npm test` (269) · `npm run test:pg-suite --workspace services/api` (264) ·
+`npm run typecheck`. Note: the dev API is in-memory, so data resets on restart. If :3000
+is held by a stale server, free it before `dev:api`.
+
+## Deferred
+Remaining personas (Teacher/Student/Parent/Principal) + their feature screens; real logo
+image upload UI; a formal WCAG 2.2 AA audit (NFR-A11Y-001) with automated a11y tests;
+wiring the app to cloud (live Bedrock / RDS / S3). The HTTP `/api/v1` surface grows with
+each new persona slice.
+
+---
+
 # Handoff — Appendix Milestone B — White-label / multi-tenant branding (FR-WL-001..004)
 
 **Date:** 2026-08-11

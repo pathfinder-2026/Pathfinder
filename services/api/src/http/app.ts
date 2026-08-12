@@ -9,6 +9,11 @@ import {
 } from "../domain/errors";
 import { buildContext, type AppContext, type BuildContextOptions } from "../context";
 import { registerPreview } from "./preview";
+import { registerAdminApi } from "./adminApi";
+import { registerTeacherApi } from "./teacherApi";
+import { registerStudentApi } from "./studentApi";
+import { registerParentApi } from "./parentApi";
+import { registerPrincipalApi } from "./principalApi";
 
 /**
  * Minimal HTTP surface for Milestone 0. It exposes just enough of the core
@@ -86,6 +91,21 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
       memberships: auth.memberships.map((m) => ({ role: m.role, classId: m.classId })),
     });
   });
+
+  // Production Admin onboarding API (FR-ADM/FR-ONB), consumed by apps/app.
+  registerAdminApi(app, context);
+
+  // Production Teacher workflow API (TCH-*), consumed by apps/app.
+  registerTeacherApi(app, context);
+
+  // Production Student workspace API (STU-1..5, safety-critical), consumed by apps/app.
+  registerStudentApi(app, context);
+
+  // Production Parent API (PAR-1..5, verification-before-data), consumed by apps/app.
+  registerParentApi(app, context);
+
+  // Production Principal API (PRB-1..5; transcripts unreachable by construction).
+  registerPrincipalApi(app, context);
 
   // Preview/validation console API (M0–M5a). Routes register immediately; the
   // demo world bootstraps lazily on first /api call, so tests are unaffected.

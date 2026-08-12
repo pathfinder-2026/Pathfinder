@@ -1,0 +1,161 @@
+@import "./theme.css";
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--pf-paper);
+  color: var(--pf-ink);
+  font-family: var(--pf-font);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Accessible focus ring, brand-tinted but always visible (WCAG 2.2 AA 2.4.11). */
+:focus-visible { outline: 3px solid var(--pf-brand); outline-offset: 2px; border-radius: 4px; }
+
+/* Respect the user's reduced-motion preference (WCAG 2.3.3): no animated
+   transitions anywhere when the OS asks for calm. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- layout ---------- */
+.app { min-height: 100%; display: flex; flex-direction: column; }
+.container { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+.topbar {
+  background: var(--pf-card); border-bottom: 1px solid var(--pf-border);
+  position: sticky; top: 0; z-index: 5;
+}
+.topbar__inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.brand svg { width: 28px; height: 28px; flex-shrink: 0; }
+.role-tag {
+  font-size: 12px; font-weight: 600; color: var(--pf-brand);
+  background: var(--pf-brand-tint); padding: 5px 12px; border-radius: 999px;
+}
+
+.main { flex: 1; padding: 36px 0 64px; }
+
+/* ---------- typography ---------- */
+h1 { font-size: 27px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+.lede { color: var(--pf-slate); font-size: 15px; margin: 0 0 28px; max-width: 60ch; }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pf-slate); margin: 0 0 6px; }
+h2.section { font-size: 18px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+.muted { color: var(--pf-slate); font-size: 14px; }
+
+/* ---------- card ---------- */
+.card {
+  background: var(--pf-card); border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius-lg); box-shadow: var(--pf-shadow-card); padding: 26px;
+}
+.card + .card { margin-top: 18px; }
+.card__head { margin-bottom: 18px; }
+.split { display: grid; grid-template-columns: 1fr; gap: 18px; }
+@media (min-width: 820px) { .split { grid-template-columns: 1.4fr 1fr; } }
+
+/* ---------- waypoint trail (the onboarding stepper) ---------- */
+.trail { display: flex; align-items: flex-start; gap: 0; margin: 0 0 30px; overflow-x: auto; padding-bottom: 4px; }
+.trail__node { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 96px; flex: 1; position: relative; }
+.trail__node:not(:last-child)::after {
+  content: ""; position: absolute; top: 13px; left: calc(50% + 16px); right: calc(-50% + 16px);
+  height: 2px; background: var(--pf-border-strong);
+}
+.trail__node.done::after { background: var(--pf-brand); }
+.wp {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--pf-border-strong);
+  background: var(--pf-card); display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  color: var(--pf-slate); z-index: 1; transition: all 0.15s ease;
+}
+.trail__node.done .wp { background: var(--pf-brand); border-color: var(--pf-brand); color: var(--pf-brand-ink); }
+.trail__node.current .wp { border-color: var(--pf-brand); color: var(--pf-brand); box-shadow: 0 0 0 4px var(--pf-brand-tint); }
+.trail__label { font-size: 12px; font-weight: 600; text-align: center; color: var(--pf-slate); max-width: 92px; }
+.trail__node.current .trail__label { color: var(--pf-ink); }
+button.trail__node { background: none; border: none; cursor: pointer; font: inherit; padding: 0; }
+button.trail__node:disabled { cursor: not-allowed; opacity: 0.75; }
+
+/* ---------- forms ---------- */
+.field { display: block; margin-bottom: 16px; }
+.field__label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field__hint { font-size: 12px; color: var(--pf-slate); margin-top: 5px; }
+.input, .select {
+  width: 100%; font: inherit; font-size: 14px; color: var(--pf-ink);
+  padding: 10px 12px; border: 1px solid var(--pf-border-strong); border-radius: var(--pf-radius-sm);
+  background: var(--pf-card);
+}
+.input:focus, .select:focus { border-color: var(--pf-brand); outline: none; box-shadow: 0 0 0 3px var(--pf-brand-tint); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+/* ---------- buttons ---------- */
+.btn {
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  padding: 10px 18px; border-radius: var(--pf-radius-sm); border: 1px solid var(--pf-border-strong);
+  background: var(--pf-card); color: var(--pf-ink); transition: filter 0.12s ease;
+}
+.btn:hover { filter: brightness(0.98); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary { background: var(--pf-brand); color: var(--pf-brand-ink); border-color: var(--pf-brand); }
+.btn--ghost { background: transparent; border-color: transparent; color: var(--pf-slate); }
+.btn-row { display: flex; gap: 10px; align-items: center; margin-top: 22px; flex-wrap: wrap; }
+.spacer { flex: 1; }
+
+/* ---------- governance chips (FIXED styling — never brand) ---------- */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  padding: 4px 10px; border-radius: var(--pf-radius-sm); border: 1px solid transparent;
+}
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip--draft { color: var(--gov-draft-fg); background: var(--gov-draft-bg); border-color: var(--gov-draft-border); }
+.chip--approved { color: var(--gov-approved-fg); background: var(--gov-approved-bg); border-color: var(--gov-approved-border); }
+.chip--locked { color: var(--gov-locked-fg); background: var(--gov-locked-bg); border-color: var(--gov-locked-border); }
+.chip--pending { color: var(--gov-pending-fg); background: var(--gov-pending-bg); }
+
+/* ---------- banner ---------- */
+.banner { padding: 12px 16px; border-radius: var(--pf-radius-sm); font-size: 13px; font-weight: 600; margin-bottom: 18px; border: 1px solid transparent; }
+.banner--brand { border-left: 4px solid var(--pf-brand); background: var(--pf-brand-tint); color: var(--pf-brand); border-radius: 0 var(--pf-radius-sm) var(--pf-radius-sm) 0; }
+.banner--warn { background: var(--gov-draft-bg); color: var(--gov-draft-fg); border-color: var(--gov-draft-border); }
+.banner--error { background: #f6e4e0; color: var(--gov-error); border-color: #e6c3ba; }
+
+/* ---------- lists ---------- */
+.people { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.person { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--pf-border); border-radius: var(--pf-radius-sm); font-size: 13px; }
+.person__avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--pf-brand-tint); color: var(--pf-brand); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+.person__meta { color: var(--pf-slate); font-size: 12px; }
+
+/* ---------- stat tiles ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px; margin-top: 8px; }
+.tile { border: 1px solid var(--pf-border); border-radius: var(--pf-radius-md); padding: 16px; }
+.tile__num { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.tile__label { font-size: 12px; color: var(--pf-slate); font-weight: 600; }
+
+/* ---------- swatches (white-label) ---------- */
+.swatches { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--pf-border-strong); cursor: pointer; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pf-brand); }
+
+/* ---------- mastery heatmap (TCH-6) ----------
+   AA-safe: level is always TEXT in the cell; colour is a supporting tint only. */
+.heatmap { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.heatmap th, .heatmap td { border: 1px solid var(--pf-border); padding: 7px 10px; text-align: left; }
+.heatmap thead th { background: var(--pf-paper); font-weight: 700; position: sticky; top: 0; }
+.heatmap tbody th { font-weight: 600; white-space: nowrap; background: var(--pf-paper); }
+.hm { white-space: nowrap; }
+.hm__level { font-weight: 700; }
+.hm--low { background: #f7e7e2; color: #7a2e1d; }
+.hm--developing { background: #f6efdc; color: #6b5416; }
+.hm--secure { background: #e3efe6; color: #1d5c33; }
+.hm--none { background: var(--pf-paper); }
+.hm--stale { opacity: 0.65; }
+.hm__stale { display: block; font-size: 10px; color: var(--pf-slate); }
+
+.center { min-height: 100%; display: grid; place-items: center; padding: 40px 0; }
+.narrow { max-width: 460px; width: 100%; }
+.legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.linkish { background: none; border: none; color: var(--pf-brand); font: inherit; font-weight: 600; cursor: pointer; padding: 0; }

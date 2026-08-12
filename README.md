@@ -39,6 +39,34 @@ Then open **http://localhost:5173**. The web app proxies `/api` to the API on
 adaptive engine — escalations, conflicting‑signal reasoning, and deferred
 spaced‑revision reminders).
 
+## The production web app (persona UIs)
+
+A **fresh production app** (`apps/app`, separate from the throwaway preview console)
+is being built persona by persona in the real design system. The first slice is the
+**School-Admin onboarding** journey — a create-school → guided 7-step "waypoint trail"
+→ live workspace, with live white-label theming and fixed governance status signals
+(Decision 5 / FR-WL-004). It runs against the same tested services, no cloud needed.
+
+Run the API and the app in two terminals:
+
+```bash
+npm run dev:api
+```
+
+```bash
+npm run dev:app
+```
+
+Then open **http://localhost:5174** (the app proxies `/api` to the API on `:3000`).
+Sign in (or create a school), follow the trail (configure classes → invite teachers /
+students / parents → operations & branding → go live). On the **Operations** step, try
+a brand colour and a too-light one (the server auto-suggests an accessible alternative),
+and toggle white-label — the draft/approved/computed status chips stay fixed while the
+brand accent changes. From the live workspace, **Manage people** assigns roles and edits
+names (FR-ADM-002; Principal per campus, FR-ADM-007) — demoting the only admin is blocked.
+An existing admin **signs back in** with email + password. The production surface is served
+under `/api/v1` (see [docs/decisions.md](docs/decisions.md) ADR-0031).
+
 ## Foundational decisions (locked — never re-litigate)
 
 These are fixed constraints from the plan. See
@@ -68,10 +96,11 @@ services/api     Fastify + TypeScript backend (domain → ports → adapters)
                    M1: Content/Classification/Ingestion/Knowledge
   src/ports        DataStore, ContentStore, Storage, Scanner, TextExtractor, AiProvider
   src/adapters     memory (dev/test), postgres (schema of record), bedrock (AI)
-  src/http         minimal Fastify app (create school, invite, accept, login)
+  src/http         core loop + /api/v1 production admin API + preview console API
   test             one test per acceptance row + one per foundation
 infra            AWS CDK (TypeScript) — region-pinned skeleton (no resources yet)
-apps/web         React 19 + Vite shell (screens deferred)
+apps/web         React 19 + Vite — preview/validation console (M0–M5a)
+apps/app         React 19 + Vite — production persona UIs (Admin onboarding slice)
 db/migrations    SQL schema of record + audit-log grants/trigger + content tables
 docs             foundational-decisions, decisions (ADRs), traceability
 ```
@@ -94,7 +123,7 @@ npm install
 npm test
 ```
 
-Expected: **266 passing tests** — 261 in `services/api` (every acceptance row for
+Expected: **283 passing tests** — 278 in `services/api` (every acceptance row for
 M0–M11 plus the resequenced Appendix A FR-ADM-003 / FR-INT-001 and Appendix B
 FR-WL-001..004: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
 FR-PEER, FR-TAG, FR-STU/FR-SAG, FR-PAR, FR-PDB, FR-REP/FR-CAP/FR-BSS, and the M11
@@ -103,8 +132,11 @@ quarantine tests, the Ask-for-Help adversarial suite, the Principal transcript
 back-door hunt, and every governance gate — approved-pool / sign-off /
 draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-declined
 / state-layer-lockout / verification-before-data / consent-gated / audit-blocks-on-
-logging-failure / erasure-preserves-hash-chain / drift-fails-safe) and 5 in `infra`
-(region pinning). The **same 261 tests also run against Postgres** (see below).
+logging-failure / erasure-preserves-hash-chain / drift-fails-safe; plus the
+production `/api/v1` HTTP surfaces — admin onboarding/management and the teacher
+content→assessment→publish→dashboard thread, and the AU-pinned email
+notification channel behind a fake transport, ADR-0032) and 5 in `infra`
+(region pinning). The **same 278 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash
@@ -118,7 +150,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 261 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 274 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the

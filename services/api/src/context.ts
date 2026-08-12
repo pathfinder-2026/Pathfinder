@@ -150,6 +150,13 @@ export interface BuildContextOptions {
   clock?: Clock;
   channels?: NotificationChannel[];
   /**
+   * Additional notification channels appended AFTER the default in-memory
+   * channel (which stays — it is the in-app notification record). Production
+   * appends a real EmailChannel (SES ap-southeast-2) here when credentials
+   * exist; see adapters/email/emailChannel.ts.
+   */
+  extraChannels?: NotificationChannel[];
+  /**
    * AI provider. Defaults to the local deterministic provider (no network egress)
    * because live Bedrock verification is gated on AWS credentials (ADR-0013).
    * Production injects a guarded BedrockProvider (ap-southeast-2).
@@ -186,7 +193,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const extractor = options.extractor ?? new InMemoryTextExtractor();
   const clock = options.clock ?? new SystemClock();
   const notificationChannel = new InMemoryChannel();
-  const channels = options.channels ?? [notificationChannel];
+  const channels = [...(options.channels ?? [notificationChannel]), ...(options.extraChannels ?? [])];
   const notifications = new NotificationService(clock, channels);
   const audit = new AuditRecorder(clock);
 

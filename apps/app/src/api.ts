@@ -343,6 +343,20 @@ export const api = {
     request<{ resumable: boolean; savedAnswers: Record<string, string> }>("GET", `/api/v1/schools/${s.schoolId}/student/attempts/${attemptId}/resume`, undefined, s.token),
   submitAttempt: (s: Session, attemptId: string, answers: Record<string, string>) =>
     request<{ id: string; status: string }>("POST", `/api/v1/schools/${s.schoolId}/student/attempts/${attemptId}/submit`, { answers }, s.token),
+
+  // ---- Student: peer tests (STU-5) ----
+  studentPeerTests: (s: Session) =>
+    request<{ peerTestId: string; title: string; placedAt: string }[]>("GET", `/api/v1/schools/${s.schoolId}/student/peer-tests`, undefined, s.token),
+  studentPeerTest: (s: Session, peerTestId: string) =>
+    request<{ id: string; title: string; questionCount: number; rubric: string | null; status: string; peers: { id: string; label: string }[]; signal: { visible: boolean; signal: string | null; message: string } }>(
+      "GET", `/api/v1/schools/${s.schoolId}/student/peer-tests/${peerTestId}`, undefined, s.token,
+    ),
+  submitPeerReview: (s: Session, peerTestId: string, targetStudentId: string, text: string) =>
+    request<{ ok: boolean; message: string }>("POST", `/api/v1/schools/${s.schoolId}/student/peer-tests/${peerTestId}/reviews`, { targetStudentId, text }, s.token),
+  studentPeerFeedback: (s: Session) =>
+    request<{ hasFeedback: boolean; reviews: { text: string }[]; message: string }>("GET", `/api/v1/schools/${s.schoolId}/student/peer-feedback`, undefined, s.token),
+  recordPeerSubmission: (s: Session, peerTestId: string, studentId: string, score: number) =>
+    request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/peer-tests/${peerTestId}/submissions`, { studentId, score }, s.token),
 };
 
 export interface StudentTaskView {

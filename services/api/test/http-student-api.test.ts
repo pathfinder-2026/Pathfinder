@@ -270,4 +270,74 @@ describe("Production Student API — the safety-critical workspace over HTTP", (
     expect(unlocked.available).toBe(true);
     await app.close();
   });
+
+  it("peer tests: delivery, withheld-then-published softened signal, moderated anonymised review (STU-5)", async () => {
+    const { app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addMember(app, schoolId, auth, "teacher");
+    // Two students with sessions (reviewer + reviewed) + three more for cohort size.
+    const alex = await addMember(app, schoolId, auth, "student");
+    const billie = await addMember(app, schoolId, auth, "student");
+    await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A", yearGroup: "8" } });
+    const extras: string[] = [];
+    for (let i = 0; i < 3; i++) extras.push((await addMember(app, schoolId, auth, "student")).userId);
+    await prepareGrounding(app, schoolId, auth, teacher.auth, 2);
+
+    // Teacher builds + launches; the placement reaches each student's surface.
+    const cohort = [alex.userId, billie.userId, ...extras];
+    const test = (await app.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/peer-tests`, headers: teacher.auth,
+      payload: { title: "Fractions peer round", nodeId: NODE, questionCount: 2, cohort, anonymity: "anonymous" },
+    })).json();
+    await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/peer-tests/${test.id}/launch`, headers: teacher.auth });
+
+    const stuBase = `/api/v1/schools/${schoolId}/student`;
+    const delivered = (await app.inject({ method: "GET", url: `${stuBase}/peer-tests`, headers: alex.auth })).json();
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].title).toBe("Fractions peer round");
+    // A student outside the cohort has no path to the test.
+    const outsider = await addMember(app, schoolId, auth, "student");
+    expect((await app.inject({ method: "GET", url: `${stuBase}/peer-tests/${test.id}`, headers: outsider.auth })).statusCode).toBe(404);
+
+    // Teacher records graded results (grading is a teacher act, out-of-band marking).
+    const scores = [0.9, 0.7, 0.6, 0.5, 0.4];
+    for (const [i, sid] of cohort.entries()) {
+      await app.inject({
+        method: "POST", url: `/api/v1/schools/${schoolId}/peer-tests/${test.id}/submissions`, headers: teacher.auth,
+        payload: { studentId: sid, score: scores[i] },
+      });
+    }
+
+    // WITHHELD (the default): the student sees no figures, no signal — just the honest message.
+    let detail = (await app.inject({ method: "GET", url: `${stuBase}/peer-tests/${test.id}`, headers: alex.auth })).json();
+    expect(detail.signal.visible).toBe(false);
+    expect(detail.signal.message).toMatch(/hasn’t released/i);
+    expect(JSON.stringify(detail.signal)).not.toMatch(/0\.[0-9]/);
+
+    // Published: softened, non-ranked, no figures, no named peers.
+    await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/peer-tests/${test.id}/publish-benchmark`, headers: teacher.auth });
+    detail = (await app.inject({ method: "GET", url: `${stuBase}/peer-tests/${test.id}`, headers: alex.auth })).json();
+    expect(detail.signal.visible).toBe(true);
+    expect(detail.signal.message).toMatch(/cohort average/i);
+    expect(detail.signal.message).not.toMatch(/\d/);
+
+    // Billie reviews Alex; nothing reaches Alex until the teacher approves.
+    const review = await app.inject({
+      method: "POST", url: `${stuBase}/peer-tests/${test.id}/reviews`, headers: billie.auth,
+      payload: { targetStudentId: alex.userId, text: "Clear steps and neat working." },
+    });
+    expect(review.statusCode).toBe(201);
+    let feedback = (await app.inject({ method: "GET", url: `${stuBase}/peer-feedback`, headers: alex.auth })).json();
+    expect(feedback.hasFeedback).toBe(false);
+    expect(feedback.message).toMatch(/no peer feedback/i);
+
+    const pending = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/peer-tests/${test.id}/reviews/pending`, headers: teacher.auth })).json();
+    await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/peer-reviews/${pending.reviews[0].id}/moderate`, headers: teacher.auth, payload: { decision: "approve" } });
+    feedback = (await app.inject({ method: "GET", url: `${stuBase}/peer-feedback`, headers: alex.auth })).json();
+    expect(feedback.hasFeedback).toBe(true);
+    expect(feedback.reviews).toEqual([{ text: "Clear steps and neat working." }]);
+    // Anonymised: the reviewer's identity never appears.
+    expect(JSON.stringify(feedback)).not.toContain(billie.userId);
+    await app.close();
+  });
 });

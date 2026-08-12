@@ -148,4 +148,66 @@ export function registerStudentApi(app: FastifyInstance, ctx: AppContext): void 
     const attempt = await ctx.assessment.submitAttempt(attemptId, auth.user.id, answers ?? {});
     return reply.send({ id: attempt.id, status: attempt.status });
   });
+
+  // ---- STU-5: peer tests — deliveries, review submission, softened signal ----
+  // The student only ever sees the softened, non-ranked signal, and ONLY once
+  // the teacher explicitly published (withheld default; no timer). Peer reviews
+  // go to teacher moderation before the reviewed student sees anything.
+
+  /** A peer test placed with this student, with their cohort membership asserted. */
+  const requirePlacedPeerTest = async (studentId: string, peerTestId: string) => {
+    const test = await ctx.peerStore.getPeerTest(peerTestId);
+    if (!test || !test.cohort.includes(studentId)) throw new NotFoundError("Peer test not found.");
+    return test;
+  };
+
+  app.get("/api/v1/schools/:schoolId/student/peer-tests", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireStudentOf(req, schoolId);
+    return reply.send(await ctx.peerTests.deliveriesForStudent(auth.user.id));
+  });
+
+  app.get("/api/v1/schools/:schoolId/student/peer-tests/:peerTestId", async (req, reply) => {
+    const { schoolId, peerTestId } = req.params as { schoolId: string; peerTestId: string };
+    const auth = await requireStudentOf(req, schoolId);
+    const test = await requirePlacedPeerTest(auth.user.id, peerTestId);
+    const signal = await ctx.peerTests.studentSignal(peerTestId, auth.user.id);
+    // Cohort peers for the review target picker (labels only, never emails).
+    const peers: { id: string; label: string }[] = [];
+    let position = 0;
+    for (const sid of test.cohort) {
+      position += 1;
+      if (sid === auth.user.id) continue;
+      const pii = await ctx.store.getPersonalData(sid);
+      peers.push({ id: sid, label: pii ? `${pii.firstName} ${pii.lastName}` : `Student ${String(position).padStart(2, "0")}` });
+    }
+    return reply.send({
+      id: test.id,
+      title: test.title,
+      questionCount: test.questionCount,
+      rubric: test.rubric,
+      status: test.status,
+      peers,
+      // Softened + non-ranked; withheld/suppressed states carry their honest message.
+      signal,
+    });
+  });
+
+  app.post("/api/v1/schools/:schoolId/student/peer-tests/:peerTestId/reviews", async (req, reply) => {
+    const { schoolId, peerTestId } = req.params as { schoolId: string; peerTestId: string };
+    const auth = await requireStudentOf(req, schoolId);
+    const test = await requirePlacedPeerTest(auth.user.id, peerTestId);
+    const { targetStudentId, text } = req.body as { targetStudentId: string; text: string };
+    if (!test.cohort.includes(targetStudentId)) throw new NotFoundError("That student is not in this peer test.");
+    await ctx.peerReviews.submitReview(auth.user.id, schoolId, peerTestId, targetStudentId, text ?? "");
+    // The anonymity-risk flag is teacher-facing; the student just gets an ack.
+    return reply.status(201).send({ ok: true, message: "Sent to your teacher for review before your classmate sees it." });
+  });
+
+  /** Approved, anonymised reviews about MY work — or the neutral no-feedback state. */
+  app.get("/api/v1/schools/:schoolId/student/peer-feedback", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireStudentOf(req, schoolId);
+    return reply.send(await ctx.peerReviews.feedbackForStudent(auth.user.id));
+  });
 }

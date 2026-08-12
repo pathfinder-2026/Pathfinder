@@ -555,6 +555,12 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     await ctx.peerTests.recordCorrection(tid, id, String(b.studentId), Number(b.correctedScore), String(b.reason ?? ""));
     return { ok: true };
   });
+  // Grading is a teacher act: the graded result enters through this seam
+  // (out-of-band marking in the MVP); NOT_LIVE surfaces for unlaunched tests.
+  peerAction("submissions", async (_tid, id, b) => {
+    await ctx.peerTests.recordSubmission(id, String(b.studentId), Number(b.score));
+    return { ok: true };
+  });
 
   app.get("/api/v1/schools/:schoolId/peer-tests/:id/results", async (req, reply) => {
     const { schoolId, id } = req.params as { schoolId: string; id: string };

@@ -26,6 +26,7 @@ export function TeacherPeer({ session, displayName, onBack, onSignOut }: {
   const [results, setResults] = useState<PeerResults | null>(null);
   const [reviews, setReviews] = useState<{ anonymityRisk: boolean; reviews: { id: string; text: string }[] } | null>(null);
   const [correction, setCorrection] = useState({ studentId: "", score: "", reason: "" });
+  const [grade, setGrade] = useState({ studentId: "", score: "" });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -164,6 +165,26 @@ export function TeacherPeer({ session, displayName, onBack, onSignOut }: {
           {results && (
             <>
               <p className="muted">{results.completion.completed} of {results.completion.total} completed ({Math.round(results.completion.rate * 100)}%)</p>
+              {selected.status === "launched" && (
+                <div className="btn-row" style={{ marginTop: 0 }}>
+                  <label className="person__meta" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Record graded result
+                    <select className="select" style={{ width: "auto" }} value={grade.studentId} onChange={(e) => setGrade({ ...grade, studentId: e.target.value })} aria-label="Student to grade">
+                      <option value="">Student…</option>
+                      {selected.cohort.map((sid) => {
+                        const label = students.find((s) => s.id === sid)?.label ?? "Student";
+                        return <option key={sid} value={sid}>{label}</option>;
+                      })}
+                    </select>
+                  </label>
+                  <input className="input" style={{ maxWidth: 110 }} type="number" min={0} max={100} placeholder="score %" value={grade.score} onChange={(e) => setGrade({ ...grade, score: e.target.value })} aria-label="Score out of 100" />
+                  <Button disabled={!grade.studentId || grade.score === ""} onClick={() => act(async () => {
+                    await api.recordPeerSubmission(session, selected.id, grade.studentId, Number(grade.score) / 100);
+                    setGrade({ studentId: "", score: "" });
+                    return "Graded result recorded.";
+                  })}>Record</Button>
+                </div>
+              )}
               {results.requiresPublishDecision && (
                 <Banner kind="warn">Results are <strong>withheld</strong> (the default). Students see nothing until you explicitly publish — there is no timer.</Banner>
               )}

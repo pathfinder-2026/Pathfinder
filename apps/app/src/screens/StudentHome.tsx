@@ -6,7 +6,8 @@ type Panel =
   | { kind: "workspace" }
   | { kind: "task"; taskId: string }
   | { kind: "attempt"; assessmentId: string; taskId: string }
-  | { kind: "calendar" };
+  | { kind: "calendar" }
+  | { kind: "peer"; peerTestId: string };
 
 /**
  * STU-1..4 — the student workspace: a calm, low-analytics surface. Overdue is a
@@ -39,7 +40,8 @@ export function StudentHome({ session, displayName, onSignOut }: {
         <div className="container">
           {error && <Banner kind="error">{error}</Banner>}
           {panel.kind === "workspace" && ws && (
-            <Workspace ws={ws} onOpen={openTask} onCalendar={() => setPanel({ kind: "calendar" })} />
+            <Workspace session={session} ws={ws} onOpen={openTask} onCalendar={() => setPanel({ kind: "calendar" })}
+              onOpenPeer={(id) => setPanel({ kind: "peer", peerTestId: id })} />
           )}
           {panel.kind === "task" && (
             <TaskDetail session={session} taskId={panel.taskId} onBack={() => { setPanel({ kind: "workspace" }); void refresh(); }} />
@@ -50,6 +52,9 @@ export function StudentHome({ session, displayName, onSignOut }: {
           )}
           {panel.kind === "calendar" && (
             <CalendarPanel session={session} onBack={() => setPanel({ kind: "workspace" })} />
+          )}
+          {panel.kind === "peer" && (
+            <PeerPanel session={session} peerTestId={panel.peerTestId} onBack={() => setPanel({ kind: "workspace" })} />
           )}
           <div className="btn-row"><span className="spacer" /><Button variant="ghost" onClick={onSignOut}>Sign out</Button></div>
         </div>
@@ -71,9 +76,13 @@ function TaskRow({ t, onOpen }: { t: StudentTaskView; onOpen: (t: StudentTaskVie
   );
 }
 
-function Workspace({ ws, onOpen, onCalendar }: {
-  ws: StudentWorkspaceView; onOpen: (t: StudentTaskView) => void; onCalendar: () => void;
+function Workspace({ session, ws, onOpen, onCalendar, onOpenPeer }: {
+  session: Session; ws: StudentWorkspaceView; onOpen: (t: StudentTaskView) => void;
+  onCalendar: () => void; onOpenPeer: (peerTestId: string) => void;
 }) {
+  const [peerTests, setPeerTests] = useState<Awaited<ReturnType<typeof api.studentPeerTests>>>([]);
+  useEffect(() => { api.studentPeerTests(session).then(setPeerTests).catch(() => setPeerTests([])); }, [session]);
+
   return (
     <>
       <p className="eyebrow">Your work</p>
@@ -94,6 +103,20 @@ function Workspace({ ws, onOpen, onCalendar }: {
               : <ul className="people">{ws.thisWeek.map((t) => <TaskRow key={t.id} t={t} onOpen={onOpen} />)}</ul>}
           </Card>
         </>
+      )}
+      {peerTests.length > 0 && (
+        <Card>
+          <div className="card__head"><h2 className="section">Peer tests</h2></div>
+          <ul className="people">
+            {peerTests.map((p) => (
+              <li className="person" key={p.peerTestId}>
+                <button className="linkish" onClick={() => onOpenPeer(p.peerTestId)}><strong>{p.title}</strong></button>
+                <span className="spacer" />
+                <Chip state="pending">Delivered</Chip>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
       <div className="btn-row"><Button onClick={onCalendar}>My calendar</Button></div>
     </>
@@ -286,6 +309,78 @@ function Attempt({ session, assessmentId, taskId, onBack }: {
             <Button variant="primary" onClick={submit}>Submit</Button>
             {savedAt && <span className="muted">Saved {new Date(savedAt).toLocaleTimeString()}</span>}
           </div>
+        </Card>
+      )}
+    </>
+  );
+}
+
+function PeerPanel({ session, peerTestId, onBack }: { session: Session; peerTestId: string; onBack: () => void }) {
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.studentPeerTest>> | null>(null);
+  const [feedback, setFeedback] = useState<Awaited<ReturnType<typeof api.studentPeerFeedback>> | null>(null);
+  const [review, setReview] = useState({ targetStudentId: "", text: "" });
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.studentPeerTest(session, peerTestId).then(setDetail).catch((e) => setError((e as Error).message));
+    api.studentPeerFeedback(session).then(setFeedback).catch(() => setFeedback(null));
+  }, [session, peerTestId]);
+
+  const send = async () => {
+    setError(null); setNotice(null);
+    try {
+      const r = await api.submitPeerReview(session, peerTestId, review.targetStudentId, review.text);
+      setNotice(r.message);
+      setReview({ targetStudentId: "", text: "" });
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  return (
+    <>
+      <button className="linkish" onClick={onBack}>← Back to your work</button>
+      <h1 style={{ marginTop: 10 }}>{detail?.title ?? "…"}</h1>
+      {detail && <p className="lede">{detail.questionCount} question{detail.questionCount === 1 ? "" : "s"}{detail.rubric ? ` · ${detail.rubric}` : ""}</p>}
+      {error && <Banner kind="error">{error}</Banner>}
+      {notice && <Banner kind="brand">{notice}</Banner>}
+
+      {detail && (
+        <Card>
+          <div className="card__head"><h2 className="section">How you went</h2></div>
+          {/* Softened, non-ranked, and only what the teacher explicitly published. */}
+          <Banner kind="brand">{detail.signal.message}</Banner>
+        </Card>
+      )}
+
+      {detail && detail.peers.length > 0 && (
+        <Card>
+          <div className="card__head">
+            <h2 className="section">Review a classmate's work</h2>
+            <p className="muted">Say something helpful and kind. Your teacher reads every review before your classmate sees it, and your name isn't shown.</p>
+          </div>
+          <Field label="Classmate" htmlFor="pr-target">
+            <select id="pr-target" className="select" style={{ maxWidth: 340 }} value={review.targetStudentId} onChange={(e) => setReview({ ...review, targetStudentId: e.target.value })}>
+              <option value="">Choose…</option>
+              {detail.peers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Your feedback" htmlFor="pr-text">
+            <textarea id="pr-text" className="input" style={{ minHeight: 70 }} value={review.text} onChange={(e) => setReview({ ...review, text: e.target.value })} />
+          </Field>
+          <Button variant="primary" onClick={send} disabled={!review.targetStudentId || !review.text.trim()}>Send for review</Button>
+        </Card>
+      )}
+
+      {feedback && (
+        <Card>
+          <div className="card__head"><h2 className="section">What classmates said about your work</h2></div>
+          {!feedback.hasFeedback ? (
+            <p className="muted">{feedback.message}</p>
+          ) : (
+            <ul className="people">
+              {feedback.reviews.map((r, i) => <li className="person" key={i}><span>“{r.text}”</span></li>)}
+            </ul>
+          )}
         </Card>
       )}
     </>

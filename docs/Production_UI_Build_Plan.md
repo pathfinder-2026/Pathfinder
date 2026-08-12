@@ -57,10 +57,20 @@ product behaviour — it exposes existing, governed functionality.
   highlight, drill with `askForHelpExcluded`, alerts, transcript-free export
   (marker back-door test), comparison policy-gated via `/principal-policy`.
 
-**All five personas (Admin, Teacher, Student, Parent, Principal) are built.**
+- **Admin ops + cross-cutting: BUILT.** ADM-8 (safeguarding settings), ADM-9
+  (school report + prorated billing; `schoolReport` opened to principal OR
+  admin), ADM-10 (ids-only audit viewer with chain-verified badge, no-PII
+  tested), ADM-11 (export + double-confirm erase, chain verifies after),
+  S-NOTIF (per-user notification bell; safeguarding excluded from the surface),
+  NFR-A11Y-001 automated floor (axe-core WCAG 2.2 AA tests in `apps/app`,
+  prefers-reduced-motion honoured).
 
-**⬜ Next (via the prompts below):** ADM-8/9/10/11; S-NOTIF; the a11y pass.
-See §12 for order; each screen's **Build prompt** is paste-ready (prepend §13).
+**🎉 EVERY SCREEN IN THIS PLAN IS BUILT.** Remaining before a real pilot:
+the Section 5 validation checkpoint (real pilot-teacher evidence), live
+integrations (Bedrock ADR-0013, OIDC ADR-0029, SES ADR-0032, AWS
+provisioning), audit/notifications persisted to Postgres, a manual
+keyboard/screen-reader a11y walkthrough beyond the automated axe floor,
+and NFR-PERF-001 load testing at deploy.
 
 ---
 

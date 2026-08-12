@@ -278,4 +278,119 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     expect(emptyHm.enoughData).toBe(false);
     await app.close();
   });
+
+  it("suggests focus areas with material or a content gap; dismiss suppresses; assign is explicit (TCH-7)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const summary = await ctx.synthetic.seedClass(schoolId, classId, { count: 25, seed: 42 });
+    const base = `/api/v1/schools/${schoolId}/classes/${classId}/focus-areas`;
+
+    // The deterministic weak skill surfaces as a content gap (nothing mapped yet).
+    let areas = (await app.inject({ method: "GET", url: base, headers: teacher.auth })).json() as any[];
+    const gap = areas.find((a) => a.nodeId === summary.focusNodeId);
+    expect(gap).toBeDefined();
+    expect(gap.contentGap).toBe(true);
+    expect(gap.suggested).toHaveLength(0);
+    expect(gap.nodeLabel).toBeTruthy();
+
+    // Approve + map material to that node — the suggestion now carries it by title.
+    await approveAndMap(app, schoolId, teacher.auth, {
+      title: "Reteach pack", nodeId: summary.focusNodeId,
+      text: "# Topic A\nExplain the idea clearly in prose.\n# Topic B\nExplain the idea clearly in prose.",
+    });
+    areas = (await app.inject({ method: "GET", url: base, headers: teacher.auth })).json() as any[];
+    const withMaterial = areas.find((a) => a.nodeId === summary.focusNodeId);
+    expect(withMaterial.contentGap).toBe(false);
+    expect(withMaterial.suggested[0].title).toBe("Reteach pack");
+
+    // Assigning is an explicit teacher action over HTTP.
+    const assign = await app.inject({
+      method: "POST", url: `${base}/${summary.focusNodeId}/assign`, headers: teacher.auth,
+      payload: { contentId: withMaterial.suggested[0].id },
+    });
+    expect(assign.statusCode).toBe(201);
+    expect(assign.json().students).toBeGreaterThan(0);
+
+    // Dismissing suppresses the suggestion until the data worsens (FR-TDB-002).
+    await app.inject({ method: "POST", url: `${base}/${summary.focusNodeId}/dismiss`, headers: teacher.auth });
+    areas = (await app.inject({ method: "GET", url: base, headers: teacher.auth })).json() as any[];
+    expect(areas.some((a) => a.nodeId === summary.focusNodeId)).toBe(false);
+    await app.close();
+  });
+
+  it("suggests editable cohorts; assigns only the final membership; refuses an empty group (TCH-8)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const summary = await ctx.synthetic.seedClass(schoolId, classId, { count: 25, seed: 42 });
+    const base = `/api/v1/schools/${schoolId}/classes/${classId}/cohorts`;
+
+    const groups = (await app.inject({ method: "GET", url: base, headers: teacher.auth })).json() as any[];
+    const misconception = groups.find((g) => g.type === "misconception" && g.nodeId === summary.misconceptionNodeId);
+    expect(misconception).toBeDefined();
+    expect(misconception.students).toHaveLength(5);
+    // Labels resolve without PII for synthetic students.
+    expect(misconception.students[0].label).toMatch(/^Student \d\d$/);
+
+    // The teacher removes one student — only the FINAL membership is assigned.
+    const finalIds = misconception.students.slice(1).map((s: { id: string }) => s.id);
+    const assign = await app.inject({
+      method: "POST", url: `${base}/assign`, headers: teacher.auth,
+      payload: { type: "misconception", nodeId: misconception.nodeId, studentIds: finalIds },
+    });
+    expect(assign.statusCode).toBe(201);
+    expect(assign.json().students).toBe(4);
+
+    // An emptied group is refused outright.
+    const emptied = await app.inject({
+      method: "POST", url: `${base}/assign`, headers: teacher.auth,
+      payload: { type: "misconception", nodeId: misconception.nodeId, studentIds: [] },
+    });
+    expect(emptied.statusCode).toBe(409);
+    expect(emptied.json().code).toBe("EMPTY_GROUP");
+    await app.close();
+  });
+
+  it("surfaces adaptive escalations, revision reminders, and per-student next actions (TCH-9)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const summary = await ctx.synthetic.seedClass(schoolId, classId, { count: 25, seed: 42 });
+    const base = `/api/v1/schools/${schoolId}/classes/${classId}/adaptive`;
+
+    const panel = (await app.inject({ method: "GET", url: base, headers: teacher.auth })).json();
+    // The seeded persistent misconception is escalated to the teacher (never a loop).
+    const esc = (panel.escalations as any[]).find((e) => e.nodeId === summary.misconceptionNodeId);
+    expect(esc).toBeDefined();
+    expect(esc.occurrences).toBeGreaterThanOrEqual(3);
+    expect(esc.studentLabel).toMatch(/^Student \d\d$/);
+    // Stale skills produce spaced-revision reminders (none deferred: no attempt in progress).
+    expect((panel.reminders as any[]).length).toBeGreaterThan(0);
+    expect((panel.reminders as any[]).every((r) => r.deferred === false)).toBe(true);
+
+    // Next action for the escalated pair is "escalate" with an honest reason.
+    const na = await app.inject({
+      method: "GET",
+      url: `${base}/next-action?studentId=${esc.studentId}&nodeId=${esc.nodeId}`,
+      headers: teacher.auth,
+    });
+    expect(na.json()).toMatchObject({ action: "escalate", escalated: true });
+
+    // A student outside this class is not addressable from this route.
+    const foreign = await app.inject({
+      method: "GET", url: `${base}/next-action?studentId=not-in-class&nodeId=${esc.nodeId}`, headers: teacher.auth,
+    });
+    expect(foreign.statusCode).toBe(404);
+    await app.close();
+  });
 });

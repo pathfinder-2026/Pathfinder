@@ -15,11 +15,12 @@ import { TeacherHome } from "./screens/TeacherHome";
 import { TeacherContent } from "./screens/TeacherContent";
 import { TeacherAssessments } from "./screens/TeacherAssessments";
 import { TeacherDashboard } from "./screens/TeacherDashboard";
+import { TeacherInsights } from "./screens/TeacherInsights";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
-  | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard";
+  | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -62,6 +63,9 @@ export function App() {
     saveSession(s); setSession(s);
     // Clear the ?token= from the URL so a refresh doesn't re-trigger accept.
     window.history.replaceState({}, "", window.location.pathname);
+    // Park on the loading view until enter() resolves the role route — otherwise
+    // the render falls through to the admin Workspace default for a moment.
+    setView("loading");
     void refreshBranding(s); void enter(s);
   };
   const onSignOut = () => {
@@ -85,6 +89,7 @@ export function App() {
   if (view === "teacher-content") return <TeacherContent session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-assessments") return <TeacherAssessments session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-dashboard") return <TeacherDashboard session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+  if (view === "teacher-insights") return <TeacherInsights session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
 
   // ---- Admin persona ----
   const back = () => setView("workspace");

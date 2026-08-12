@@ -288,6 +288,46 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   });
 
   // ---- Teacher Dashboard heatmap (TCH-6) ----
+
+  /** Assert the class exists in this school. */
+  const requireClassIn = async (schoolId: string, classId: string) => {
+    const klass = (await ctx.store.listClassesBySchool(schoolId)).find((c) => c.id === classId);
+    if (!klass) throw new NotFoundError("Class not found in this school.");
+    return klass;
+  };
+
+  /** The class's student ids, in stable membership order (label positions key off this). */
+  const classStudentIds = async (schoolId: string, classId: string): Promise<string[]> =>
+    (await ctx.store.listMembershipsBySchool(schoolId))
+      .filter((m) => m.role === "student" && m.classId === classId)
+      .map((m) => m.userId);
+
+  /**
+   * Display labels for the class's students. Synthetic students hold no PII by
+   * design — they render as positional labels ("Student 03"), never fabricated
+   * names. Positions are stable across every teacher surface (same class order).
+   */
+  const studentLabelMap = async (schoolId: string, classId: string): Promise<Record<string, string>> => {
+    const labels: Record<string, string> = {};
+    let position = 0;
+    for (const studentId of await classStudentIds(schoolId, classId)) {
+      position += 1;
+      const pii = await ctx.store.getPersonalData(studentId);
+      labels[studentId] = pii ? `${pii.firstName} ${pii.lastName}` : `Student ${String(position).padStart(2, "0")}`;
+    }
+    return labels;
+  };
+
+  /** Skill-node labels from the school's signed-off graph (empty pre-sign-off). */
+  const nodeLabelMap = async (schoolId: string): Promise<Record<string, string>> => {
+    const version = await signedVersion(schoolId);
+    const labels: Record<string, string> = {};
+    if (version) {
+      for (const n of await ctx.skillGraphStore.listNodes(version.id)) labels[n.id] = n.label;
+    }
+    return labels;
+  };
+
   app.get("/api/v1/schools/:schoolId/teacher/classes", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };
     await requireTeacherOf(req, schoolId);
@@ -298,26 +338,10 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.get("/api/v1/schools/:schoolId/classes/:classId/heatmap", async (req, reply) => {
     const { schoolId, classId } = req.params as { schoolId: string; classId: string };
     await requireTeacherOf(req, schoolId);
-    const klass = (await ctx.store.listClassesBySchool(schoolId)).find((c) => c.id === classId);
-    if (!klass) throw new NotFoundError("Class not found in this school.");
+    const klass = await requireClassIn(schoolId, classId);
     const heatmap = await ctx.dashboard.heatmap(schoolId, classId);
-
-    // Resolve display labels. Synthetic students hold no PII by design — they
-    // render as positional labels, never fabricated names.
-    const studentLabels: Record<string, string> = {};
-    let position = 0;
-    for (const studentId of heatmap.students) {
-      position += 1;
-      const pii = await ctx.store.getPersonalData(studentId);
-      studentLabels[studentId] = pii
-        ? `${pii.firstName} ${pii.lastName}`
-        : `Student ${String(position).padStart(2, "0")}`;
-    }
-    const version = await signedVersion(schoolId);
-    const nodeLabels: Record<string, string> = {};
-    if (version) {
-      for (const n of await ctx.skillGraphStore.listNodes(version.id)) nodeLabels[n.id] = n.label;
-    }
+    const studentLabels = await studentLabelMap(schoolId, classId);
+    const nodeLabels = await nodeLabelMap(schoolId);
 
     return reply.send({
       class: { id: klass.id, name: klass.name },
@@ -330,5 +354,129 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       })),
       flags: heatmap.flags.map((f) => ({ studentId: f.studentId, nodeId: f.nodeId, kind: f.kind })),
     });
+  });
+
+  // ---- Class intelligence (TCH-7/8/9): focus areas, cohorts, adaptive ----
+  // Everything here is a Teacher-facing DRAFT/suggestion. Assigning is always an
+  // explicit teacher action (Decision 7); the service layer additionally blocks
+  // any non-teacher assign attempt (AUTO_ASSIGN_BLOCKED) beneath this guard.
+
+  app.get("/api/v1/schools/:schoolId/classes/:classId/focus-areas", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const areas = await ctx.dashboard.classFocusAreas(schoolId, classId);
+    const nodeLabels = await nodeLabelMap(schoolId);
+    return reply.send(await Promise.all(areas.map(async (a) => ({
+      nodeId: a.nodeId,
+      nodeLabel: nodeLabels[a.nodeId] ?? a.nodeId,
+      belowCount: a.belowCount,
+      total: a.total,
+      belowFraction: a.belowFraction,
+      contentGap: a.contentGap,
+      suggested: await Promise.all(a.suggestedContentIds.map(async (id) => {
+        const item = await ctx.contentStore.getContentItem(id);
+        return { id, title: item?.title ?? id };
+      })),
+    }))));
+  });
+
+  app.post("/api/v1/schools/:schoolId/classes/:classId/focus-areas/:nodeId/dismiss", async (req, reply) => {
+    const { schoolId, classId, nodeId } = req.params as { schoolId: string; classId: string; nodeId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    await ctx.dashboard.dismissFocusArea(auth.user.id, schoolId, classId, nodeId);
+    return reply.send({ ok: true });
+  });
+
+  app.post("/api/v1/schools/:schoolId/classes/:classId/focus-areas/:nodeId/assign", async (req, reply) => {
+    const { schoolId, classId, nodeId } = req.params as { schoolId: string; classId: string; nodeId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const { contentId } = req.body as { contentId: string };
+    const assignment = await ctx.dashboard.assignFocusMaterial(auth.user.id, schoolId, classId, nodeId, contentId);
+    return reply.status(201).send({ id: assignment.id, students: assignment.studentIds.length });
+  });
+
+  app.get("/api/v1/schools/:schoolId/classes/:classId/cohorts", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const groups = await ctx.cohorts.suggestGroups(schoolId, classId);
+    const studentLabels = await studentLabelMap(schoolId, classId);
+    const nodeLabels = await nodeLabelMap(schoolId);
+    return reply.send(groups.map((g) => ({
+      id: g.id,
+      type: g.type,
+      label: g.label,
+      nodeId: g.nodeId,
+      nodeLabel: g.nodeId ? nodeLabels[g.nodeId] ?? g.nodeId : null,
+      basis: g.basis,
+      staleNote: g.staleNote,
+      students: g.studentIds.map((id) => ({ id, label: studentLabels[id] ?? id })),
+    })));
+  });
+
+  app.post("/api/v1/schools/:schoolId/classes/:classId/cohorts/assign", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const { type, nodeId, studentIds, contentId } = req.body as {
+      type: "support" | "misconception" | "extension" | "review" | "peer-learning";
+      nodeId: string | null; studentIds: string[]; contentId?: string | null;
+    };
+    // The membership posted here is FINAL — the teacher may have edited it.
+    const assignment = await ctx.cohorts.assignWork(auth.user.id, schoolId, classId, {
+      type, nodeId: nodeId ?? null, studentIds: studentIds ?? [], contentId: contentId ?? null,
+    });
+    return reply.status(201).send({ id: assignment.id, students: assignment.studentIds.length });
+  });
+
+  app.get("/api/v1/schools/:schoolId/classes/:classId/adaptive", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const [escalations, reminders, studentLabels, nodeLabels] = await Promise.all([
+      ctx.adaptive.escalations(schoolId, classId),
+      ctx.adaptive.dueRevisionReminders(schoolId, classId),
+      studentLabelMap(schoolId, classId),
+      nodeLabelMap(schoolId),
+    ]);
+    const students = await classStudentIds(schoolId, classId);
+    return reply.send({
+      students: students.map((id) => ({ id, label: studentLabels[id] ?? id })),
+      escalations: escalations.map((e) => ({
+        studentId: e.studentId,
+        studentLabel: studentLabels[e.studentId] ?? e.studentId,
+        nodeId: e.nodeId,
+        nodeLabel: nodeLabels[e.nodeId] ?? e.nodeId,
+        misconception: e.misconception,
+        occurrences: e.occurrences,
+      })),
+      reminders: reminders.map((r) => ({
+        studentId: r.studentId,
+        studentLabel: studentLabels[r.studentId] ?? r.studentId,
+        nodeId: r.nodeId,
+        nodeLabel: nodeLabels[r.nodeId] ?? r.nodeId,
+        deferred: r.deferred,
+        reason: r.reason,
+      })),
+    });
+  });
+
+  app.get("/api/v1/schools/:schoolId/classes/:classId/adaptive/next-action", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    const { studentId, nodeId } = req.query as { studentId?: string; nodeId?: string };
+    if (!studentId || !nodeId) {
+      return reply.status(400).send({ code: "BAD_REQUEST", message: "studentId and nodeId are required." });
+    }
+    // Scope: only students of this class can be looked up from this route.
+    if (!(await classStudentIds(schoolId, classId)).includes(studentId)) {
+      throw new NotFoundError("Student not found in this class.");
+    }
+    const action = await ctx.adaptive.nextAction(schoolId, studentId, nodeId);
+    return reply.send(action);
   });
 }

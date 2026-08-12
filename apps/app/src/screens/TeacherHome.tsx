@@ -7,6 +7,7 @@ const TOOLS: { view: View; title: string; desc: string }[] = [
   { view: "teacher-content", title: "Content Studio", desc: "Upload, approve and map material" },
   { view: "teacher-assessments", title: "Assessments", desc: "Draft, review and publish" },
   { view: "teacher-dashboard", title: "Class dashboard", desc: "Mastery heatmap" },
+  { view: "teacher-insights", title: "Class insights", desc: "Focus areas, groups, next actions" },
 ];
 
 /** The Teacher persona home — hub for the content -> assessment -> dashboard thread. */
@@ -76,8 +77,7 @@ export function TeacherHome({ session, displayName, onNavigate, onSignOut }: {
           <Card>
             <div className="card__head"><h2 className="section">Coming next</h2></div>
             <ul className="people">
-              <li className="person"><span>Focus areas · cohorts · adaptive recommendations</span><span className="spacer" /><Chip state="pending">Next slice</Chip></li>
-              <li className="person"><span>Peer testing · Teacher Agent · reports</span><span className="spacer" /><Chip state="pending">Later</Chip></li>
+              <li className="person"><span>Peer testing · Teacher Agent · reports</span><span className="spacer" /><Chip state="pending">Next slice</Chip></li>
             </ul>
           </Card>
 

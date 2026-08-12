@@ -234,4 +234,55 @@ export const api = {
   // ---- Teacher: Dashboard heatmap (TCH-6) ----
   teacherClasses: (s: Session) => request<{ id: string; name: string; yearGroup: string | null }[]>("GET", `/api/v1/schools/${s.schoolId}/teacher/classes`, undefined, s.token),
   heatmap: (s: Session, classId: string) => request<HeatmapData>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/heatmap`, undefined, s.token),
+
+  // ---- Teacher: class intelligence (TCH-7/8/9) ----
+  focusAreas: (s: Session, classId: string) =>
+    request<FocusAreaRow[]>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/focus-areas`, undefined, s.token),
+  dismissFocusArea: (s: Session, classId: string, nodeId: string) =>
+    request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/classes/${classId}/focus-areas/${nodeId}/dismiss`, {}, s.token),
+  assignFocusMaterial: (s: Session, classId: string, nodeId: string, contentId: string) =>
+    request<{ id: string; students: number }>("POST", `/api/v1/schools/${s.schoolId}/classes/${classId}/focus-areas/${nodeId}/assign`, { contentId }, s.token),
+  cohorts: (s: Session, classId: string) =>
+    request<CohortGroup[]>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/cohorts`, undefined, s.token),
+  assignCohortWork: (s: Session, classId: string, body: { type: string; nodeId: string | null; studentIds: string[]; contentId?: string | null }) =>
+    request<{ id: string; students: number }>("POST", `/api/v1/schools/${s.schoolId}/classes/${classId}/cohorts/assign`, body, s.token),
+  adaptive: (s: Session, classId: string) =>
+    request<AdaptivePanel>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/adaptive`, undefined, s.token),
+  nextAction: (s: Session, classId: string, studentId: string, nodeId: string) =>
+    request<NextActionResult>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/adaptive/next-action?studentId=${encodeURIComponent(studentId)}&nodeId=${encodeURIComponent(nodeId)}`, undefined, s.token),
 };
+
+export interface FocusAreaRow {
+  nodeId: string;
+  nodeLabel: string;
+  belowCount: number;
+  total: number;
+  belowFraction: number;
+  contentGap: boolean;
+  suggested: { id: string; title: string }[];
+}
+
+export interface CohortGroup {
+  id: string;
+  type: string;
+  label: string;
+  nodeId: string | null;
+  nodeLabel: string | null;
+  basis: "current" | "stale";
+  staleNote: string | null;
+  students: { id: string; label: string }[];
+}
+
+export interface AdaptivePanel {
+  students: { id: string; label: string }[];
+  escalations: { studentId: string; studentLabel: string; nodeId: string; nodeLabel: string; misconception: string; occurrences: number }[];
+  reminders: { studentId: string; studentLabel: string; nodeId: string; nodeLabel: string; deferred: boolean; reason: string | null }[];
+}
+
+export interface NextActionResult {
+  studentId: string;
+  nodeId: string;
+  action: string;
+  escalated: boolean;
+  reason: string;
+}

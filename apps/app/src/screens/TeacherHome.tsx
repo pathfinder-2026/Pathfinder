@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { NotificationBell } from "../NotificationBell";
 import { api, type Session } from "../api";
-import { Banner, Button, Card, Chip, TopBar } from "../components";
+import { Banner, Button, Card, TopBar } from "../components";
 import type { View } from "../App";
 
 const TOOLS: { view: View; title: string; desc: string }[] = [
@@ -41,7 +42,7 @@ export function TeacherHome({ session, displayName, onNavigate, onSignOut }: {
 
   return (
     <div className="app">
-      <TopBar title={displayName} roleTag="Teacher" />
+      <TopBar title={displayName} roleTag="Teacher" right={<NotificationBell session={session} />} />
       <main className="main">
         <div className="container">
           <p className="eyebrow">Teacher workspace</p>

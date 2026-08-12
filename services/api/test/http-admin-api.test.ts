@@ -220,6 +220,94 @@ describe("Production Admin API — onboarding over HTTP", () => {
     await a.close();
   });
 
+  it("serves admin operations: safeguarding read, school report with prorated cost, audit viewer, export/erase (ADM-8..11)", async () => {
+    const ctx = buildContext({ clock: new FixedClock() });
+    const a = buildApp({}, ctx);
+    const { token, schoolId, campusId } = await (async () => {
+      const res = await a.inject({ method: "POST", url: "/api/v1/onboarding/start", payload: START });
+      return res.json() as { token: string; schoolId: string; campusId: string };
+    })();
+    const auth = { authorization: `Bearer ${token}` };
+
+    // ADM-8: honest unconfigured state, then the saved config reads back.
+    expect((await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/safeguarding`, headers: auth })).json()).toMatchObject({ configured: false });
+    await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/safeguarding`, headers: auth,
+      payload: { contactName: "Sam Safe", contactRole: "DSL", slaHours: 24, afterHoursPolicy: "On-call" },
+    });
+    expect((await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/safeguarding`, headers: auth })).json()).toMatchObject({ configured: true, contactName: "Sam Safe" });
+
+    // ADM-9: a licence starting mid-month produces a flagged prorated line.
+    await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/licences`, headers: auth,
+      payload: { seats: 100, monthlyRate: 500, startDate: "2026-01-16" },
+    });
+    const report = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/report?month=2026-01`, headers: auth })).json();
+    expect(report.performance).toBeDefined();
+    expect(report.usage).toBeDefined();
+    expect(report.cost.lines).toHaveLength(1);
+    expect(report.cost.lines[0].prorated).toBe(true);
+    expect(report.cost.lines[0].proratedCost).toBeLessThan(500);
+
+    // ADM-10: ids-only audit rows with the chain verified; no PII leaks.
+    await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/invites`, headers: auth,
+      payload: { role: "teacher", email: "secret-teacher@r.edu", firstName: "Selina", lastName: "Secret" },
+    });
+    const audit = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/audit`, headers: auth })).json();
+    expect(audit.chainVerified).toBe(true);
+    expect(audit.entries.length).toBeGreaterThan(0);
+    const serialised = JSON.stringify(audit);
+    expect(serialised).not.toContain("secret-teacher@r.edu");
+    expect(serialised).not.toContain("Selina");
+
+    // ADM-11: export returns the student's data; erase prompts on active records,
+    // then removes PII while the audit chain stays verifiable.
+    await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const inv = await a.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/invites`, headers: auth,
+      payload: { role: "student", email: "kid@r.edu", firstName: "Kim", lastName: "Kid" },
+    });
+    const studentId = inv.json().userId as string;
+    const exported = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/students/${studentId}/export`, headers: auth })).json();
+    expect(exported.personalData).toMatchObject({ firstName: "Kim" });
+
+    // Give the student an active record so erase requires the explicit confirm.
+    const accounts = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/accounts`, headers: auth })).json() as any[];
+    const teacherLike = accounts.find((r) => r.role === "admin")!; // admin doubles as actor; task needs a teacher —
+    // assign via the service seam with a real teacher:
+    const t2 = await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/invites`, headers: auth, payload: { role: "teacher", email: "t2@r.edu", firstName: "Tia", lastName: "Two" } });
+    await ctx.studentWorkspace.assignTask(t2.json().userId, schoolId, { studentId, type: "homework", title: "Task", dueDate: "2026-09-01" });
+    const prompt = (await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/students/${studentId}/erase`, headers: auth, payload: {} })).json();
+    expect(prompt).toMatchObject({ erased: false, requiresConfirmation: true });
+    const erased = (await a.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/students/${studentId}/erase`, headers: auth, payload: { confirm: true } })).json();
+    expect(erased).toMatchObject({ erased: true });
+    const after = (await a.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/audit`, headers: auth })).json();
+    expect(after.chainVerified).toBe(true); // erasure never breaks the chain
+    void teacherLike;
+    await a.close();
+  });
+
+  it("serves per-user notifications and never exposes safeguarding alerts there (S-NOTIF)", async () => {
+    const ctx = buildContext({ clock: new FixedClock() });
+    const a = buildApp({}, ctx);
+    const started = (await a.inject({ method: "POST", url: "/api/v1/onboarding/start", payload: START })).json();
+    const auth = { authorization: `Bearer ${started.token}` };
+    const adminId = started.adminId as string;
+
+    // One addressed to the admin, one to someone else, one safeguarding alert.
+    await ctx.notifications.send({ type: "alert.teacher", to: adminId, subject: "For you", body: "Yours." });
+    await ctx.notifications.send({ type: "alert.teacher", to: "someone-else", subject: "Not yours", body: "Theirs." });
+    await ctx.notifications.send({ type: "alert.safeguarding", to: adminId, subject: "Safeguarding", body: "Restricted workflow content." });
+
+    const mine = (await a.inject({ method: "GET", url: "/api/v1/notifications", headers: auth })).json() as any[];
+    expect(mine.some((m) => m.subject === "For you")).toBe(true);
+    expect(mine.some((m) => m.subject === "Not yours")).toBe(false);
+    // Safeguarding NEVER surfaces on the generic panel, even addressed to you.
+    expect(mine.some((m) => m.type === "alert.safeguarding")).toBe(false);
+    await a.close();
+  });
+
   it("rejects onboarding reads without a valid session, and across schools", async () => {
     const a = app();
     const { schoolId } = await start(a);

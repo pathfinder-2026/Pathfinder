@@ -402,6 +402,28 @@ export const api = {
     request<{ kind: string; classId: string; message: string; delta: number }[]>("GET", `/api/v1/schools/${s.schoolId}/principal/alerts`, undefined, s.token),
   setPrincipalPolicy: (s: Session, teacherComparisonEnabled: boolean) =>
     request<{ teacherComparisonEnabled: boolean }>("POST", `/api/v1/schools/${s.schoolId}/principal-policy`, { teacherComparisonEnabled }, s.token),
+
+  // ---- Admin operations (ADM-8..11) + notifications (S-NOTIF) ----
+  getSafeguarding: (s: Session) =>
+    request<{ configured: boolean; contactName?: string; contactRole?: string; slaHours?: number; afterHoursPolicy?: string }>("GET", `/api/v1/schools/${s.schoolId}/safeguarding`, undefined, s.token),
+  schoolReport: (s: Session, month?: string) =>
+    request<{ performance: { avgScore: number; classCount: number; atRiskCount: number }; coverage: number; usage: { assessmentsGenerated: number; agentDrafts: number }; cost: { month: string; lines: { licenceId: string; seats: number; monthlyRate: number; proratedCost: number; prorated: boolean }[]; total: number } }>(
+      "GET", `/api/v1/schools/${s.schoolId}/report${month ? `?month=${month}` : ""}`, undefined, s.token,
+    ),
+  addLicence: (s: Session, body: { seats: number; monthlyRate: number; startDate: string; endDate?: string | null }) =>
+    request<{ id: string; seats: number }>("POST", `/api/v1/schools/${s.schoolId}/licences`, body, s.token),
+  auditLog: (s: Session, offset = 0, limit = 50) =>
+    request<{ chainVerified: boolean; total: number; entries: { seq: number; at: string; action: string; actorId: string | null; subjectType: string; subjectId: string }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/audit?offset=${offset}&limit=${limit}`, undefined, s.token,
+    ),
+  exportStudent: (s: Session, studentId: string) =>
+    request<Record<string, unknown>>("GET", `/api/v1/schools/${s.schoolId}/students/${studentId}/export`, undefined, s.token),
+  eraseStudent: (s: Session, studentId: string, confirm?: boolean) =>
+    request<{ erased: boolean; requiresConfirmation?: boolean; affected?: { activeEnrolment: boolean; tasks: number } }>(
+      "POST", `/api/v1/schools/${s.schoolId}/students/${studentId}/erase`, { confirm }, s.token,
+    ),
+  notifications: (s: Session) =>
+    request<{ id: string; type: string; subject: string; body: string; at: string }[]>("GET", "/api/v1/notifications", undefined, s.token),
 };
 
 export interface PrincipalTeacherReport {

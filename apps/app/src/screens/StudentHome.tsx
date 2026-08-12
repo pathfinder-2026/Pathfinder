@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { NotificationBell } from "../NotificationBell";
 import { api, type HelpReply, type Session, type StudentTaskView, type StudentWorkspaceView } from "../api";
 import { Banner, Button, Card, Chip, Field, TopBar } from "../components";
 
@@ -35,7 +36,7 @@ export function StudentHome({ session, displayName, onSignOut }: {
 
   return (
     <div className="app">
-      <TopBar title={displayName} roleTag="Student" />
+      <TopBar title={displayName} roleTag="Student" right={<NotificationBell session={session} />} />
       <main className="main">
         <div className="container">
           {error && <Banner kind="error">{error}</Banner>}

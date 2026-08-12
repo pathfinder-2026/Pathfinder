@@ -14,7 +14,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "npm run test --workspace services/api && npm run test --workspace infra",
+    "test": "npm run test --workspace services/api && npm run test --workspace infra && npm run test --workspace apps/app",
     "test:api": "npm run test --workspace services/api",
     "test:infra": "npm run test --workspace infra",
     "typecheck": "npm run typecheck --workspace services/api && npm run typecheck --workspace infra",

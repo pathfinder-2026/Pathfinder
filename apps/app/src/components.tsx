@@ -32,7 +32,7 @@ export function TrailMark() {
   );
 }
 
-export function TopBar({ title, roleTag }: { title: string; roleTag?: string }) {
+export function TopBar({ title, roleTag, right }: { title: string; roleTag?: string; right?: ReactNode }) {
   return (
     <header className="topbar">
       <div className="container topbar__inner">
@@ -40,7 +40,10 @@ export function TopBar({ title, roleTag }: { title: string; roleTag?: string }) 
           <TrailMark />
           {title}
         </div>
-        {roleTag && <span className="role-tag">{roleTag}</span>}
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {right}
+          {roleTag && <span className="role-tag">{roleTag}</span>}
+        </span>
       </div>
     </header>
   );

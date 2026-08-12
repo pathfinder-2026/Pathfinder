@@ -23,13 +23,15 @@ import { TeacherRecords } from "./screens/TeacherRecords";
 import { StudentHome } from "./screens/StudentHome";
 import { ParentHome } from "./screens/ParentHome";
 import { PrincipalHome } from "./screens/PrincipalHome";
+import { AuditViewer, DataSubject, SafeguardingSettings, SchoolReports } from "./screens/AdminOps";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
   | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights" | "teacher-peer"
   | "teacher-agent" | "teacher-transcripts" | "teacher-records"
-  | "student-home" | "parent-home" | "principal-home";
+  | "student-home" | "parent-home" | "principal-home"
+  | "safeguarding" | "reports" | "audit" | "data-subject";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -124,6 +126,10 @@ export function App() {
   if (view === "csv-import") return <CsvImport session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
   if (view === "sso") return <SsoSettings session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
   if (view === "structure") return <Structure session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "safeguarding") return <SafeguardingSettings session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "reports") return <SchoolReports session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "audit") return <AuditViewer session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
+  if (view === "data-subject") return <DataSubject session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
   if (view === "branding") return <BrandingSettings session={session} displayName={displayName} onBrandingChanged={() => refreshBranding(session)} onBack={back} onSignOut={onSignOut} />;
   if (view === "onboarding") {
     return <Onboarding session={session} displayName={displayName} onBrandingChanged={() => refreshBranding(session)} onEntered={() => setView("workspace")} onSignOut={onSignOut} />;

@@ -114,6 +114,18 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     });
   });
 
+  // ---- S-NOTIF: the signed-in user's in-app notifications ----
+  // Only messages addressed to THIS user id; safeguarding alerts are excluded
+  // from this surface outright — they route to the configured contact via the
+  // FR-SAF-002 workflow, never a generic notification panel.
+  app.get("/api/v1/notifications", async (req, reply) => {
+    const auth = await requireUser(req);
+    const mine = ctx.notificationChannel.delivered
+      .filter((m) => m.to === auth.user.id && m.type !== "alert.safeguarding")
+      .map((m) => ({ id: m.id, type: m.type, subject: m.subject, body: m.body, at: m.at }));
+    return reply.send(mine.reverse());
+  });
+
   app.get("/api/v1/me", async (req, reply) => {
     const auth = await requireUser(req);
     const pii = await ctx.store.getPersonalData(auth.user.id);
@@ -376,6 +388,66 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     const version = await ctx.skillGraph.signOff(versionId, auth.user.id);
     await ctx.mapping.configureCurriculum(schoolId, version.curriculum);
     return reply.send({ versionId: version.id, status: version.status, signedOffBy: version.signedOffBy });
+  });
+
+  // ---- ADM-8: safeguarding settings (read the current config) ----
+  app.get("/api/v1/schools/:schoolId/safeguarding", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const config = await ctx.store.getSafeguardingConfig(schoolId);
+    return reply.send(config
+      ? { configured: true, contactName: config.contactName, contactRole: config.contactRole, slaHours: config.slaHours, afterHoursPolicy: config.afterHoursPolicy }
+      : { configured: false });
+  });
+
+  // ---- ADM-9: school report + prorated billing (school-level only) ----
+  app.get("/api/v1/schools/:schoolId/report", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { month } = req.query as { month?: string };
+    const monthIso = month ?? new Date().toISOString().slice(0, 7);
+    return reply.send(await ctx.reporting.schoolReport(auth.user.id, schoolId, monthIso));
+  });
+
+  app.post("/api/v1/schools/:schoolId/licences", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const body = req.body as { seats: number; monthlyRate: number; startDate: string; endDate?: string | null };
+    const licence = await ctx.reporting.addLicence(auth.user.id, schoolId, body);
+    return reply.status(201).send({ id: licence.id, seats: licence.seats });
+  });
+
+  // ---- ADM-10: read-only audit viewer (ids only — never PII or content) ----
+  app.get("/api/v1/schools/:schoolId/audit", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const { offset, limit, action } = req.query as { offset?: string; limit?: string; action?: string };
+    const all = ctx.audit.find((e) => !action || e.action.includes(action));
+    const start = Math.max(0, Number(offset ?? 0));
+    const page = all.slice(start, start + Math.min(200, Number(limit ?? 50)));
+    return reply.send({
+      chainVerified: ctx.audit.verifyChain(),
+      total: all.length,
+      // Ids only, deliberately: no metadata, no message bodies, no PII.
+      entries: page.map((e) => ({ seq: e.seq, at: e.at, action: e.action, actorId: e.actorId, subjectType: e.subjectType, subjectId: e.subjectId })),
+    });
+  });
+
+  // ---- ADM-11: data-subject export + erase (FR-GOV-006) ----
+  app.get("/api/v1/schools/:schoolId/students/:studentId/export", async (req, reply) => {
+    const { schoolId, studentId } = req.params as { schoolId: string; studentId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    return reply.send(await ctx.governance.exportStudent(auth.user.id, schoolId, studentId));
+  });
+
+  app.post("/api/v1/schools/:schoolId/students/:studentId/erase", async (req, reply) => {
+    const { schoolId, studentId } = req.params as { schoolId: string; studentId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { confirm } = (req.body ?? {}) as { confirm?: boolean };
+    // Active records return the confirmation prompt; PII-only erasure preserves
+    // audited facts and the hash chain (retained-audit summary in the response).
+    const result = await ctx.governance.eraseStudent(auth.user.id, schoolId, studentId, { confirm });
+    return reply.send(result);
   });
 
   // ---- Behavioural consent gate (FR-BSS-001): collection stays blocked until configured ----

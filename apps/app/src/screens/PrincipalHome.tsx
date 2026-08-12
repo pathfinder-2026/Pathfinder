@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { NotificationBell } from "../NotificationBell";
 import { api, type PrincipalTeacherReport, type Session } from "../api";
 import { Banner, Button, Card, Chip, TopBar } from "../components";
 
@@ -39,7 +40,7 @@ export function PrincipalHome({ session, displayName, onSignOut }: {
 
   return (
     <div className="app">
-      <TopBar title={displayName} roleTag="Principal" />
+      <TopBar title={displayName} roleTag="Principal" right={<NotificationBell session={session} />} />
       <main className="main">
         <div className="container">
           <p className="eyebrow">School overview</p>

@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
 import { api, type Session } from "../api";
 import { Banner, Button, Card, Chip, TopBar } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import type { View } from "../App";
 
 const TOOLS: { view: View; title: string; desc: string }[] = [
-  { view: "people", title: "People", desc: "Assign roles and edit names" },
-  { view: "structure", title: "School structure", desc: "Campuses and classes" },
+  { view: "people", title: "People", desc: "Assign roles, names, parent links" },
+  { view: "structure", title: "School structure", desc: "Campuses, classes, curriculum" },
   { view: "csv-import", title: "Import users (CSV)", desc: "Bulk-create accounts" },
   { view: "sso", title: "Single sign-on", desc: "Google / Microsoft" },
   { view: "branding", title: "Branding", desc: "Colour, logo, white-label" },
+  { view: "safeguarding", title: "Safeguarding", desc: "Contact, SLA, after-hours" },
+  { view: "reports", title: "Reports & billing", desc: "School-level, prorated cost" },
+  { view: "audit", title: "Audit log", desc: "Hash-chained, ids only" },
+  { view: "data-subject", title: "Data requests", desc: "Export or erase a student" },
 ];
 
 /** Post-onboarding landing — a hub for the school's admin tools. */
@@ -19,12 +24,12 @@ export function Workspace({ session, displayName, onNavigate, onSignOut }: { ses
 
   return (
     <div className="app">
-      <TopBar title={displayName} roleTag="Administrator · Workspace" />
+      <TopBar title={displayName} roleTag="Administrator · Workspace" right={<NotificationBell session={session} />} />
       <main className="main">
         <div className="container">
           <p className="eyebrow">You're live</p>
           <h1>{summary?.schoolName ?? "Your school"} <Chip state="approved">Active</Chip></h1>
-          <p className="lede">Onboarding is complete. This is your administrator workspace — the persona surfaces (Teacher, Student, Parent, Principal) plug in here as they come online.</p>
+          <p className="lede">Onboarding is complete. This is your administrator workspace. Teachers, students, parents and principals each sign in to their own workspace with the same account system.</p>
 
           <Banner kind="brand">Setup complete — your school is ready for teachers to start building content.</Banner>
 
@@ -51,10 +56,10 @@ export function Workspace({ session, displayName, onNavigate, onSignOut }: { ses
           </Card>
 
           <Card>
-            <div className="card__head"><h2 className="section">Teaching &amp; learning</h2><p className="muted">Persona surfaces coming online in later slices.</p></div>
+            <div className="card__head"><h2 className="section">Teaching &amp; learning</h2><p className="muted">Every persona has its own workspace.</p></div>
             <ul className="people">
-              <li className="person"><span>Content Studio · Assessment Builder (Teacher)</span><span className="spacer" /><Chip state="pending">Next</Chip></li>
-              <li className="person"><span>Student workspace · Parent &amp; Principal dashboards</span><span className="spacer" /><Chip state="pending">Next</Chip></li>
+              <li className="person"><span>Content Studio · Assessments · Insights · Peer · Agent (Teacher)</span><span className="spacer" /><Chip state="approved">Live</Chip></li>
+              <li className="person"><span>Student workspace · Parent &amp; Principal dashboards</span><span className="spacer" /><Chip state="approved">Live</Chip></li>
             </ul>
           </Card>
 

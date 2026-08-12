@@ -41,15 +41,25 @@ product behaviour — it exposes existing, governed functionality.
   email exists — a real SES adapter exists behind the notification port, env-gated,
   ADR-0032); branding READ opened to all school members.
 
-- **Student thread (STU-1..4): BUILT.** `http/studentApi.ts` (student-role-guarded;
+- **Student (STU-1..5): BUILT.** `http/studentApi.ts` (student-role-guarded;
   published-only assessments at the permission layer; model answers/rubrics never
   serialised) + `StudentHome.tsx` (calm workspace, no-shame overdue, Ask-for-Help
   panel with domain-decided lockouts/escalation, year-group-invisible calendar,
-  attempt with autosave + offline banner + reconnect restore). Teacher gained the
-  POST /tasks assign endpoint; admin memberships PATCH passes classId.
+  attempt with autosave + offline banner + reconnect restore; peer-test deliveries,
+  softened non-ranked signal only-when-published, moderated anonymised review).
+  Teacher gained POST /tasks + peer grade-entry; admin memberships PATCH passes classId.
+- **Parent (PAR-1..5): BUILT.** `http/parentApi.ts` + `ParentHome.tsx` —
+  verification-before-data absolute (admin links + verifies on the People screen),
+  plain-language non-diagnostic dashboard, per-child calendar, weekly digest
+  (none-when-nothing; admin trigger stands in for the scheduler), term report.
+- **Principal (PRB-1..5): BUILT.** `http/principalApi.ts` + `PrincipalHome.tsx` —
+  teacher metrics (new-teacher window, low-activity flags), mastery with outlier
+  highlight, drill with `askForHelpExcluded`, alerts, transcript-free export
+  (marker back-door test), comparison policy-gated via `/principal-policy`.
 
-**⬜ Next (via the prompts below):** STU-5 (peer taking/review), Parent (PAR-*),
-Principal (PRB-*); ADM-8/9/10/11; S-NOTIF; the a11y pass.
+**All five personas (Admin, Teacher, Student, Parent, Principal) are built.**
+
+**⬜ Next (via the prompts below):** ADM-8/9/10/11; S-NOTIF; the a11y pass.
 See §12 for order; each screen's **Build prompt** is paste-ready (prepend §13).
 
 ---

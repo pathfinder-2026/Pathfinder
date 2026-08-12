@@ -314,7 +314,57 @@ export const api = {
     request<{ id: string; eventDate: string; changed: boolean }>("POST", `/api/v1/schools/${s.schoolId}/calendar/${eventId}/reschedule`, { newDate }, s.token),
   configureBehaviouralConsent: (s: Session) =>
     request<{ configured: boolean }>("POST", `/api/v1/schools/${s.schoolId}/behavioural/consent`, {}, s.token),
+
+  // ---- Teacher: assign work to a student ----
+  assignTask: (s: Session, body: { studentId: string; classId?: string | null; type: "homework" | "practice" | "assessment"; title: string; nodeId?: string | null; assessmentId?: string | null; dueDate: string }) =>
+    request<{ id: string; title: string; type: string; dueDate: string }>("POST", `/api/v1/schools/${s.schoolId}/tasks`, body, s.token),
+
+  // ---- Student (STU-1..4, safety-critical) ----
+  studentWorkspace: (s: Session) => request<StudentWorkspaceView>("GET", `/api/v1/schools/${s.schoolId}/student/workspace`, undefined, s.token),
+  studentTask: (s: Session, taskId: string) =>
+    request<{ id: string; type: string; title: string; dueDate: string; status: string; assessmentId: string | null }>("GET", `/api/v1/schools/${s.schoolId}/student/tasks/${taskId}`, undefined, s.token),
+  completeStudentTask: (s: Session, taskId: string) =>
+    request<{ id: string; status: string }>("POST", `/api/v1/schools/${s.schoolId}/student/tasks/${taskId}/complete`, {}, s.token),
+  askForHelp: (s: Session, taskId: string, message: string) =>
+    request<HelpReply>("POST", `/api/v1/schools/${s.schoolId}/student/tasks/${taskId}/help`, { message }, s.token),
+  studentCalendar: (s: Session) =>
+    request<{ id: string; title: string; type: string; date: string; changed: boolean }[]>("GET", `/api/v1/schools/${s.schoolId}/student/calendar`, undefined, s.token),
+  studentAssessment: (s: Session, assessmentId: string) =>
+    request<{ id: string; title: string; questions: { id: string; order: number; type: string; prompt: string; options: string[] | null }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/student/assessments/${assessmentId}`, undefined, s.token,
+    ),
+  startAttempt: (s: Session, assessmentId: string) =>
+    request<{ id: string; status: string; savedAnswers: Record<string, string> }>("POST", `/api/v1/schools/${s.schoolId}/student/assessments/${assessmentId}/attempts`, {}, s.token),
+  saveAttempt: (s: Session, attemptId: string, answers: Record<string, string>) =>
+    request<{ lastSavedAt: string }>("POST", `/api/v1/schools/${s.schoolId}/student/attempts/${attemptId}/save`, { answers }, s.token),
+  markAttemptInterrupted: (s: Session, attemptId: string) =>
+    request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/student/attempts/${attemptId}/interrupted`, {}, s.token),
+  resumeAttempt: (s: Session, attemptId: string) =>
+    request<{ resumable: boolean; savedAnswers: Record<string, string> }>("GET", `/api/v1/schools/${s.schoolId}/student/attempts/${attemptId}/resume`, undefined, s.token),
+  submitAttempt: (s: Session, attemptId: string, answers: Record<string, string>) =>
+    request<{ id: string; status: string }>("POST", `/api/v1/schools/${s.schoolId}/student/attempts/${attemptId}/submit`, { answers }, s.token),
 };
+
+export interface StudentTaskView {
+  id: string;
+  type: string;
+  title: string;
+  dueDate: string;
+  status: string;
+  completed: boolean;
+  overdue: boolean;
+}
+
+export interface StudentWorkspaceView {
+  hasTasks: boolean;
+  today: StudentTaskView[];
+  thisWeek: StudentTaskView[];
+  emptyMessage: string | null;
+}
+
+export type HelpReply =
+  | { available: true; kind: string; message: string }
+  | { available: false; reason: string; message: string };
 
 export interface MappingRow {
   mappingId: string;

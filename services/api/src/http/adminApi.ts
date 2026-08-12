@@ -232,9 +232,13 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     const auth = await requireAdminOf(req, schoolId);
     const membership = await ctx.store.getMembership(membershipId);
     if (!membership || membership.schoolId !== schoolId) throw new AuthError("Membership not found in this school.");
-    const { role, campusId } = req.body as { role: Role; campusId?: string | null };
-    const updated = await ctx.accounts.changeMembership(membershipId, { role, campusId: campusId ?? membership.campusId }, auth.user.id);
-    return reply.send({ membershipId: updated.id, role: updated.role, campusId: updated.campusId });
+    const { role, campusId, classId } = req.body as { role: Role; campusId?: string | null; classId?: string | null };
+    const updated = await ctx.accounts.changeMembership(
+      membershipId,
+      { role, campusId: campusId ?? membership.campusId, classId },
+      auth.user.id,
+    );
+    return reply.send({ membershipId: updated.id, role: updated.role, campusId: updated.campusId, classId: updated.classId });
   });
 
   app.patch("/api/v1/schools/:schoolId/users/:userId/name", async (req, reply) => {

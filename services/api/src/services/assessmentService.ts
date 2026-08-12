@@ -312,6 +312,22 @@ export class AssessmentService {
     return (await this.store.listAttemptsByAssessment(assessmentId)).filter((a) => a.interrupted);
   }
 
+  /** The student submits: final answers are saved, then the attempt closes. */
+  async submitAttempt(attemptId: string, studentId: string, answers: Record<string, string> = {}): Promise<AssessmentAttempt> {
+    const attempt = await this.requireAttempt(attemptId);
+    if (attempt.studentId !== studentId) throw new NotFoundError("Attempt not found.");
+    if (attempt.status === "submitted") return attempt;
+    const updated: AssessmentAttempt = {
+      ...attempt,
+      savedAnswers: { ...attempt.savedAnswers, ...answers },
+      lastSavedAt: this.clock.isoNow(),
+      status: "submitted",
+    };
+    await this.store.updateAttempt(updated);
+    this.audit.append({ action: "assessment.attempt.submitted", actorId: studentId, subjectType: "assessment", subjectId: attempt.assessmentId, metadata: { attemptId } });
+    return updated;
+  }
+
   // ---- helpers ----
 
   private async collectGrounding(schoolId: string, nodeId: string): Promise<GroundingUnit[]> {

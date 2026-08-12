@@ -820,6 +820,20 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     return reply.status(201).send({ id: record.id, domain: record.domain });
   });
 
+  // ---- Assign work to a student (feeds the Student workspace, FR-STU-001) ----
+  app.post("/api/v1/schools/:schoolId/tasks", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const body = req.body as {
+      studentId: string; classId?: string | null; type: "homework" | "practice" | "assessment";
+      title: string; nodeId?: string | null; assessmentId?: string | null; dueDate: string;
+    };
+    const student = await ctx.store.getUser(body.studentId);
+    if (!student || student.schoolId !== schoolId) throw new NotFoundError("Student not found in this school.");
+    const task = await ctx.studentWorkspace.assignTask(auth.user.id, schoolId, body);
+    return reply.status(201).send({ id: task.id, title: task.title, type: task.type, dueDate: task.dueDate });
+  });
+
   // ---- Teacher calendar (TCH-18) ----
 
   app.get("/api/v1/schools/:schoolId/calendar", async (req, reply) => {

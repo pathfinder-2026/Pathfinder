@@ -20,12 +20,14 @@ import { TeacherPeer } from "./screens/TeacherPeer";
 import { TeacherAgent } from "./screens/TeacherAgent";
 import { TeacherTranscripts } from "./screens/TeacherTranscripts";
 import { TeacherRecords } from "./screens/TeacherRecords";
+import { StudentHome } from "./screens/StudentHome";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
   | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights" | "teacher-peer"
-  | "teacher-agent" | "teacher-transcripts" | "teacher-records";
+  | "teacher-agent" | "teacher-transcripts" | "teacher-records"
+  | "student-home";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -83,9 +85,11 @@ export function App() {
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
   if (view === "role-home") {
-    // Teachers have a real workspace to enter; other roles' surfaces are later slices.
+    // Teachers and students have real workspaces; other roles' surfaces are later slices.
+    const enterView: View | undefined = roles.includes("teacher") ? "teacher-home"
+      : roles.includes("student") ? "student-home" : undefined;
     return <RoleHome session={session} displayName={displayName} onSignOut={onSignOut}
-      onEnterWorkspace={roles.includes("teacher") ? () => setView("teacher-home") : undefined} />;
+      onEnterWorkspace={enterView ? () => setView(enterView) : undefined} />;
   }
 
   // ---- Teacher persona (guarded server-side; routed here by role) ----
@@ -99,6 +103,9 @@ export function App() {
   if (view === "teacher-agent") return <TeacherAgent session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-transcripts") return <TeacherTranscripts session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-records") return <TeacherRecords session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+
+  // ---- Student persona (safety-critical; guarded server-side) ----
+  if (view === "student-home") return <StudentHome session={session} displayName={displayName} onSignOut={onSignOut} />;
 
   // ---- Admin persona ----
   const back = () => setView("workspace");

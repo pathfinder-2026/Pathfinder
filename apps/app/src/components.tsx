@@ -1,4 +1,24 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+/**
+ * Copyable invite link. No email is sent in this environment (real transport is
+ * a deferred integration), so the admin shares each person's single-use link
+ * directly — this button copies it.
+ */
+export function InviteLink({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/?token=${token}`;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); } catch { window.prompt("Copy this invite link:", url); return; }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button className="linkish" onClick={copy} title={url} aria-label="Copy invite link">
+      {copied ? "Copied ✓" : "Copy invite link"}
+    </button>
+  );
+}
 
 /** The waypoint "trail" mark — the Pathfinder brand motif. Uses the brand colour. */
 export function TrailMark() {

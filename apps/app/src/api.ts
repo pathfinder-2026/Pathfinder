@@ -195,7 +195,7 @@ export const api = {
   invite: (s: Session, role: string, email: string, firstName: string, lastName: string) =>
     request<{ inviteId: string }>("POST", `/api/v1/schools/${s.schoolId}/invites`, { role, email, firstName, lastName }, s.token),
   listInvites: (s: Session) =>
-    request<{ id: string; role: string; status: string; firstName: string | null; lastName: string | null; email: string | null }[]>(
+    request<{ id: string; role: string; status: string; firstName: string | null; lastName: string | null; email: string | null; inviteToken: string | null }[]>(
       "GET", `/api/v1/schools/${s.schoolId}/invites`, undefined, s.token,
     ),
   setSafeguarding: (s: Session, body: unknown) => request<{ configured: boolean }>("POST", `/api/v1/schools/${s.schoolId}/safeguarding`, body, s.token),

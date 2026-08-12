@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ROLES, type Account, type Session } from "../api";
-import { Banner, Button, Card, Chip, TopBar } from "../components";
+import { Banner, Button, Card, Chip, InviteLink, TopBar } from "../components";
 import type { GovState } from "../components";
 
 /**
@@ -13,14 +13,16 @@ export function People({ session, displayName, onBack, onSignOut }: {
 }) {
   const [rows, setRows] = useState<Account[]>([]);
   const [campuses, setCampuses] = useState<{ id: string; name: string }[]>([]);
+  const [pending, setPending] = useState<Awaited<ReturnType<typeof api.listInvites>>>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ firstName: "", lastName: "" });
 
   const load = useCallback(async () => {
-    const [a, c] = await Promise.all([api.accounts(session), api.campuses(session)]);
+    const [a, c, inv] = await Promise.all([api.accounts(session), api.campuses(session), api.listInvites(session)]);
     setRows(a);
     setCampuses(c);
+    setPending(inv.filter((i) => i.inviteToken));
   }, [session]);
   useEffect(() => { void load(); }, [load]);
 
@@ -84,6 +86,27 @@ export function People({ session, displayName, onBack, onSignOut }: {
             </ul>
             <p className="muted" style={{ marginTop: 14 }}>Changing someone to <strong>Principal</strong> assigns them to a campus. The school's only administrator can't be demoted until another admin exists.</p>
           </Card>
+
+          {pending.length > 0 && (
+            <Card>
+              <div className="card__head">
+                <h2 className="section">Pending invites</h2>
+                <p className="muted">No email is sent in this environment — copy each person's single-use link and share it with them directly. The link disappears once they accept.</p>
+              </div>
+              <ul className="people">
+                {pending.map((p) => (
+                  <li className="person" key={p.id}>
+                    <span className="person__avatar">{(p.firstName ?? "?").slice(0, 1)}{(p.lastName ?? "").slice(0, 1)}</span>
+                    <span>{p.firstName} {p.lastName}</span>
+                    <span className="person__meta">{p.email} · {p.role}</span>
+                    <span className="spacer" />
+                    <InviteLink token={p.inviteToken!} />
+                    <Chip state="pending">Invited</Chip>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <div className="btn-row">
             <span className="spacer" />

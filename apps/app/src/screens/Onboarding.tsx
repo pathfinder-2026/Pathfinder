@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type OnboardingState, type Session } from "../api";
-import { Banner, Button, Card, Chip, Field, TopBar, Trail } from "../components";
+import { Banner, Button, Card, Chip, Field, InviteLink, TopBar, Trail } from "../components";
 
 const STEP_LABELS: Record<string, string> = {
   create: "Create school",
@@ -162,7 +162,7 @@ function ConfigureStep({ session, onDone }: { session: Session; onDone: () => vo
 }
 
 function InviteStep({ session, role, onDone }: { session: Session; role: string; onDone: () => void }) {
-  const [people, setPeople] = useState<{ id: string; role: string; firstName: string | null; lastName: string | null; email: string | null }[]>([]);
+  const [people, setPeople] = useState<{ id: string; role: string; status: string; firstName: string | null; lastName: string | null; email: string | null; inviteToken: string | null }[]>([]);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "" });
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(
@@ -186,7 +186,7 @@ function InviteStep({ session, role, onDone }: { session: Session; role: string;
     <Card>
       <div className="card__head">
         <h2 className="section">Invite {label}</h2>
-        <p className="muted">Invitations are delivered through the notification service. You can always invite more later{role === "teacher" ? " — but at least one teacher is recommended before going live" : ""}.</p>
+        <p className="muted">No email is sent in this environment — after inviting someone, <strong>copy their invite link</strong> below and share it with them directly. You can always invite more later{role === "teacher" ? " — at least one teacher is recommended before going live" : ""}.</p>
       </div>
       {error && <Banner kind="error">{error}</Banner>}
       <div className="row">
@@ -202,7 +202,10 @@ function InviteStep({ session, role, onDone }: { session: Session; role: string;
               <span className="person__avatar">{(p.firstName ?? "?").slice(0, 1)}{(p.lastName ?? "").slice(0, 1)}</span>
               <span>{p.firstName} {p.lastName}</span>
               <span className="person__meta">{p.email}</span>
-              <span className="spacer" /><Chip state="pending">Invited</Chip>
+              <span className="spacer" />
+              {p.inviteToken
+                ? <><InviteLink token={p.inviteToken} /><Chip state="pending">Invited</Chip></>
+                : <Chip state="approved">Accepted</Chip>}
             </li>
           ))}
         </ul>

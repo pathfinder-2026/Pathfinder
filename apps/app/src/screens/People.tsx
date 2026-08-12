@@ -14,15 +14,18 @@ export function People({ session, displayName, onBack, onSignOut }: {
   const [rows, setRows] = useState<Account[]>([]);
   const [campuses, setCampuses] = useState<{ id: string; name: string }[]>([]);
   const [pending, setPending] = useState<Awaited<ReturnType<typeof api.listInvites>>>([]);
+  const [links, setLinks] = useState<Awaited<ReturnType<typeof api.listParentLinks>>>([]);
+  const [linkForm, setLinkForm] = useState({ parentId: "", studentId: "", relationship: "parent" });
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ firstName: "", lastName: "" });
 
   const load = useCallback(async () => {
-    const [a, c, inv] = await Promise.all([api.accounts(session), api.campuses(session), api.listInvites(session)]);
+    const [a, c, inv, pl] = await Promise.all([api.accounts(session), api.campuses(session), api.listInvites(session), api.listParentLinks(session)]);
     setRows(a);
     setCampuses(c);
     setPending(inv.filter((i) => i.inviteToken));
+    setLinks(pl);
   }, [session]);
   useEffect(() => { void load(); }, [load]);
 
@@ -85,6 +88,49 @@ export function People({ session, displayName, onBack, onSignOut }: {
               ))}
             </ul>
             <p className="muted" style={{ marginTop: 14 }}>Changing someone to <strong>Principal</strong> assigns them to a campus. The school's only administrator can't be demoted until another admin exists.</p>
+          </Card>
+
+          <Card>
+            <div className="card__head">
+              <h2 className="section">Parent–child links</h2>
+              <p className="muted">A parent sees nothing until you link and <strong>verify</strong> their relationship to a child. Verification is the school vouching for the relationship (FR-PAR-003).</p>
+            </div>
+            <div className="row">
+              <label className="field"><span className="field__label">Parent</span>
+                <select className="select" value={linkForm.parentId} onChange={(e) => setLinkForm({ ...linkForm, parentId: e.target.value })}>
+                  <option value="">Choose…</option>
+                  {rows.filter((r) => r.role === "parent").map((r) => <option key={r.userId} value={r.userId}>{r.firstName} {r.lastName}</option>)}
+                </select>
+              </label>
+              <label className="field"><span className="field__label">Child</span>
+                <select className="select" value={linkForm.studentId} onChange={(e) => setLinkForm({ ...linkForm, studentId: e.target.value })}>
+                  <option value="">Choose…</option>
+                  {rows.filter((r) => r.role === "student").map((r) => <option key={r.userId} value={r.userId}>{r.firstName} {r.lastName}</option>)}
+                </select>
+              </label>
+            </div>
+            <Button onClick={async () => {
+              setError(null);
+              try { await api.createParentLink(session, linkForm.parentId, linkForm.studentId, linkForm.relationship); setLinkForm({ parentId: "", studentId: "", relationship: "parent" }); await load(); }
+              catch (e) { setError((e as Error).message); }
+            }} disabled={!linkForm.parentId || !linkForm.studentId}>Link (unverified)</Button>
+            {links.length > 0 && (
+              <ul className="people" style={{ marginTop: 14 }}>
+                {links.map((l) => (
+                  <li className="person" key={l.id}>
+                    <span>{l.parentLabel} → {l.childLabel}</span>
+                    <span className="person__meta">{l.relationship}</span>
+                    <span className="spacer" />
+                    {l.verified ? <Chip state="approved">Verified</Chip> : (
+                      <>
+                        <Chip state="pending">Unverified — no data flows</Chip>
+                        <Button onClick={async () => { setError(null); try { await api.verifyParentLink(session, l.id); await load(); } catch (e) { setError((e as Error).message); } }}>Verify</Button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           {pending.length > 0 && (

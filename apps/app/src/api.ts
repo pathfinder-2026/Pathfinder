@@ -357,6 +357,32 @@ export const api = {
     request<{ hasFeedback: boolean; reviews: { text: string }[]; message: string }>("GET", `/api/v1/schools/${s.schoolId}/student/peer-feedback`, undefined, s.token),
   recordPeerSubmission: (s: Session, peerTestId: string, studentId: string, score: number) =>
     request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/peer-tests/${peerTestId}/submissions`, { studentId, score }, s.token),
+
+  // ---- Parent (PAR-1..5) ----
+  parentChildren: (s: Session) =>
+    request<{ studentId: string; childName: string | null; yearGroup: string | null }[]>("GET", `/api/v1/schools/${s.schoolId}/parent/children`, undefined, s.token),
+  parentDashboard: (s: Session, studentId: string) =>
+    request<{ childName: string | null; hasRecentActivity: boolean; strengths: string[]; focusAreas: string[]; recentActivity: string[]; summaryText: string; period: string }>(
+      "GET", `/api/v1/schools/${s.schoolId}/parent/children/${studentId}/dashboard`, undefined, s.token,
+    ),
+  parentCalendar: (s: Session, studentId: string) =>
+    request<{ id: string; title: string; type: string; date: string; changed: boolean }[]>("GET", `/api/v1/schools/${s.schoolId}/parent/children/${studentId}/calendar`, undefined, s.token),
+  parentReport: (s: Session, studentId: string) =>
+    request<{ childName: string | null; strengths: string[]; focusAreas: string[]; teacherComments: string[]; coCurricular: { domain: string; skill: string; level: string }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/parent/children/${studentId}/report`, undefined, s.token,
+    ),
+  parentDigests: (s: Session) =>
+    request<{ subject: string; body: string; at: string }[]>("GET", `/api/v1/schools/${s.schoolId}/parent/digests`, undefined, s.token),
+
+  // ---- Admin: parent links (PAR-1) + digest trigger ----
+  listParentLinks: (s: Session) =>
+    request<{ id: string; parentLabel: string; childLabel: string; relationship: string; verified: boolean }[]>("GET", `/api/v1/schools/${s.schoolId}/parent-links`, undefined, s.token),
+  createParentLink: (s: Session, parentId: string, studentId: string, relationship: string) =>
+    request<{ id: string; verified: boolean }>("POST", `/api/v1/schools/${s.schoolId}/parent-links`, { parentId, studentId, relationship }, s.token),
+  verifyParentLink: (s: Session, linkId: string) =>
+    request<{ id: string; verified: boolean }>("POST", `/api/v1/schools/${s.schoolId}/parent-links/${linkId}/verify`, {}, s.token),
+  runParentDigest: (s: Session) =>
+    request<{ sent: number; skippedNoActivity: number }>("POST", `/api/v1/schools/${s.schoolId}/parent-digest/run`, {}, s.token),
 };
 
 export interface StudentTaskView {

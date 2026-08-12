@@ -21,13 +21,14 @@ import { TeacherAgent } from "./screens/TeacherAgent";
 import { TeacherTranscripts } from "./screens/TeacherTranscripts";
 import { TeacherRecords } from "./screens/TeacherRecords";
 import { StudentHome } from "./screens/StudentHome";
+import { ParentHome } from "./screens/ParentHome";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
   | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights" | "teacher-peer"
   | "teacher-agent" | "teacher-transcripts" | "teacher-records"
-  | "student-home";
+  | "student-home" | "parent-home";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -85,9 +86,10 @@ export function App() {
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
   if (view === "role-home") {
-    // Teachers and students have real workspaces; other roles' surfaces are later slices.
+    // Teachers, students and parents have real workspaces; Principal arrives next.
     const enterView: View | undefined = roles.includes("teacher") ? "teacher-home"
-      : roles.includes("student") ? "student-home" : undefined;
+      : roles.includes("student") ? "student-home"
+      : roles.includes("parent") ? "parent-home" : undefined;
     return <RoleHome session={session} displayName={displayName} onSignOut={onSignOut}
       onEnterWorkspace={enterView ? () => setView(enterView) : undefined} />;
   }
@@ -106,6 +108,9 @@ export function App() {
 
   // ---- Student persona (safety-critical; guarded server-side) ----
   if (view === "student-home") return <StudentHome session={session} displayName={displayName} onSignOut={onSignOut} />;
+
+  // ---- Parent persona (verification-before-data; guarded server-side) ----
+  if (view === "parent-home") return <ParentHome session={session} displayName={displayName} onSignOut={onSignOut} />;
 
   // ---- Admin persona ----
   const back = () => setView("workspace");

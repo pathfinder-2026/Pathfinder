@@ -12,6 +12,7 @@ import { registerPreview } from "./preview";
 import { registerAdminApi } from "./adminApi";
 import { registerTeacherApi } from "./teacherApi";
 import { registerStudentApi } from "./studentApi";
+import { registerParentApi } from "./parentApi";
 
 /**
  * Minimal HTTP surface for Milestone 0. It exposes just enough of the core
@@ -96,8 +97,11 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
   // Production Teacher workflow API (TCH-*), consumed by apps/app.
   registerTeacherApi(app, context);
 
-  // Production Student workspace API (STU-1..4, safety-critical), consumed by apps/app.
+  // Production Student workspace API (STU-1..5, safety-critical), consumed by apps/app.
   registerStudentApi(app, context);
+
+  // Production Parent API (PAR-1..5, verification-before-data), consumed by apps/app.
+  registerParentApi(app, context);
 
   // Preview/validation console API (M0–M5a). Routes register immediately; the
   // demo world bootstraps lazily on first /api call, so tests are unaffected.

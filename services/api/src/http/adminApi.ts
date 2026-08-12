@@ -1,8 +1,19 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AuthError } from "../domain/errors";
+import { AuthError, ConflictError } from "../domain/errors";
 import type { AppContext } from "../context";
 import type { Role } from "../domain/types";
+import type { SkillGraphSource } from "../domain/skillGraph";
 import { ADMIN_STEPS, type AdminStep } from "../services/onboardingService";
+
+/** The committed AI-drafted NSW Y8 Maths seed graph (ships draft/unsigned — ADR-0015). */
+function readSeedGraph(): SkillGraphSource {
+  const path = fileURLToPath(
+    new URL("../../../../db/seeds/pathfinder_skill_graph_nsw_y8_maths_v0.1.json", import.meta.url),
+  );
+  return JSON.parse(readFileSync(path, "utf8")) as SkillGraphSource;
+}
 
 /**
  * Production HTTP surface for the School-Admin onboarding workflow (FR-ADM-001/002/007,
@@ -170,7 +181,13 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     const rows = await Promise.all(
       invites.map(async (i) => {
         const pii = await ctx.store.getPersonalData(i.userId);
-        return { id: i.id, role: i.role, status: i.status, firstName: pii?.firstName ?? null, lastName: pii?.lastName ?? null, email: pii?.email ?? null };
+        return {
+          id: i.id, role: i.role, status: i.status,
+          firstName: pii?.firstName ?? null, lastName: pii?.lastName ?? null, email: pii?.email ?? null,
+          // The admin created this invite; surfacing the link lets them deliver it
+          // out-of-band (email transport is deferred). Single-use: gone once accepted.
+          inviteToken: i.status === "pending" ? i.token : null,
+        };
       }),
     );
     return reply.send(rows);
@@ -240,9 +257,13 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
   });
 
   // ---- Branding (theming for the app; FR-WL) ----
+  // Read is open to EVERY authenticated member of the school — white-label
+  // theming applies to teacher/student/parent surfaces too, not just the
+  // admin's. (Configuration below stays admin-only.)
   app.get("/api/v1/schools/:schoolId/branding", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };
-    await requireAdminOf(req, schoolId);
+    const auth = await requireUser(req);
+    if (auth.user.schoolId !== schoolId) throw new AuthError("Not a member of this school.");
     return reply.send(await ctx.branding.forSurface(schoolId, "user"));
   });
 
@@ -310,6 +331,47 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     if (!target || target.schoolId !== schoolId) throw new AuthError("User not found in this school.");
     const created = await ctx.principals.assignPrincipal(userId, campusIds, auth.user.id);
     return reply.status(201).send({ assigned: created.length });
+  });
+
+  // ---- Skill graph curriculum setup (FR-SKG-002 sign-off gate; ADR-0015) ----
+  // The seed graph imports as DRAFT. Sign-off is a HUMAN governance action the
+  // program never self-certifies: the signed-in admin (curriculum authority)
+  // explicitly signs the version off, and only then can teachers map against it.
+  app.get("/api/v1/schools/:schoolId/skill-graph", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const config = await ctx.skillGraphStore.getSchoolCurriculum(schoolId);
+    const curriculum = config?.curriculum ?? "NSW";
+    const signed = await ctx.skillGraphStore.latestSignedOffVersion(curriculum);
+    if (signed) {
+      const nodes = await ctx.skillGraphStore.listNodes(signed.id);
+      return reply.send({ status: "signed_off", versionId: signed.id, name: signed.name, nodes: nodes.length });
+    }
+    const draft = (await ctx.skillGraphStore.listGraphVersions()).find((v) => v.status !== "signed_off");
+    if (draft) {
+      const nodes = await ctx.skillGraphStore.listNodes(draft.id);
+      return reply.send({ status: "draft", versionId: draft.id, name: draft.name, nodes: nodes.length });
+    }
+    return reply.send({ status: "none" });
+  });
+
+  app.post("/api/v1/schools/:schoolId/skill-graph/import-seed", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const existing = await ctx.skillGraphStore.listGraphVersions();
+    if (existing.length > 0) throw new ConflictError("GRAPH_ALREADY_IMPORTED", "A skill graph version already exists.");
+    const version = await ctx.skillGraph.importGraph(readSeedGraph(), auth.user.id);
+    await ctx.mapping.configureCurriculum(schoolId, "NSW");
+    const nodes = await ctx.skillGraphStore.listNodes(version.id);
+    return reply.status(201).send({ versionId: version.id, name: version.name, status: version.status, nodes: nodes.length });
+  });
+
+  app.post("/api/v1/schools/:schoolId/skill-graph/:versionId/sign-off", async (req, reply) => {
+    const { schoolId, versionId } = req.params as { schoolId: string; versionId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const version = await ctx.skillGraph.signOff(versionId, auth.user.id);
+    await ctx.mapping.configureCurriculum(schoolId, version.curriculum);
+    return reply.send({ versionId: version.id, status: version.status, signedOffBy: version.signedOffBy });
   });
 
   // ---- Workspace summary ----

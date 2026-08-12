@@ -17,7 +17,11 @@ const STEP_COPY: Record<string, { title: string; desc: string }> = {
  * including the dual-role union and the "waiting on school setup" hold state.
  * The full persona surface is a later slice; this is the honest landing for now.
  */
-export function RoleHome({ session, displayName, onSignOut }: { session: Session; displayName: string; onSignOut: () => void }) {
+export function RoleHome({ session, displayName, onSignOut, onEnterWorkspace }: {
+  session: Session; displayName: string; onSignOut: () => void;
+  /** When set, "Enter" routes into a real persona workspace instead of the hold card. */
+  onEnterWorkspace?: () => void;
+}) {
   const [ob, setOb] = useState<Awaited<ReturnType<typeof api.myOnboarding>> | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
   const [entered, setEntered] = useState(false);
@@ -71,7 +75,7 @@ export function RoleHome({ session, displayName, onSignOut }: { session: Session
                     })}
                   </ul>
                   <div className="btn-row">
-                    <Button variant="primary" onClick={() => setEntered(true)} disabled={done.size < ob.steps.length}>Enter</Button>
+                    <Button variant="primary" onClick={() => (onEnterWorkspace ? onEnterWorkspace() : setEntered(true))} disabled={done.size < ob.steps.length}>Enter</Button>
                     {done.size < ob.steps.length && <span className="muted">Complete the steps to continue</span>}
                   </div>
                 </Card>

@@ -11,10 +11,15 @@ import { BrandingSettings } from "./screens/BrandingSettings";
 import { Structure } from "./screens/Structure";
 import { AcceptInvite } from "./screens/AcceptInvite";
 import { RoleHome } from "./screens/RoleHome";
+import { TeacherHome } from "./screens/TeacherHome";
+import { TeacherContent } from "./screens/TeacherContent";
+import { TeacherAssessments } from "./screens/TeacherAssessments";
+import { TeacherDashboard } from "./screens/TeacherDashboard";
 
 export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
-  | "accept-invite" | "role-home" | "loading";
+  | "accept-invite" | "role-home" | "loading"
+  | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard";
 
 /** Invite token from the URL (?token=…) — the invitee entry point. */
 function inviteToken(): string | null {
@@ -26,15 +31,17 @@ export function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [view, setView] = useState<View>(token ? "accept-invite" : session ? "loading" : "start");
   const [displayName, setDisplayName] = useState("Pathfinder");
+  const [roles, setRoles] = useState<string[]>([]);
 
   const refreshBranding = useCallback(async (s: Session) => {
     try { const b = await api.getBranding(s); applyBrand(b.primaryColor); setDisplayName(b.displayName); } catch { /* pre-config */ }
   }, []);
 
-  /** Route a session by role: admins get the admin flow, others the role home. */
+  /** Route a session by role: admins get the admin flow, others their role home. */
   const enter = useCallback(async (s: Session) => {
     try {
       const me = await api.me(s);
+      setRoles(me.roles);
       if (me.roles.includes("admin")) {
         const ob = await api.onboarding(s);
         setView(ob.workspaceEntered ? "workspace" : "onboarding");
@@ -58,7 +65,7 @@ export function App() {
     void refreshBranding(s); void enter(s);
   };
   const onSignOut = () => {
-    clearSession(); setSession(null); setDisplayName("Pathfinder"); applyBrand("#1f6f63");
+    clearSession(); setSession(null); setRoles([]); setDisplayName("Pathfinder"); applyBrand("#1f6f63");
     window.history.replaceState({}, "", window.location.pathname);
     setView("start");
   };
@@ -66,8 +73,20 @@ export function App() {
   if (token && view === "accept-invite") return <AcceptInvite token={token} onAccepted={onAccepted} />;
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
-  if (view === "role-home") return <RoleHome session={session} displayName={displayName} onSignOut={onSignOut} />;
+  if (view === "role-home") {
+    // Teachers have a real workspace to enter; other roles' surfaces are later slices.
+    return <RoleHome session={session} displayName={displayName} onSignOut={onSignOut}
+      onEnterWorkspace={roles.includes("teacher") ? () => setView("teacher-home") : undefined} />;
+  }
 
+  // ---- Teacher persona (guarded server-side; routed here by role) ----
+  const backToTeacher = () => setView("teacher-home");
+  if (view === "teacher-home") return <TeacherHome session={session} displayName={displayName} onNavigate={setView} onSignOut={onSignOut} />;
+  if (view === "teacher-content") return <TeacherContent session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+  if (view === "teacher-assessments") return <TeacherAssessments session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+  if (view === "teacher-dashboard") return <TeacherDashboard session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+
+  // ---- Admin persona ----
   const back = () => setView("workspace");
   if (view === "people") return <People session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;
   if (view === "csv-import") return <CsvImport session={session} displayName={displayName} onBack={back} onSignOut={onSignOut} />;

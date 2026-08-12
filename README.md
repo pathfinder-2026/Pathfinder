@@ -123,7 +123,7 @@ npm install
 npm test
 ```
 
-Expected: **271 passing tests** — 266 in `services/api` (every acceptance row for
+Expected: **279 passing tests** — 274 in `services/api` (every acceptance row for
 M0–M11 plus the resequenced Appendix A FR-ADM-003 / FR-INT-001 and Appendix B
 FR-WL-001..004: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
 FR-PEER, FR-TAG, FR-STU/FR-SAG, FR-PAR, FR-PDB, FR-REP/FR-CAP/FR-BSS, and the M11
@@ -132,8 +132,10 @@ quarantine tests, the Ask-for-Help adversarial suite, the Principal transcript
 back-door hunt, and every governance gate — approved-pool / sign-off /
 draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-declined
 / state-layer-lockout / verification-before-data / consent-gated / audit-blocks-on-
-logging-failure / erasure-preserves-hash-chain / drift-fails-safe) and 5 in `infra`
-(region pinning). The **same 266 tests also run against Postgres** (see below).
+logging-failure / erasure-preserves-hash-chain / drift-fails-safe; plus the
+production `/api/v1` HTTP surfaces — admin onboarding/management and the teacher
+content→assessment→publish→dashboard thread) and 5 in `infra`
+(region pinning). The **same 274 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash
@@ -147,7 +149,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 266 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 274 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the

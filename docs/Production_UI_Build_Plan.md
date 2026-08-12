@@ -15,12 +15,26 @@ product behaviour — it exposes existing, governed functionality.
 
 **✅ Built & pushed** (`feature/appendix-a-csv-sso`):
 - Foundation: S-AUTH-1 (sign in / create), S-AUTH-2 (accept invite), S-ONB-ROLE
-  (role onboarding + honest role home), S-SHELL (role-aware routing + admin hub nav).
-- Admin: ADM-1 (onboarding trail), ADM-2 (school structure), ADM-3 (people: roles+names),
-  ADM-4 (Principal multi-campus assign), ADM-5 (CSV import), ADM-6 (SSO), ADM-7 (branding).
+  (role onboarding + honest role home), S-SHELL (role-aware routing + admin hub nav;
+  teachers now route into a real Teacher home).
+- Admin: ADM-1 (onboarding trail), ADM-2 (school structure **+ curriculum skill-graph
+  import & human sign-off card**), ADM-3 (people: roles+names), ADM-4 (Principal
+  multi-campus assign), ADM-5 (CSV import), ADM-6 (SSO), ADM-7 (branding).
+- **Teacher core loop:** TCH-1 (Content Studio: upload → ingest → classify →
+  approve-classification → attest → approve, with fixed governance chips + block
+  reasons), TCH-3 *minimal* (map approved content to signed-off graph nodes;
+  unsigned graph honestly blocked), TCH-4 (Assessment Builder: grounded drafts,
+  shortfall + clean failed states, grounding sources shown), TCH-5 (review-ack gate →
+  publish, reversible before start), TCH-6 (Dashboard mastery heatmap with trend +
+  intervention/extension flags and the not-enough-data empty state).
+- Server: `services/api/src/http/teacherApi.ts` (teacher-role-guarded, school-scoped
+  `/api/v1` surface) + admin skill-graph endpoints; invite list now returns the
+  single-use `inviteToken` (out-of-band delivery until real email exists); branding
+  READ opened to all school members (white-label themes every persona surface).
 
-**⬜ Next (run tomorrow via the prompts below):** ADM-8/9/10/11; all Teacher (TCH-*),
-Student (STU-*), Parent (PAR-*), Principal (PRB-*) screens; S-NOTIF; the a11y pass.
+**⬜ Next (via the prompts below):** TCH-2 (content detail/versions), full TCH-3
+(overrides/bulk remap), TCH-7..18; ADM-8/9/10/11; Student (STU-*), Parent (PAR-*),
+Principal (PRB-*) screens; S-NOTIF; the a11y pass.
 See §12 for order; each screen's **Build prompt** is paste-ready (prepend §13).
 
 ---

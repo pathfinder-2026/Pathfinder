@@ -10,6 +10,7 @@ import {
 import { buildContext, type AppContext, type BuildContextOptions } from "../context";
 import { registerPreview } from "./preview";
 import { registerAdminApi } from "./adminApi";
+import { registerTeacherApi } from "./teacherApi";
 
 /**
  * Minimal HTTP surface for Milestone 0. It exposes just enough of the core
@@ -90,6 +91,9 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
 
   // Production Admin onboarding API (FR-ADM/FR-ONB), consumed by apps/app.
   registerAdminApi(app, context);
+
+  // Production Teacher workflow API (TCH-1/3/4/5/6), consumed by apps/app.
+  registerTeacherApi(app, context);
 
   // Preview/validation console API (M0–M5a). Routes register immediately; the
   // demo world bootstraps lazily on first /api call, so tests are unaffected.

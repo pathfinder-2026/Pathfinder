@@ -114,7 +114,15 @@ export class ParentService {
     ];
 
     const completion = await this.ai.run(
-      { purpose: "parent.summary", prompt: "Plain-language, observational, non-diagnostic parent summary.", input: { name: childName, strengths, focusAreas, activity: recentActivity }, containsStudentData: true },
+      {
+        purpose: "parent.summary",
+        prompt: "Plain-language, observational, non-diagnostic parent summary.",
+        input: { name: childName, strengths, focusAreas, activity: recentActivity },
+        containsStudentData: true,
+        // The child's name is masked to "Student A" before any provider sees it
+        // and restored in the returned summary (piiMasking.ts).
+        piiValues: childName ? [{ role: "student", values: [childName] }] : undefined,
+      },
       parentId,
     );
     // DoD guard: a parent summary must NEVER contain diagnostic/clinical language.

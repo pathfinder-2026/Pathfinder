@@ -41,8 +41,15 @@ product behaviour — it exposes existing, governed functionality.
   email exists — a real SES adapter exists behind the notification port, env-gated,
   ADR-0032); branding READ opened to all school members.
 
-**⬜ Next (via the prompts below):** Student (STU-1..4, safety-critical), Parent
-(PAR-*), Principal (PRB-*); ADM-8/9/10/11; S-NOTIF; the a11y pass.
+- **Student thread (STU-1..4): BUILT.** `http/studentApi.ts` (student-role-guarded;
+  published-only assessments at the permission layer; model answers/rubrics never
+  serialised) + `StudentHome.tsx` (calm workspace, no-shame overdue, Ask-for-Help
+  panel with domain-decided lockouts/escalation, year-group-invisible calendar,
+  attempt with autosave + offline banner + reconnect restore). Teacher gained the
+  POST /tasks assign endpoint; admin memberships PATCH passes classId.
+
+**⬜ Next (via the prompts below):** STU-5 (peer taking/review), Parent (PAR-*),
+Principal (PRB-*); ADM-8/9/10/11; S-NOTIF; the a11y pass.
 See §12 for order; each screen's **Build prompt** is paste-ready (prepend §13).
 
 ---

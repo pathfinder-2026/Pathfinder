@@ -17,6 +17,7 @@
     "test": "npm run test --workspace services/api && npm run test --workspace infra && npm run test --workspace apps/app",
     "test:api": "npm run test --workspace services/api",
     "test:infra": "npm run test --workspace infra",
+    "demo": "node scripts/demo-seed-and-test.mjs",
     "typecheck": "npm run typecheck --workspace services/api && npm run typecheck --workspace infra",
     "dev:api": "npm run dev --workspace services/api",
     "dev:web": "npm run dev --workspace apps/web",

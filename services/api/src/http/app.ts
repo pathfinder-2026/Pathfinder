@@ -46,6 +46,15 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
     if (error instanceof DomainError) {
       return reply.status(400).send({ code: error.code, message: error.message });
     }
+    // Fastify's own client errors (bad JSON, empty JSON body, oversized payload…)
+    // carry their proper 4xx status — pass them through rather than masking as 500.
+    const fastifyError = error as { statusCode?: unknown; code?: string; message?: string };
+    if (typeof fastifyError.statusCode === "number" && fastifyError.statusCode >= 400 && fastifyError.statusCode < 500) {
+      return reply.status(fastifyError.statusCode).send({ code: fastifyError.code ?? "BAD_REQUEST", message: fastifyError.message ?? "Bad request" });
+    }
+    // An unexpected error must be visible to operators, never silently a 500.
+    // eslint-disable-next-line no-console
+    console.error("Unhandled API error:", error);
     return reply.status(500).send({ code: "INTERNAL", message: "Internal error" });
   });
 

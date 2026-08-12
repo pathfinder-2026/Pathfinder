@@ -11,8 +11,11 @@ import { newId } from "../ids";
  * escalation will all be later consumers of the same service.
  *
  * Channels are pluggable transports. Milestone 0 ships an in-memory channel
- * (used by dev and tests); an SES-in-ap-southeast-2 email channel is wired when
- * the AU infrastructure is provisioned (Foundational Decision 1).
+ * (used by dev and tests). A real email channel exists at
+ * adapters/email/emailChannel.ts (SES, AU-region-pinned, ADR-0032) and is
+ * appended via BuildContextOptions.extraChannels when SES credentials + a
+ * verified sender exist (env-gated in src/index.ts); until then the admin UI's
+ * copyable invite links are the delivery path.
  */
 
 export type NotificationType =

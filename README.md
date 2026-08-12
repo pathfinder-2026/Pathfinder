@@ -123,7 +123,7 @@ npm install
 npm test
 ```
 
-Expected: **279 passing tests** — 274 in `services/api` (every acceptance row for
+Expected: **283 passing tests** — 278 in `services/api` (every acceptance row for
 M0–M11 plus the resequenced Appendix A FR-ADM-003 / FR-INT-001 and Appendix B
 FR-WL-001..004: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
 FR-PEER, FR-TAG, FR-STU/FR-SAG, FR-PAR, FR-PDB, FR-REP/FR-CAP/FR-BSS, and the M11
@@ -134,8 +134,9 @@ draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-de
 / state-layer-lockout / verification-before-data / consent-gated / audit-blocks-on-
 logging-failure / erasure-preserves-hash-chain / drift-fails-safe; plus the
 production `/api/v1` HTTP surfaces — admin onboarding/management and the teacher
-content→assessment→publish→dashboard thread) and 5 in `infra`
-(region pinning). The **same 274 tests also run against Postgres** (see below).
+content→assessment→publish→dashboard thread, and the AU-pinned email
+notification channel behind a fake transport, ADR-0032) and 5 in `infra`
+(region pinning). The **same 278 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash

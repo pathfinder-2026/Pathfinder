@@ -94,6 +94,35 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0032 — Email delivery adapter behind the notification port (SES seam)
+No email transport existed: invites only ever reached the in-memory notification
+channel, so nothing was actually delivered (the admin UI's copyable invite links
+are the working delivery path). The real adapter now exists —
+`adapters/email/emailChannel.ts` — following the **BedrockProvider posture
+(ADR-0013)**: real, compiled, fully tested against a fake transport, but **not
+wired by default**, because live sending is gated on AWS SES credentials + a
+verified sender identity, neither of which exists in this environment.
+
+- **Two-layer seam.** `EmailChannel` (a `NotificationChannel`) does message →
+  email composition; the low-level `EmailTransport` interface does "send one
+  email". `SesTransport` (SESv2 SDK) is the first transport, **pinned to AU
+  regions** exactly like the AI layer (offshore region refused at construction —
+  Foundational Decision 1). An SMTP transport (e.g. nodemailer against a school
+  relay) can implement the same seam later; hand-rolled SMTP is explicitly out.
+- **Invite links are composed at the edge.** The domain layer keeps only the
+  ids-only token in the message context; the channel builds
+  `{appBaseUrl}/?token=…` at delivery time. No URL/PII enters the audit log.
+- **Best-effort delivery.** A transport outage must never break the domain
+  action that emitted the notification — the channel records a **PII-free**
+  failure `{notificationId, type, reason, at}` (never the address, subject or
+  body) instead of throwing. The invite still exists; the copyable link and the
+  in-app record still work. Alerting on safeguarding-type delivery failures is
+  part of productionisation.
+- **Wiring.** `BuildContextOptions.extraChannels` appends channels after the
+  default in-memory one (which always stays — it is the in-app record).
+  `src/index.ts` opts in via env: `PF_EMAIL_FROM` (enables), `PF_APP_BASE_URL`,
+  `PF_EMAIL_REGION` (AU-validated, default ap-southeast-2).
+
 ## ADR-0031 — Production web app foundation + Admin onboarding slice
 The production persona UIs (deferred since ADR-0012) begin here, built persona by
 persona as thin vertical slices. First slice: School-Admin onboarding.

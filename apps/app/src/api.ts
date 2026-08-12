@@ -268,7 +268,40 @@ export const api = {
     request<{ anonymityRisk: boolean; reviews: { id: string; text: string; createdAt: string }[] }>("GET", `/api/v1/schools/${s.schoolId}/peer-tests/${id}/reviews/pending`, undefined, s.token),
   moderateReview: (s: Session, reviewId: string, decision: "approve" | "reject") =>
     request<{ id: string; moderationState: string }>("POST", `/api/v1/schools/${s.schoolId}/peer-reviews/${reviewId}/moderate`, { decision }, s.token),
+
+  // ---- Teacher: Agent drafts (TCH-13) + help transcripts (TCH-14) ----
+  listAgentSuggestions: (s: Session) => request<AgentSuggestionRow[]>("GET", `/api/v1/schools/${s.schoolId}/agent/suggestions`, undefined, s.token),
+  agentGenerate: (s: Session, body: {
+    kind: "unit_sequence" | "lesson_plan" | "differentiation" | "parent_summary" | "feedback";
+    nodeId: string; term?: string; topic?: string; classId?: string; studentId?: string;
+    observations?: { category: string; text: string }[];
+  }) => request<AgentGenerateResult>("POST", `/api/v1/schools/${s.schoolId}/agent/generate`, body, s.token),
+  editAgentDraft: (s: Session, id: string, content: string) =>
+    request<AgentSuggestionRow>("PATCH", `/api/v1/schools/${s.schoolId}/agent/suggestions/${id}`, { content }, s.token),
+  helpSessions: (s: Session) =>
+    request<{ sessionId: string; taskTitle: string; studentLabel: string; createdAt: string }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions`, undefined, s.token),
+  helpTranscript: (s: Session, sessionId: string) =>
+    request<{ role: "student" | "assistant"; kind: string; text: string; at: string }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions/${sessionId}/transcript`, undefined, s.token),
 };
+
+export interface AgentSuggestionRow {
+  id: string;
+  kind: string;
+  title: string;
+  content: string;
+  grounding: { title: string; archived: boolean }[];
+  sensitiveSections: { category: string; text: string; flaggedForReview: boolean }[];
+  requiresExtraReview: boolean;
+  personalised: boolean;
+  personalisationNote: string | null;
+  sent: boolean;
+  edited: boolean;
+  createdAt: string;
+}
+
+export type AgentGenerateResult =
+  | { status: "declined"; reason: string; message: string }
+  | { status: "suggested"; suggestion: AgentSuggestionRow };
 
 export interface PeerTestRow {
   id: string;

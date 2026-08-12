@@ -4,6 +4,7 @@ import type { AppContext } from "../context";
 import type { ContentItem } from "../domain/content";
 import type { Assessment } from "../domain/assessment";
 import { anonymityRisk, PEER_THRESHOLDS, type PeerTest } from "../domain/peer";
+import type { AgentSuggestion } from "../domain/agent";
 
 /**
  * Production HTTP surface for the Teacher workflow thread (TCH-1/3/4/5/6):
@@ -606,5 +607,90 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     // approve | reject only — there is deliberately no way to edit the text.
     const moderated = await ctx.peerReviews.moderate(auth.user.id, reviewId, decision);
     return reply.send({ id: moderated.id, moderationState: moderated.moderationState });
+  });
+
+  // ---- Teacher Agent (TCH-13): grounded drafts, honest declines, never auto-sent ----
+
+  const suggestionRow = (s: AgentSuggestion) => ({
+    id: s.id, kind: s.kind, title: s.title, content: s.content,
+    grounding: s.grounding.map((g) => ({ title: g.title, archived: g.archived })),
+    sensitiveSections: s.sensitiveSections,
+    requiresExtraReview: s.requiresExtraReview,
+    personalised: s.personalised, personalisationNote: s.personalisationNote,
+    sent: s.sent, edited: s.edited, createdAt: s.createdAt,
+  });
+
+  app.get("/api/v1/schools/:schoolId/agent/suggestions", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireTeacherOf(req, schoolId);
+    const list = await ctx.agent.listSuggestions(schoolId);
+    return reply.send(list.map(suggestionRow));
+  });
+
+  app.post("/api/v1/schools/:schoolId/agent/generate", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const body = req.body as {
+      kind: "unit_sequence" | "lesson_plan" | "differentiation" | "parent_summary" | "feedback";
+      nodeId: string; term?: string; topic?: string; classId?: string; studentId?: string;
+      observations?: { category: string; text: string }[];
+    };
+    const observations = (body.observations ?? []).map((o) => ({ category: o.category as never, text: o.text }));
+    const run = {
+      unit_sequence: () => ctx.agent.draftUnitSequence(auth.user.id, schoolId, { nodeId: body.nodeId, term: body.term ?? "this term", topic: body.topic }),
+      lesson_plan: () => ctx.agent.draftLessonPlan(auth.user.id, schoolId, { nodeId: body.nodeId, topic: body.topic }),
+      differentiation: () => ctx.agent.draftDifferentiation(auth.user.id, schoolId, { nodeId: body.nodeId, classId: body.classId ?? "", topic: body.topic }),
+      parent_summary: () => ctx.agent.draftParentSummary(auth.user.id, schoolId, { studentId: body.studentId ?? "", nodeId: body.nodeId, topic: body.topic, observations }),
+      feedback: () => ctx.agent.draftFeedback(auth.user.id, schoolId, { studentId: body.studentId ?? "", nodeId: body.nodeId, topic: body.topic, observations }),
+    }[body.kind];
+    if (!run) return reply.status(400).send({ code: "BAD_REQUEST", message: "Unknown agent draft kind." });
+    const result = await run();
+    // A decline is an HONEST outcome, not an error — HTTP 200 with the reason.
+    if (result.status === "declined") return reply.send({ status: "declined", reason: result.reason, message: result.message });
+    return reply.status(201).send({ status: "suggested", suggestion: suggestionRow(result.suggestion) });
+  });
+
+  app.patch("/api/v1/schools/:schoolId/agent/suggestions/:id", async (req, reply) => {
+    const { schoolId, id } = req.params as { schoolId: string; id: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { content } = req.body as { content: string };
+    const edited = await ctx.agent.editDraft(auth.user.id, id, content);
+    return reply.send(suggestionRow(edited));
+  });
+
+  // ---- Ask-for-Help transcripts (TCH-14): assigning teacher ONLY ----
+  // The M9 rule: the only path to a transcript is the assigning teacher. This
+  // surface derives sessions from the teacher's own tasks, so another teacher, a
+  // Principal, or any other role simply has nothing to list — and the transcript
+  // read is re-checked in the domain (NOT_ASSIGNING_TEACHER). Never add these
+  // routes to any Principal surface or export.
+
+  app.get("/api/v1/schools/:schoolId/help-sessions", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const tasks = (await ctx.workspaceStore.listTasksByTeacher(auth.user.id)).filter((t) => t.schoolId === schoolId);
+    const rows: { sessionId: string; taskTitle: string; studentLabel: string; createdAt: string }[] = [];
+    for (const task of tasks) {
+      const session = await ctx.workspaceStore.findHelpSession(task.studentId, task.id);
+      if (!session) continue;
+      const pii = await ctx.store.getPersonalData(task.studentId);
+      rows.push({
+        sessionId: session.id,
+        taskTitle: task.title,
+        studentLabel: pii ? `${pii.firstName} ${pii.lastName}` : "Student",
+        createdAt: session.createdAt,
+      });
+    }
+    return reply.send(rows);
+  });
+
+  app.get("/api/v1/schools/:schoolId/help-sessions/:sessionId/transcript", async (req, reply) => {
+    const { schoolId, sessionId } = req.params as { schoolId: string; sessionId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const session = await ctx.workspaceStore.getHelpSession(sessionId);
+    if (!session || session.schoolId !== schoolId) throw new NotFoundError("Help session not found.");
+    // Domain re-check: only the assigning teacher (NOT_ASSIGNING_TEACHER otherwise).
+    const messages = await ctx.askForHelp.transcript(auth.user.id, sessionId);
+    return reply.send(messages.map((m) => ({ role: m.role, kind: m.kind, text: m.text, at: m.createdAt })));
   });
 }

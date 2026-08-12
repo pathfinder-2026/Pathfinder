@@ -564,4 +564,142 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     expect(feedback.reviews).toEqual([{ text: "Clear working, nice diagrams." }]);
     await app.close();
   });
+
+  it("agent drafts are grounded-or-declined, flag sensitive sections, and stay unsent (TCH-13)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const teacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const base = `/api/v1/schools/${schoolId}/agent`;
+
+    // No approved content mapped to the node -> DECLINED honestly, not invented.
+    const declined = await app.inject({
+      method: "POST", url: `${base}/generate`, headers: teacher.auth,
+      payload: { kind: "lesson_plan", nodeId: NODE, topic: "fractions" },
+    });
+    expect(declined.statusCode).toBe(200);
+    expect(declined.json()).toMatchObject({ status: "declined", reason: "no_grounding_content" });
+
+    await approveAndMap(app, schoolId, teacher.auth, {
+      title: "Fractions source", nodeId: NODE, text: "# Topic A\nProse about fractions.",
+    });
+
+    // Grounded lesson plan: draft with its sources listed, never sent.
+    const plan = await app.inject({
+      method: "POST", url: `${base}/generate`, headers: teacher.auth,
+      payload: { kind: "lesson_plan", nodeId: NODE, topic: "fractions" },
+    });
+    expect(plan.statusCode).toBe(201);
+    const suggestion = plan.json().suggestion;
+    expect(suggestion.grounding).toEqual([{ title: "Fractions source", archived: false }]);
+    expect(suggestion.sent).toBe(false);
+    expect(suggestion.content.length).toBeGreaterThan(0);
+
+    // Parent summary with a behavioural observation -> separated + flagged.
+    const summary = await app.inject({
+      method: "POST", url: `${base}/generate`, headers: teacher.auth,
+      payload: {
+        kind: "parent_summary", nodeId: NODE, studentId: "student-1",
+        observations: [
+          { category: "academic", text: "Solid progress with fractions." },
+          { category: "behavioural", text: "Often distracted in group work." },
+        ],
+      },
+    });
+    const parentDraft = summary.json().suggestion;
+    expect(parentDraft.requiresExtraReview).toBe(true);
+    expect(parentDraft.sensitiveSections).toEqual([
+      { category: "behavioural", text: "Often distracted in group work.", flaggedForReview: true },
+    ]);
+
+    // Differentiation with no capability data -> generic and labelled as such.
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const diff = await app.inject({
+      method: "POST", url: `${base}/generate`, headers: teacher.auth,
+      payload: { kind: "differentiation", nodeId: NODE, classId: cls.json().id },
+    });
+    expect(diff.json().suggestion.personalised).toBe(false);
+    expect(diff.json().suggestion.personalisationNote).toMatch(/not yet personalised/i);
+
+    // The drafting teacher edits; a different teacher cannot (NOT_OWNER).
+    const edited = await app.inject({
+      method: "PATCH", url: `${base}/suggestions/${suggestion.id}`, headers: teacher.auth,
+      payload: { content: "My reworked plan." },
+    });
+    expect(edited.json()).toMatchObject({ edited: true, content: "My reworked plan." });
+    const other = await addTeacher(app, schoolId, auth);
+    const stranger = await app.inject({
+      method: "PATCH", url: `${base}/suggestions/${suggestion.id}`, headers: other.auth,
+      payload: { content: "hijack" },
+    });
+    expect(stranger.statusCode).toBe(409);
+    expect(stranger.json().code).toBe("NOT_OWNER");
+    await app.close();
+  });
+
+  it("help transcripts reach ONLY the assigning teacher; others are denied (TCH-14 / FR-PDB-005 boundary)", async () => {
+    const { ctx, app } = makeApp();
+    const { schoolId, campusId, auth } = await startSchool(app);
+    const assigning = await addTeacher(app, schoolId, auth);
+    const otherTeacher = await addTeacher(app, schoolId, auth);
+    await signOffGraph(app, schoolId, auth);
+    const cls = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/classes`, headers: auth, payload: { campusId, name: "8A" } });
+    const classId = cls.json().id as string;
+    const students = await importStudents(app, schoolId, classId, auth, assigning.auth, 1);
+
+    // Safeguarding must be configured before Ask for Help operates (M7 gate).
+    await app.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/safeguarding`, headers: auth,
+      payload: { contactName: "Sam Safe", contactRole: "DSL", slaHours: 24, afterHoursPolicy: "On-call" },
+    });
+    await approveAndMap(app, schoolId, assigning.auth, { title: "Help grounding", nodeId: NODE, text: "# Topic A\nProse." });
+
+    // The assigning teacher's id, to create the task via the tested services.
+    const me = (await app.inject({ method: "GET", url: "/api/v1/me", headers: assigning.auth })).json();
+    const task = await ctx.studentWorkspace.assignTask(me.userId, schoolId, {
+      studentId: students[0], classId, type: "practice", title: "Fraction practice", nodeId: NODE, dueDate: "2026-09-01",
+    });
+    const asked = await ctx.askForHelp.ask(students[0], task.id, "How do I start adding these fractions?");
+    expect(asked.available).toBe(true);
+
+    // The assigning teacher lists their sessions and reads the transcript.
+    const sessions = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions`, headers: assigning.auth })).json();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].taskTitle).toBe("Fraction practice");
+    const transcript = await app.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions/${sessions[0].sessionId}/transcript`, headers: assigning.auth,
+    });
+    expect(transcript.statusCode).toBe(200);
+    expect(transcript.json().some((m: any) => m.role === "student")).toBe(true);
+
+    // Another teacher of the SAME school: nothing listed, and the direct read is denied.
+    const otherList = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions`, headers: otherTeacher.auth })).json();
+    expect(otherList).toHaveLength(0);
+    const otherRead = await app.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions/${sessions[0].sessionId}/transcript`, headers: otherTeacher.auth,
+    });
+    expect(otherRead.statusCode).toBe(409);
+    expect(otherRead.json().code).toBe("NOT_ASSIGNING_TEACHER");
+
+    // Back-door check: a pure Principal cannot reach the transcript routes at all.
+    // Principals are not invitable — they are assigned by role change (FR-ADM-007),
+    // so promote a third teacher and use their session.
+    const promoted = await addTeacher(app, schoolId, auth);
+    const promotedMe = (await app.inject({ method: "GET", url: "/api/v1/me", headers: promoted.auth })).json();
+    const accounts = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/accounts`, headers: auth })).json() as any[];
+    const promotedRow = accounts.find((r) => r.userId === promotedMe.userId)!;
+    await app.inject({
+      method: "PATCH", url: `/api/v1/schools/${schoolId}/memberships/${promotedRow.membershipId}/role`, headers: auth,
+      payload: { role: "principal", campusId },
+    });
+    const principalAuth = promoted.auth; // same session; authorize() is live, so the role change applies immediately
+    const pList = await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions`, headers: principalAuth });
+    expect(pList.statusCode).toBe(401);
+    expect(pList.json().code).toBe("TEACHER_ROLE_REQUIRED");
+    const pRead = await app.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/help-sessions/${sessions[0].sessionId}/transcript`, headers: principalAuth,
+    });
+    expect(pRead.statusCode).toBe(401);
+    await app.close();
+  });
 });

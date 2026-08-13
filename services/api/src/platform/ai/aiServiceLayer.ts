@@ -1,4 +1,5 @@
 import { ConflictError, ValidationError } from "../../domain/errors";
+import { maskRequest, unmaskText } from "./piiMasking";
 import type { AuditRecorder } from "../audit/auditLog";
 import type {
   AiCompletion,
@@ -29,11 +30,15 @@ export const DEFAULT_AI_REGION: AuRegion = "ap-southeast-2";
  * Enforce residency + zero-retention + no-training for a provider. A local
  * (in-process) provider reaches no endpoint and is inherently compliant; a
  * remote provider must be in an approved AU region, zero-retention and
- * no-training. Throws otherwise. This is the technical enforcement point behind
+ * no-training — UNLESS it carries an explicit `residencyException` (an
+ * operator's conscious, documented decision to accept a provider that does
+ * not meet one or more of these, e.g. the direct Claude API — ADR-0034).
+ * Throws otherwise. This is the technical enforcement point behind
  * FR-GOV-004, FR-GOV-007 and NFR-PRV-001/002.
  */
 export function assertCompliantProvider(descriptor: ProviderDescriptor): void {
   if (descriptor.kind === "local") return;
+  if (descriptor.residencyException) return;
   if (!AU_REGIONS.includes(descriptor.region as AuRegion)) {
     throw new ValidationError(
       `AI endpoint region "${descriptor.region}" is not an approved AU region ` +
@@ -136,6 +141,11 @@ export class AiServiceLayer {
     const descriptor = this.provider.describe();
     assertCompliantProvider(descriptor); // re-validated per call: drift to a non-compliant endpoint is blocked here
 
+    // Mask caller-declared names to stable pseudonyms BEFORE anything else sees
+    // the request. The token → name map is request-scoped: it lives only in
+    // this frame and is never audited, logged or persisted.
+    const { masked, map, maskedCount } = maskRequest(request);
+
     // Every AI call writes an audit entry BEFORE the result — a logging failure
     // throws here and blocks the action (never a silent, unlogged AI call).
     this.audit?.append({
@@ -149,6 +159,12 @@ export class AiServiceLayer {
         providerKind: descriptor.kind,
         region: descriptor.kind === "remote" ? descriptor.region : "local",
         containsStudentData: request.containsStudentData,
+        // Visible, not silent: every call through a residency-exception
+        // provider (ADR-0034) carries the operator's stated reason in the
+        // audit trail — never just a quietly-passing compliance check.
+        residencyException: descriptor.kind === "remote" ? (descriptor.residencyException?.reason ?? null) : null,
+        // THAT masking happened (a count) — never the mapping itself.
+        piiMasked: maskedCount,
         // Provenance references (ids only — no PII in the immutable log): the
         // grounding content and the prompt purpose make the AI action auditable.
         grounding: request.provenanceGrounding ?? [],
@@ -156,6 +172,22 @@ export class AiServiceLayer {
     });
 
     this.usage.set(key, (this.usage.get(key) ?? 0) + 1);
-    return this.provider.complete(request);
+    const completion = await this.provider.complete(masked);
+    if (map.size === 0) return completion;
+
+    // Restore real names for the caller; a pseudonym the model emitted that was
+    // never issued is left as-is and flagged (count + token labels only — the
+    // tokens carry no PII).
+    const { text, unresolvedTokens } = unmaskText(completion.text, map);
+    if (unresolvedTokens.length > 0) {
+      this.audit?.append({
+        action: "ai.mask.unresolved",
+        actorId,
+        subjectType: "ai",
+        subjectId: request.purpose,
+        metadata: { tokens: unresolvedTokens },
+      });
+    }
+    return { text };
   }
 }

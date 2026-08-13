@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://pathfinder-api-production-5137.up.railway.app/api/:path*" }
+  ]
+}

@@ -94,6 +94,288 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0033 — PII masking at the AI choke point (caller-declared, request-scoped)
+Student/teacher names are replaced with stable, readable pseudonyms ("Student A",
+"Teacher B") before ANY provider sees a request, and restored in the completion.
+Implemented as a pure module (`platform/ai/piiMasking.ts`) called from
+`AiServiceLayer.run()` — the one place every provider call already passes
+through, so no call site can bypass it.
+
+- **Caller-declared, not guessed.** The request contract gains
+  `piiValues?: { role, values[] }[]`: the calling service names the people it
+  KNOWS are referenced (one entry per person; `values` are name variants, the
+  first being the canonical form restored on unmask). This is honest about the
+  knowledge source — the layer never pretends to detect arbitrary names in free
+  text. `parent.summary` declares the child; `help.hint` declares the student
+  (task titles are teacher-authored and may name them). Names buried inside
+  uploaded material (`content.classify`) are a documented phase-2 limitation.
+- **Only when `containsStudentData: true`**; otherwise a structural no-op.
+- **Request-scoped mapping.** The token → name map lives only inside one
+  `run()` frame — never persisted, logged or audited. The audit records THAT
+  masking happened (`piiMasked` count on the existing `ai.call` entry) and,
+  post-hoc, `ai.mask.unresolved` when the model emits a pseudonym that was
+  never issued (the token labels carry no PII); the FR-GOV-002
+  audit-before-action ordering is preserved.
+- **Robust substitution.** Masking is word-bounded and exact-case ("Ada" never
+  touches "Adapt"; "Mark" the person never matches "mark" the verb), longest
+  variant first. Unmasking is case-insensitive (models drift casing) and the
+  trailing word boundary handles possessives ("Student A's" → "Sana's").
+  Hallucinated tokens are left verbatim and flagged, never guessed at.
+- The M8 rule that a parent summary contains the child's real name doubles as
+  the round-trip regression test; the deterministic provider and the whole
+  existing suite pass unchanged.
+
+## ADR-0034 — Direct Anthropic API provider, live via an explicit residency exception
+A second remote `AiProvider` — `adapters/anthropic/anthropicProvider.ts` — calls
+the Claude API directly instead of Amazon Bedrock. Initially written and
+type-checked but unwired the same way `BedrockProvider` was at M1 (ADR-0013);
+the owner then explicitly chose to accept global/US inference for now rather
+than wait on a confirmed AU path, so it is wired live in `index.ts` behind a
+deliberate, two-gate opt-in — never a default, never silent.
+
+- **The residency gap this accepts.** Foundational Decision 1 requires every
+  remote AI provider to report an approved Australian region
+  (`assertCompliantProvider`/`AU_REGIONS`, checked unconditionally on every
+  call, not just when `containsStudentData` is true). Bedrock satisfies this by
+  pinning inference to `ap-southeast-2`. The direct Anthropic API has **no
+  Australia-specific residency control** — its only inference-geography option
+  (`inference_geo`) is `"us"` or `"global"`. Rather than fabricate
+  `"ap-southeast-2"` (the shortcut ADR-0013 already refused to take for
+  Bedrock), `ProviderDescriptor` gained an explicit, opt-in
+  `residencyException?: { reason }` field (`ports/aiProvider.ts`).
+  `assertCompliantProvider` honors it — skipping the region/retention/training
+  checks ONLY when present — instead of being weakened globally; a provider
+  descriptor without the field is still correctly refused
+  (`test/anthropic-remote-adapter.test.ts` proves both directions).
+- **Two independent gates, so the exception is never incidental:**
+  1. `AnthropicProvider`'s constructor THROWS unless
+     `acceptNonAuResidency: true` is passed, or `PF_AI_ACCEPT_NON_AU_RESIDENCY`
+     is set to `"true"` — an `ANTHROPIC_API_KEY` alone does not activate it.
+  2. Every `ai.call` audit entry carries the residency-exception reason
+     (`AiServiceLayer.run`, new `residencyException` metadata field) — the
+     acceptance is visible in the audit trail on every single call, not a
+     one-time flag nobody sees again.
+- **Not a substitute for PII masking (ADR-0033), nor solved by it.** Masking
+  replaces caller-declared names with pseudonyms before any provider sees a
+  request; residency is about which country's infrastructure processes the
+  request at all. They are independent, stacked layers — masking does not
+  relax the region requirement, and the region requirement does not depend on
+  whether masking ran. Accepting this residency exception does NOT relax
+  masking — ADR-0033 still runs unchanged for every call.
+- **Prompt caching, implemented correctly regardless of the residency
+  question.** `platform/ai/remotePrompt.ts` was split into
+  `buildRemoteSystemPrompt` (purpose-scoped, byte-identical across every call
+  sharing a purpose — a shared grounding preamble + the purpose's output
+  contract) and `buildRemoteUserPrompt` (the caller's varying instruction +
+  structured input). `AnthropicProvider` sends the stable half as a `system`
+  block with `cache_control: {type: "ephemeral"}` and the varying half as the
+  user turn, after the cache boundary — the correct placement per Anthropic's
+  prefix-cache model. `buildRemotePrompt` (Bedrock's single-string shape) now
+  composes the two parts and is unchanged in observable behaviour (existing
+  Bedrock tests pass unmodified).
+- **Model default is `claude-opus-5`** (current, non-date-suffixed), overridable
+  via `PF_ANTHROPIC_MODEL` — replacing the stale hardcoded
+  `anthropic.claude-3-5-sonnet-20240620-v1:0` id `BedrockProvider` still carries.
+- **`noTraining: true` is asserted as fact** (Anthropic's standard commercial
+  API policy does not train on API inputs/outputs by default, distinct from the
+  Claude.ai consumer product); `zeroRetention` stays `false` — true zero-data-
+  retention requires a separate account-level agreement not confirmed for this
+  org. Both are informational on the descriptor; the residency exception is
+  what actually admits the provider past the guard.
+- **Revisit** if/when a confirmed AU-region path exists for this transport
+  (e.g. Claude Platform on AWS pinned to `ap-southeast-2`) — at that point the
+  exception can be dropped and this provider brought to full parity with the
+  Bedrock path's original guarantee.
+
+## ADR-0035 — Official syllabus documents in Content Studio (no NESA API)
+NESA (NSW Education Standards Authority) ran a public Syllabus API from
+roughly 2019–2022; it was discontinued in March 2022 and the domain no longer
+resolves. There is currently no way to fetch NSW curriculum content live —
+confirmed by web search and a direct fetch attempt before building anything
+here, rather than assumed. Content Studio's official-syllabus feature is
+designed around that reality rather than around a fetch that doesn't exist.
+
+- **Tag, not a fetch.** `ContentItem` gained an optional `officialSyllabus:
+  { subject, yearLevel, sourceUrl } | null` (`domain/content.ts`,
+  `db/migrations/0017_official_syllabus.sql`). `sourceUrl` is always the
+  uploader's own pasted reference link — never generated or guessed by the
+  app. Tagging is orthogonal to governance: a tagged item still has to clear
+  the full existing approval pipeline (scan, classify, attest rights,
+  approve) before it enters the approved pool or can ground anything, exactly
+  like any other upload.
+- **First-time-only effort, not per-teacher-every-time.** Whoever teaches a
+  subject uploads its syllabus once (self-service, not centralized to a
+  single admin) and tags it; every other teacher of that subject/year finds
+  it already there via `GET .../syllabus?subject=&yearLevel=`. Updating it
+  when NESA revises a syllabus reuses the existing content-versioning
+  mechanism (`ContentService.addVersion`) — no separate "replace" feature was
+  needed.
+- **Topic picker rationalised to the syllabus, not the whole library.** The
+  lookup endpoint returns the syllabus item's actual skill-graph mappings
+  (`MappingService.mappingViews`) as its topic list, so a teacher drafting
+  from it picks from what THIS syllabus covers, not the full curriculum tree
+  — reusing the existing per-item mapping mechanism rather than adding a new
+  year-level dimension to the skill graph itself (the graph has no year-level
+  concept today; adding one was judged out of scope for this feature).
+- **No new grounding/drafting code.** Once a topic is chosen, the existing
+  `POST /agent/generate` (`kind: "lesson_plan"`) runs unchanged — grounding,
+  the honest-decline-when-ungrounded rule, and draft-until-teacher-publishes
+  all come from what already existed. Verified live against Claude Opus 5
+  (ADR-0034): given a thin source, the model declined to invent syllabus
+  outcome codes rather than fabricating them — the grounding preamble held up
+  under a real model call, not just the deterministic test provider.
+- **Fallback when nothing is on file.** The teacher sees a link to NESA's
+  real, verified curriculum site (`curriculum.nsw.edu.au`) with instructions
+  to find the current syllabus themselves — never a guessed subject/year deep
+  link, since NESA's page structure varies per subject and per-subject URLs
+  were never verified.
+
+## ADR-0032 — Email delivery adapter behind the notification port (SES seam)
+No email transport existed: invites only ever reached the in-memory notification
+channel, so nothing was actually delivered (the admin UI's copyable invite links
+are the working delivery path). The real adapter now exists —
+`adapters/email/emailChannel.ts` — following the **BedrockProvider posture
+(ADR-0013)**: real, compiled, fully tested against a fake transport, but **not
+wired by default**, because live sending is gated on AWS SES credentials + a
+verified sender identity, neither of which exists in this environment.
+
+- **Two-layer seam.** `EmailChannel` (a `NotificationChannel`) does message →
+  email composition; the low-level `EmailTransport` interface does "send one
+  email". `SesTransport` (SESv2 SDK) is the first transport, **pinned to AU
+  regions** exactly like the AI layer (offshore region refused at construction —
+  Foundational Decision 1). An SMTP transport (e.g. nodemailer against a school
+  relay) can implement the same seam later; hand-rolled SMTP is explicitly out.
+- **Invite links are composed at the edge.** The domain layer keeps only the
+  ids-only token in the message context; the channel builds
+  `{appBaseUrl}/?token=…` at delivery time. No URL/PII enters the audit log.
+- **Best-effort delivery.** A transport outage must never break the domain
+  action that emitted the notification — the channel records a **PII-free**
+  failure `{notificationId, type, reason, at}` (never the address, subject or
+  body) instead of throwing. The invite still exists; the copyable link and the
+  in-app record still work. Alerting on safeguarding-type delivery failures is
+  part of productionisation.
+- **Wiring.** `BuildContextOptions.extraChannels` appends channels after the
+  default in-memory one (which always stays — it is the in-app record).
+  `src/index.ts` opts in via env: `PF_EMAIL_FROM` (enables), `PF_APP_BASE_URL`,
+  `PF_EMAIL_REGION` (AU-validated, default ap-southeast-2).
+
+## ADR-0031 — Production web app foundation + Admin onboarding slice
+The production persona UIs (deferred since ADR-0012) begin here, built persona by
+persona as thin vertical slices. First slice: School-Admin onboarding.
+
+- **A fresh app (`apps/app`), not the preview console.** The preview console
+  (`apps/web`, ADR-0021) is an explicitly-throwaway validation aid that satisfies no
+  FR; the production UI is a clean React 19 + Vite app on the real design system. Both
+  coexist (preview on :5173, production on :5174) until the production UI supersedes it.
+- **Design tokens mirror Decision 5 in CSS.** `apps/app/src/theme.css` splits BRAND
+  tokens (`--pf-brand*`, themeable — the white-label layer sets `--pf-brand` at runtime)
+  from GOVERNANCE tokens (`--gov-*`, fixed, deliberately NOT derived from `--pf-brand`).
+  Governance status chips read only `--gov-*`, so a brand change can never recolour a
+  draft/approved/locked signal — FR-WL-004 realised in the UI, matching the backend
+  guarantee. `applyBrand` sets only `--pf-brand` (+ a derived tint); the server has
+  already clamped the colour to the AA floor, so white-on-brand text stays legible.
+- **New production HTTP surface under `/api/v1`** (`http/adminApi.ts`), mounted
+  alongside the M0 core-loop routes and the preview API without collision. Every route
+  is session-guarded (Bearer token -> `auth.authorize`), admin-scoped, and same-school
+  checked; it only does HTTP plumbing over the already-tested services. Errors flow
+  through `buildApp`'s shared handler.
+- **Admin self-registration primitive.** Onboarding needs a founding Admin who can log
+  back in, but that Admin isn't invited by anyone. Added `AuthService.setInitialPassword`
+  (validates + hashes + stores a credential, audited) — distinct from `acceptInvite`,
+  which also flips an invite. `POST /api/v1/onboarding/start` composes createSchool +
+  createAccount + setInitialPassword + login and returns a session.
+- The 7-step onboarding is rendered as the "waypoint trail" from the look-and-feel doc
+  (the pathfinder motif); completed/current waypoints are navigable, future ones locked,
+  mirroring the server-side step-order guard. HTTP surface covered by
+  `test/http-admin-api.test.ts` (full flow + zero-teacher confirm + auth/cross-school
+  guard); the app itself is typecheck- + production-build-verified and driven live.
+  Real logo bytes, the remaining personas (Teacher/Student/Parent/Principal), and
+  WCAG 2.2 AA audit tooling (NFR-A11Y-001) come in later slices.
+- **Sign-in + account management (added to the slice).** An existing admin signs back
+  in via `POST /api/v1/auth/login` (resolves school + first campus so the app has full
+  context). A **People** screen assigns roles (`PATCH .../memberships/:id/role` ->
+  `changeMembership`, FR-ADM-002; Principal per campus via the campus scope, FR-ADM-007)
+  and edits names (`PATCH .../users/:id/name` -> new `AccountService.updateName`, audited).
+  The server's last-admin guard (can't demote the only admin) surfaces as a 409 in the UI.
+
+## ADR-0030 — White-label / multi-tenant branding (Appendix Milestone B)
+FR-WL-001..004 build the configurable branding layer on top of the fixed-vs-themeable
+token split established in Milestone 0 (Foundational Decision 5). Branding is confined
+to the brand layer by construction.
+
+- **Governance stays unreachable.** `resolveBranding` always returns the frozen
+  `GOVERNANCE_TOKENS`; there is no field on any branding input (or column in
+  `branding_configs`) that could set a governance colour; and an explicit
+  `requestGovernanceOverride` is **declined by design** (`GOVERNANCE_TOKENS_FIXED`,
+  audited). FR-WL-004 is thus a structural property, not a runtime check that could
+  be bypassed.
+- **The WCAG-AA floor is evaluated as white-on-primary**, not "best of black/white
+  text". Any solid colour clears AA (4.5:1) against black *or* white — the maximum of
+  the two bottoms out at ~4.58 near luminance 0.179 — so a best-of-both floor would
+  never reject anything. The platform renders **white** text/icons on the brand
+  primary (buttons, chips, header bars, links), so that is the pairing the floor must
+  hold for. `autoAdjust` darkens toward black (monotonically raising white-contrast;
+  black is the terminal 21:1 case). The floor is enforced **twice**: `configureBranding`
+  refuses a failing colour and returns a `BrandContrastError.suggestion`; and
+  `resolveBranding` **re-clamps** at read time, so even a colour written straight to
+  the store (bypassing configure) is served accessibly (FR-WL-004 "server-side
+  regardless").
+- **Logo sanitisation (NEW v1.4).** SVG is accepted only after an active-content scan
+  (`<script>`, `on*=` handlers, `<foreignObject>/<iframe>/<embed>/<object>`,
+  `javascript:`/`data:text/html`, inline DTD / `<!ENTITY>`, SMIL `<set>/<animate>`) —
+  any hit is rejected (`LOGO_ACTIVE_CONTENT`). Raster logos (png/jpg/jpeg) are
+  malware-scanned through the **same `ScannerPort`** the content pipeline uses
+  (`LOGO_INFECTED`). Only safe image content is ever stored. Real logo image bytes +
+  object store (S3, ap-southeast-2) are deferred; the sanitise + reference model is
+  complete.
+- **Point-in-time reports.** `issueReport` snapshots the resolved branding into a
+  persisted `BrandedReport`; `getReport` returns that original snapshot, so a later
+  branding change (or a white-label revert) never rebrands an already-issued report
+  (FR-WL-002 revert / FR-WL-003 point-in-time). Logo availability is resolved against
+  the stored `LogoAsset`, so a missing asset degrades to a **text fallback** (school
+  name), never a broken image.
+- **White-label is presentation-only.** The `internal` surface always resolves to the
+  real Pathfinder identity regardless of a school's white-label toggle (FR-WL-002
+  support-tooling edge). A `user` surface shows the school product name + hides
+  attribution only under full white-label; otherwise it stays co-branded.
+- New `BrandingStore` port (in-memory + Postgres), `BrandingService`, `domain/branding.ts`
+  (pure contrast maths + SVG scan + resolution), migration 0016. `BrandContrastError`
+  carries the accessible suggestion (same pattern as `ConfirmationRequiredError`).
+
+## ADR-0029 — CSV import + SSO (Appendix Milestone A)
+The plan **resequenced** FR-ADM-003 (CSV import + Google/Microsoft SSO) and FR-INT-001
+(SSO sign-in) out of Milestone 0: manual account creation unblocked the core loop, so
+these were "built later in sequence", their acceptance rows preserved in the plan's
+Appendix. This ADR records how they were built after the core MVP.
+
+- **CSV import is store-only** — it creates ordinary users/memberships/enrolments through
+  the existing `AccountService`, so no new tables. Parsing, per-row validation and
+  formula-injection sanitisation live in a pure domain module (`domain/csvImport.ts`) so
+  every edge is directly unit-testable; `CsvImportService` drives account creation. Each
+  row is independent: a malformed row is rejected with a **specific** error while valid
+  rows still import; a duplicate email (already in the system **or** earlier in the file)
+  is flagged and skipped, never creating a conflicting account.
+- **Formula-injection (NEW v1.4)** is neutralised on the way IN (a cell starting with
+  `= + - @`, after leading-whitespace stripping, is prefixed with `'` so a spreadsheet
+  treats it as literal text) **and** re-sanitised on the way OUT (`exportUsersCsv`), so no
+  downstream export/spreadsheet view can evaluate it. The row still imports but is
+  **flagged for review**. `sanitiseCell` is idempotent, so double-application is safe.
+- **SSO is one provider + one domain per school** (the MVP shape), stored in a small
+  `sso_configs` table (migration 0015). A sign-in for an email **outside** the configured
+  domain is denied with a **clear, specific** `SSO_DOMAIN_MISMATCH` message (this is the
+  FR-ADM-003 mismatch row).
+- **The IdP is a port** (`IdentityProviderPort`), like `AiProvider`. The default
+  `LocalIdentityProvider` is deterministic and network-free (stays in-memory in both store
+  backends, like the audit recorder) so the two FR-INT-001 edges are testable: an **outage**
+  throws `ServiceUnavailableError` (code `SSO_IDP_UNAVAILABLE`) — distinct from an auth
+  failure, so the UI shows "try again", not "invalid credentials"; an **upstream-revoked**
+  account is denied AND its cached sessions are purged (`deleteSessionsByUser`), so a stale
+  session cannot keep working. **Deferred (like Bedrock, ADR-0013):** the real Google/
+  Microsoft OIDC token verification + directory lookup — the port + guards + tests exist;
+  only the live network provider is unwired.
+- `AuthError` gained an optional `code` (default `"AUTH"`, backward-compatible) so SSO
+  denials carry intent-specific codes.
+
 ## ADR-0028 — Governance / audit hardening pass (M11)
 Milestone 11 verifies the incrementally-built governance end-to-end (NO new product
 features) and closes the gaps the verification surfaced. Two red-team failure modes

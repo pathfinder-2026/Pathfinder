@@ -13,6 +13,8 @@
  * docs/decisions.md ADR-0013); until then the local provider backs everything.
  */
 
+import { ValidationError } from "../domain/errors";
+
 export type ProviderDescriptor =
   | { kind: "local"; provider: string }
   | {
@@ -21,7 +23,31 @@ export type ProviderDescriptor =
       region: string;
       zeroRetention: boolean;
       noTraining: boolean;
+      /**
+       * An explicit, operator-acknowledged exception to the AU-residency /
+       * zero-retention / no-training checks below (Foundational Decision 1).
+       * ABSENT by default — every provider must satisfy the checks normally.
+       * Set this ONLY when an operator has consciously decided to accept a
+       * provider that does NOT meet them (e.g. the direct Claude API, which
+       * has no Australia-specific region option) — never to paper over an
+       * unverified or accidental gap. `reason` is carried into the audit
+       * trail on every call so the exception is visible, not silent. See
+       * docs/decisions.md ADR-0034.
+       */
+      residencyException?: { reason: string };
     };
+
+/**
+ * One person whose identifiers may appear in the request. `values` are the
+ * name variants the CALLER knows (e.g. ["Sana", "Sana Student"]) — the first
+ * valid entry is the canonical form restored on unmasking. The service layer
+ * replaces every variant with one stable pseudonym ("Student A") before any
+ * provider sees the request (see platform/ai/piiMasking.ts).
+ */
+export interface PiiSubject {
+  role: "student" | "teacher" | "parent";
+  values: string[];
+}
 
 export interface AiCompletionRequest {
   /** Machine-readable use case, e.g. "content.classify". */
@@ -34,6 +60,14 @@ export interface AiCompletionRequest {
   containsStudentData: boolean;
   /** Approved-content ids grounding this call — logged as provenance (FR-GOV-002). */
   provenanceGrounding?: string[];
+  /**
+   * People the caller KNOWS are referenced by this request. When
+   * `containsStudentData` is true their names are masked to stable pseudonyms
+   * before the provider runs and restored afterwards; the mapping lives only
+   * for the duration of the call and is never audited or persisted. Stripped
+   * from the request the provider receives.
+   */
+  piiValues?: PiiSubject[];
 }
 
 export interface AiCompletion {
@@ -71,7 +105,10 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "parent.summary") {
       return { text: this.parentSummary(request.input) };
     }
-    return { text: "" };
+    // An unknown purpose is a programmer error (e.g. a typo'd purpose string).
+    // Failing loudly beats silently returning "" that becomes an empty draft
+    // or a failed JSON parse far from its cause.
+    throw new ValidationError(`Unknown AI purpose "${request.purpose}" — no deterministic behaviour is defined for it.`);
   }
 
   /**

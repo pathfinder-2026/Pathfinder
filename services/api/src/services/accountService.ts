@@ -71,6 +71,23 @@ export class AccountService {
     return { user, membership };
   }
 
+  /** Update a person's name (PII), keeping their email. Audited (ids only). */
+  async updateName(userId: string, firstName: string, lastName: string, actorId: string | null = null): Promise<void> {
+    const user = await this.store.getUser(userId);
+    if (!user) throw new NotFoundError("User not found.");
+    if (!firstName?.trim() || !lastName?.trim()) throw new ValidationError("First and last name are required.");
+    const pii = await this.store.getPersonalData(userId);
+    if (!pii) throw new NotFoundError("This account has no editable profile.");
+    await this.store.upsertPersonalData({ userId, email: pii.email, firstName: firstName.trim(), lastName: lastName.trim() });
+    this.audit.append({
+      action: "account.name.updated",
+      actorId,
+      subjectType: "user",
+      subjectId: userId,
+      metadata: {},
+    });
+  }
+
   /**
    * Change a user's role and/or class assignment. Access updates immediately:
    * authorization is evaluated live from memberships on every request, so no

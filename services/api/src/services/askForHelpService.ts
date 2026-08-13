@@ -106,8 +106,20 @@ export class AskForHelpService {
       default: {
         kind = "hint";
         const chunk = await this.groundingChunk(task.schoolId, task.nodeId);
+        // The task title is teacher-authored free text and may name the student
+        // ("Extra practice for Sana") — declare the student's name variants so
+        // the layer masks any incidental appearance before the provider runs.
+        const studentPii = await this.store.getPersonalData(studentId);
         const completion = await this.ai.run(
-          { purpose: "help.hint", prompt: "Give a scoped hint, never the answer.", input: { chunk, topic: task.title }, containsStudentData: true },
+          {
+            purpose: "help.hint",
+            prompt: "Give a scoped hint, never the answer.",
+            input: { chunk, topic: task.title },
+            containsStudentData: true,
+            piiValues: studentPii
+              ? [{ role: "student", values: [studentPii.firstName, `${studentPii.firstName} ${studentPii.lastName}`, studentPii.lastName] }]
+              : undefined,
+          },
           studentId,
         );
         reply = completion.text;

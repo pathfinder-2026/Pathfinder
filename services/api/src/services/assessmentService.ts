@@ -8,6 +8,7 @@ import type {
   GenerationShortfall,
   QuestionType,
 } from "../domain/assessment";
+import type { NextActionKind } from "../domain/insights";
 import type { AuditRecorder } from "../platform/audit/auditLog";
 import type { AiServiceLayer } from "../platform/ai/aiServiceLayer";
 import type { Clock } from "../platform/clock";
@@ -168,6 +169,52 @@ export class AssessmentService {
     }
   }
 
+  /**
+   * Generate a DRAFT assessment tailored to ONE student's adaptive
+   * recommendation (see AdaptiveEngine.nextAction) rather than a whole class.
+   * Reuses `generate()` for everything grounding/decline-related — this only
+   * decides WHAT to ask for (node, difficulty) and WHY (the rationale), never
+   * duplicating question generation itself. `hint` and `escalate` are handed
+   * decisions, not assessment needs — declined honestly rather than
+   * generating something ungrounded in the recommendation.
+   */
+  async generateTailored(
+    schoolId: string,
+    teacherId: string,
+    input: { studentId: string; nodeId: string; action: NextActionKind; reason: string },
+  ): Promise<GenerateResult | { status: "declined"; message: string }> {
+    if (input.action === "hint") {
+      return { status: "declined", message: "A hint isn't an assessment — draft a hint or activity via the Teacher Agent instead." };
+    }
+    if (input.action === "escalate") {
+      return { status: "declined", message: "This has been escalated as a persistent misconception — it needs a teaching decision, not another assessment." };
+    }
+
+    const targetNodeId = await this.tailoredNodeId(schoolId, input.action, input.nodeId);
+    const difficulty = tailoredDifficulty(input.action);
+    const rationale = tailoringRationale(input.action, input.reason, difficulty, targetNodeId, input.nodeId);
+
+    const request: AssessmentRequest = {
+      title: `Tailored ${input.action} — ${input.nodeId}`,
+      nodeId: targetNodeId,
+      count: 5,
+      difficulty,
+      targetStudentId: input.studentId,
+      tailoringRationale: rationale,
+    };
+    return this.generate(schoolId, teacherId, request);
+  }
+
+  /** For "extension" (and the related "progression"), the next skill along a prerequisite edge — falls back to the same node if the graph has no follow-on. */
+  private async tailoredNodeId(schoolId: string, action: NextActionKind, nodeId: string): Promise<string> {
+    if (action !== "extension" && action !== "progression") return nodeId;
+    const config = await this.graph.getSchoolCurriculum(schoolId);
+    const version = await this.graph.latestSignedOffVersion(config?.curriculum ?? "NSW");
+    if (!version) return nodeId;
+    const edges = await this.graph.listEdges(version.id);
+    return edges.find((e) => e.from === nodeId)?.to ?? nodeId;
+  }
+
   // ---- review & publish (FR-ASM-004) ----
 
   /** A teacher acknowledges they have reviewed the generated questions. */
@@ -312,6 +359,22 @@ export class AssessmentService {
     return (await this.store.listAttemptsByAssessment(assessmentId)).filter((a) => a.interrupted);
   }
 
+  /** The student submits: final answers are saved, then the attempt closes. */
+  async submitAttempt(attemptId: string, studentId: string, answers: Record<string, string> = {}): Promise<AssessmentAttempt> {
+    const attempt = await this.requireAttempt(attemptId);
+    if (attempt.studentId !== studentId) throw new NotFoundError("Attempt not found.");
+    if (attempt.status === "submitted") return attempt;
+    const updated: AssessmentAttempt = {
+      ...attempt,
+      savedAnswers: { ...attempt.savedAnswers, ...answers },
+      lastSavedAt: this.clock.isoNow(),
+      status: "submitted",
+    };
+    await this.store.updateAttempt(updated);
+    this.audit.append({ action: "assessment.attempt.submitted", actorId: studentId, subjectType: "assessment", subjectId: attempt.assessmentId, metadata: { attemptId } });
+    return updated;
+  }
+
   // ---- helpers ----
 
   private async collectGrounding(schoolId: string, nodeId: string): Promise<GroundingUnit[]> {
@@ -348,4 +411,37 @@ function expandTypes(request: AssessmentRequest): QuestionType[] {
     return types;
   }
   return Array.from({ length: request.count }, () => "short_answer" as QuestionType);
+}
+
+/** Difficulty implied by an adaptive recommendation (hint/escalate never reach here — handled as declines). */
+function tailoredDifficulty(action: NextActionKind): "easy" | "mixed" | "hard" {
+  if (action === "remediation") return "easy";
+  if (action === "extension" || action === "progression") return "hard";
+  return "mixed"; // revision, reassessment
+}
+
+/**
+ * Plainly connects WHY the student needed this (the adaptive engine's own
+ * reason) to WHAT that became (the chosen node + difficulty) — never just the
+ * two facts stated separately. Shown to the teacher before question content.
+ */
+function tailoringRationale(
+  action: NextActionKind,
+  adaptiveReason: string,
+  difficulty: "easy" | "mixed" | "hard",
+  targetNodeId: string,
+  originalNodeId: string,
+): string {
+  const movedOn = targetNodeId !== originalNodeId;
+  const what =
+    action === "remediation"
+      ? `so this generates ${difficulty}-difficulty questions on the same skill for targeted practice`
+      : action === "reassessment"
+      ? `so this re-checks the same skill at ${difficulty} difficulty to confirm before progressing, rather than assuming the latest score`
+      : action === "extension" || action === "progression"
+      ? movedOn
+        ? `so this generates ${difficulty}-difficulty questions on the next skill in the sequence, rather than repeating mastered content`
+        : `so this generates ${difficulty}-difficulty questions on the same skill (no follow-on skill is mapped in the graph yet), rather than repeating easier content`
+      : `so this generates ${difficulty}-difficulty questions on the same skill to consolidate`;
+  return `${adaptiveReason} — ${what}.`;
 }

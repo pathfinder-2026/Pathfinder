@@ -19,6 +19,8 @@ export interface WorkspaceStore {
 
   insertHelpSession(s: HelpSession): Promise<void>;
   getHelpSession(id: string): Promise<HelpSession | undefined>;
+  /** Handover (FR-ADM-002 cover): transfers session ownership with its task. */
+  updateHelpSession(s: HelpSession): Promise<void>;
   findHelpSession(studentId: string, taskId: string): Promise<HelpSession | undefined>;
   insertHelpMessage(m: HelpMessage): Promise<void>;
   listHelpMessages(sessionId: string): Promise<HelpMessage[]>;

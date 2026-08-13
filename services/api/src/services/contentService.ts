@@ -8,6 +8,7 @@ import {
   type ContentFileType,
   type ContentItem,
   type ContentVersion,
+  type OfficialSyllabus,
   type ShareScope,
 } from "../domain/content";
 import { approve as govApprove, newDraft } from "../platform/governance/governanceState";
@@ -165,6 +166,7 @@ export class ContentService {
       rightsAttested: input.rightsAttested ?? false,
       archived: false,
       share: input.share ?? { type: "private" },
+      officialSyllabus: null,
       createdAt: now,
     };
     // Insert the item BEFORE the version: content_versions.content_item_id has a
@@ -197,6 +199,57 @@ export class ContentService {
       metadata: {},
     });
     return updated;
+  }
+
+  /**
+   * Tag an item as THE official syllabus for a subject + year level, with a
+   * reference link (NESA has no public curriculum API — ADR-0035 — so this is
+   * the caller's own reference URL, never generated here). Purely a tag: the
+   * item still has to clear the full approval pipeline before it enters the
+   * approved pool or can be mapped/used for grounding, exactly like any other
+   * upload. At most one active syllabus per subject+year — tagging a new item
+   * replaces which item answers `getOfficialSyllabus`, but does not touch or
+   * archive the previous one (a teacher can still find it in the library).
+   */
+  async markOfficialSyllabus(
+    contentItemId: string,
+    teacherId: string,
+    input: { subject: string; yearLevel: number; sourceUrl: string },
+  ): Promise<ContentItem> {
+    const item = await this.requireItem(contentItemId);
+    const officialSyllabus: OfficialSyllabus = {
+      subject: input.subject.trim(),
+      yearLevel: input.yearLevel,
+      sourceUrl: input.sourceUrl.trim(),
+    };
+    const updated = { ...item, officialSyllabus };
+    await this.content.updateContentItem(updated);
+    this.audit.append({
+      action: "content.syllabus.tagged",
+      actorId: teacherId,
+      subjectType: "content",
+      subjectId: contentItemId,
+      metadata: { subject: officialSyllabus.subject, yearLevel: officialSyllabus.yearLevel },
+    });
+    return updated;
+  }
+
+  /**
+   * The current official syllabus for a subject + year level, or undefined if
+   * none has been uploaded yet. Visible regardless of the caller's own
+   * archived-visibility rules — a teacher deciding whether to upload one needs
+   * to see whatever's on file, even if it happens to be archived.
+   */
+  async getOfficialSyllabus(schoolId: string, subject: string, yearLevel: number): Promise<ContentItem | undefined> {
+    const items = await this.content.listContentItemsBySchool(schoolId);
+    const matches = items.filter(
+      (i) => i.officialSyllabus?.subject === subject.trim() && i.officialSyllabus?.yearLevel === yearLevel && !i.archived,
+    );
+    // Most recently tagged wins if more than one somehow matches (shouldn't in
+    // normal use — markOfficialSyllabus doesn't enforce exclusivity at write
+    // time — but reads must still be deterministic).
+    matches.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return matches[0];
   }
 
   /**

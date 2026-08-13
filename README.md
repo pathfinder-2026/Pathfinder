@@ -39,6 +39,34 @@ Then open **http://localhost:5173**. The web app proxies `/api` to the API on
 adaptive engine — escalations, conflicting‑signal reasoning, and deferred
 spaced‑revision reminders).
 
+## The production web app (persona UIs)
+
+A **fresh production app** (`apps/app`, separate from the throwaway preview console)
+is being built persona by persona in the real design system. The first slice is the
+**School-Admin onboarding** journey — a create-school → guided 7-step "waypoint trail"
+→ live workspace, with live white-label theming and fixed governance status signals
+(Decision 5 / FR-WL-004). It runs against the same tested services, no cloud needed.
+
+Run the API and the app in two terminals:
+
+```bash
+npm run dev:api
+```
+
+```bash
+npm run dev:app
+```
+
+Then open **http://localhost:5174** (the app proxies `/api` to the API on `:3000`).
+Sign in (or create a school), follow the trail (configure classes → invite teachers /
+students / parents → operations & branding → go live). On the **Operations** step, try
+a brand colour and a too-light one (the server auto-suggests an accessible alternative),
+and toggle white-label — the draft/approved/computed status chips stay fixed while the
+brand accent changes. From the live workspace, **Manage people** assigns roles and edits
+names (FR-ADM-002; Principal per campus, FR-ADM-007) — demoting the only admin is blocked.
+An existing admin **signs back in** with email + password. The production surface is served
+under `/api/v1` (see [docs/decisions.md](docs/decisions.md) ADR-0031).
+
 ## Foundational decisions (locked — never re-litigate)
 
 These are fixed constraints from the plan. See
@@ -68,10 +96,11 @@ services/api     Fastify + TypeScript backend (domain → ports → adapters)
                    M1: Content/Classification/Ingestion/Knowledge
   src/ports        DataStore, ContentStore, Storage, Scanner, TextExtractor, AiProvider
   src/adapters     memory (dev/test), postgres (schema of record), bedrock (AI)
-  src/http         minimal Fastify app (create school, invite, accept, login)
+  src/http         core loop + /api/v1 production admin API + preview console API
   test             one test per acceptance row + one per foundation
 infra            AWS CDK (TypeScript) — region-pinned skeleton (no resources yet)
-apps/web         React 19 + Vite shell (screens deferred)
+apps/web         React 19 + Vite — preview/validation console (M0–M5a)
+apps/app         React 19 + Vite — production persona UIs (Admin onboarding slice)
 db/migrations    SQL schema of record + audit-log grants/trigger + content tables
 docs             foundational-decisions, decisions (ADRs), traceability
 ```
@@ -88,22 +117,58 @@ docs             foundational-decisions, decisions (ADRs), traceability
 npm install
 ```
 
+## Run on a real PostgreSQL (e.g. Supabase)
+
+The API defaults to the in-memory store (state resets on restart). Point it at
+a real PostgreSQL and it runs on the same adapters the whole acceptance suite
+is verified against:
+
+1. **Residency (Foundational Decision 1):** the database MUST be in
+   ap-southeast-2 (Sydney). For Supabase, check Project Settings → General →
+   Region before anything else — a project in another region cannot be moved.
+2. In Supabase: **Connect → Session pooler** (or the direct connection) and
+   copy the connection string. Set it yourself (never commit it):
+
+   ```powershell
+   $env:PF_DATABASE_URL = "postgresql://…?sslmode=require"
+   ```
+
+3. Apply the schema (idempotent — records applied files in `schema_migrations`
+   and only runs what's new):
+
+   ```bash
+   npm run db:migrate --workspace services/api
+   ```
+
+4. Start the API in the same shell (`npm run dev:api`). The boot banner
+   confirms the backend: `storage: PostgreSQL @ <host>`. Seed a demo world
+   with `npm run demo` — on a real database it survives restarts.
+
+Notes: the Supabase↔GitHub integration does NOT apply this schema by itself
+(it manages a `supabase/` directory we don't use) — `db:migrate` is the
+mechanism. Audit + notifications remain in-memory in both modes for now
+(see Deferred).
+
 ## Verify (run the full regression suite)
 
 ```bash
 npm test
 ```
 
-Expected: **242 passing tests** — 237 in `services/api` (every acceptance row for
-M0–M11: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
+Expected: **283 passing tests** — 278 in `services/api` (every acceptance row for
+M0–M11 plus the resequenced Appendix A FR-ADM-003 / FR-INT-001 and Appendix B
+FR-WL-001..004: FR-ADM/FR-ONB, FR-CONT/FR-ING, FR-SKG, FR-ASM, FR-TDB/FR-CAP/FR-COH/FR-ADP,
 FR-PEER, FR-TAG, FR-STU/FR-SAG, FR-PAR, FR-PDB, FR-REP/FR-CAP/FR-BSS, and the M11
 FR-GOV/NFR governance-verification + two-mode red-team; plus the M4 synthetic-seed +
 quarantine tests, the Ask-for-Help adversarial suite, the Principal transcript
 back-door hunt, and every governance gate — approved-pool / sign-off /
 draft-until-publish / auto-assign-blocked / publish-or-withhold / grounded-or-declined
 / state-layer-lockout / verification-before-data / consent-gated / audit-blocks-on-
-logging-failure / erasure-preserves-hash-chain / drift-fails-safe) and 5 in `infra`
-(region pinning). The **same 237 tests also run against Postgres** (see below).
+logging-failure / erasure-preserves-hash-chain / drift-fails-safe; plus the
+production `/api/v1` HTTP surfaces — admin onboarding/management and the teacher
+content→assessment→publish→dashboard thread, and the AU-pinned email
+notification channel behind a fake transport, ADR-0032) and 5 in `infra`
+(region pinning). The **same 278 tests also run against Postgres** (see below).
 Type-check with:
 
 ```bash
@@ -117,7 +182,7 @@ real (embedded) PostgreSQL** in addition to the in-memory store — the Postgres
 adapters (`src/adapters/postgres/pg*.ts`) are proven by the exact same tests:
 
 ```bash
-npm run test:pg-suite --workspace services/api   # 237 acceptance tests vs Postgres
+npm run test:pg-suite --workspace services/api   # 274 acceptance tests vs Postgres
 ```
 
 And the DB-enforced governance guarantees (Foundational Decision 3 — the
@@ -393,10 +458,63 @@ rests on:
   design)**, **collection consent-gated**, and **per-persona visibility** (author
   Teacher + Admin notes; Principal aggregate; Parent hidden until enabled).
 
+## Appendix Milestone A — CSV import + SSO (FR-ADM-003 / FR-INT-001)
+
+Resequenced out of Milestone 0 by the plan (manual account creation unblocked the
+core loop), now built with their Appendix acceptance rows intact:
+
+- **FR-ADM-003 — CSV import** (`CsvImportService`): bulk-create users from a CSV.
+  Each row is independent — a **malformed** row (missing field / bad role / bad
+  email / unknown class) is rejected with a **specific per-row error** while valid
+  rows still import; a **duplicate** email (already in the system or earlier in the
+  file) is flagged and skipped, never creating a conflicting account. A cell that
+  begins with `= + - @` (spreadsheet **formula injection**, NEW v1.4) is neutralised
+  to inert text on import **and** on export, and its row is **flagged for review**.
+- **FR-ADM-003 / FR-INT-001 — SSO** (`SsoService`, via an `IdentityProviderPort`):
+  a school federates with one provider (Google Workspace / Microsoft Entra ID) for
+  one email domain. A sign-in **outside** that domain is **denied with a clear
+  message**; an **IdP outage** surfaces a distinct service-unavailable error (not a
+  generic login failure); an account **revoked upstream** is denied **and** its
+  cached sessions are purged so no stale session survives. The happy path issues a
+  session with **no password created**. Real Google/Microsoft OIDC verification is
+  deferred like live Bedrock (ADR-0013/0029); the port, guards and tests are in place.
+
+## Appendix Milestone B — White-label / multi-tenant branding (FR-WL-001..004)
+
+Each school can brand its own instance, touching **only** the themeable brand layer
+(Foundational Decision 5) — the fixed governance tokens are never reachable
+(`BrandingService`, `domain/branding.ts`):
+
+- **FR-WL-001** — configure brand **colour** (validated against the WCAG-AA floor;
+  a failing colour is not saved silently — it returns an **auto-adjusted
+  alternative**), **logo** and favicon. Uploaded logos are **sanitised**: an SVG
+  carrying scripts/handlers/active content is **rejected** (NEW v1.4), and raster
+  logos are malware-scanned — only safe image content is ever stored. With no
+  branding set, **default Pathfinder branding** is shown, never a broken state.
+- **FR-WL-002** — full **white-label**: the school's product name replaces
+  "Pathfinder" and attribution is hidden on **user** surfaces; **internal support
+  tooling always shows the real Pathfinder identity** (the override is
+  presentation-layer only); reverting is **not retroactive** to reports already issued.
+- **FR-WL-003** — one resolver drives **app, PDF report and email** so they match;
+  reports are **point-in-time artifacts** that snapshot their branding at issue and
+  are never retroactively rebranded; a logo that fails to load falls back to the
+  **school name** (text), never a broken image.
+- **FR-WL-004** — governance-critical visual states (draft / approved /
+  locked-computed) render with **fixed platform tokens regardless of branding**; a
+  request to recolour a governance status is **declined by design**; and the WCAG-AA
+  contrast floor is **enforced server-side** at resolve time regardless of what was
+  stored.
+
+The **AA floor is evaluated as white-on-primary** (the platform's fixed on-primary
+text colour), because any solid colour clears AA against black *or* white — the
+meaningful floor is the pairing actually rendered (see ADR-0030).
+
 ## What is intentionally NOT here yet
 
-The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate), then
-Milestone 11: governance / audit hardening pass (the non-negotiable gate before any
-real-student pilot), live Bedrock calls, CSV import and SSO (FR-ADM-003 / FR-INT-001,
-plan-deferred), and the production web UI screens (the preview console does not yet
-include peer, agent, student, parent, principal, or reporting screens).
+The post-M5 **validation checkpoint** (Section 5 — the real-world pilot gate) as a
+live pilot, live Bedrock calls, the live Google/Microsoft OIDC provider behind the
+SSO port (ADR-0029), the real logo image bytes / object store behind the branding
+layer (the sanitise + reference model is complete; S3 in `ap-southeast-2` is wired
+when provisioned), and the production web UI screens (the preview console does not
+yet include peer, agent, student, parent, principal, reporting, import/SSO, or
+branding screens).

@@ -5,10 +5,16 @@ import {
   ConflictError,
   DomainError,
   NotFoundError,
+  ServiceUnavailableError,
   ValidationError,
 } from "../domain/errors";
 import { buildContext, type AppContext, type BuildContextOptions } from "../context";
 import { registerPreview } from "./preview";
+import { registerAdminApi } from "./adminApi";
+import { registerTeacherApi } from "./teacherApi";
+import { registerStudentApi } from "./studentApi";
+import { registerParentApi } from "./parentApi";
+import { registerPrincipalApi } from "./principalApi";
 
 /**
  * Minimal HTTP surface for Milestone 0. It exposes just enough of the core
@@ -38,9 +44,23 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
     if (error instanceof ConflictError) {
       return reply.status(409).send({ code: error.code, message: error.message });
     }
+    // A down dependency (IdP outage, AI provider unavailable) is a 503 —
+    // "try again", never a caller mistake.
+    if (error instanceof ServiceUnavailableError) {
+      return reply.status(503).send({ code: error.code, message: error.message });
+    }
     if (error instanceof DomainError) {
       return reply.status(400).send({ code: error.code, message: error.message });
     }
+    // Fastify's own client errors (bad JSON, empty JSON body, oversized payload…)
+    // carry their proper 4xx status — pass them through rather than masking as 500.
+    const fastifyError = error as { statusCode?: unknown; code?: string; message?: string };
+    if (typeof fastifyError.statusCode === "number" && fastifyError.statusCode >= 400 && fastifyError.statusCode < 500) {
+      return reply.status(fastifyError.statusCode).send({ code: fastifyError.code ?? "BAD_REQUEST", message: fastifyError.message ?? "Bad request" });
+    }
+    // An unexpected error must be visible to operators, never silently a 500.
+    // eslint-disable-next-line no-console
+    console.error("Unhandled API error:", error);
     return reply.status(500).send({ code: "INTERNAL", message: "Internal error" });
   });
 
@@ -86,6 +106,21 @@ export function buildApp(options: BuildContextOptions = {}, ctx?: AppContext): F
       memberships: auth.memberships.map((m) => ({ role: m.role, classId: m.classId })),
     });
   });
+
+  // Production Admin onboarding API (FR-ADM/FR-ONB), consumed by apps/app.
+  registerAdminApi(app, context);
+
+  // Production Teacher workflow API (TCH-*), consumed by apps/app.
+  registerTeacherApi(app, context);
+
+  // Production Student workspace API (STU-1..5, safety-critical), consumed by apps/app.
+  registerStudentApi(app, context);
+
+  // Production Parent API (PAR-1..5, verification-before-data), consumed by apps/app.
+  registerParentApi(app, context);
+
+  // Production Principal API (PRB-1..5; transcripts unreachable by construction).
+  registerPrincipalApi(app, context);
 
   // Preview/validation console API (M0–M5a). Routes register immediately; the
   // demo world bootstraps lazily on first /api call, so tests are unaffected.

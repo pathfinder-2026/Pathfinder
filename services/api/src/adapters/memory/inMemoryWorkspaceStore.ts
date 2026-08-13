@@ -29,6 +29,7 @@ export class InMemoryWorkspaceStore implements WorkspaceStore {
 
   async insertHelpSession(s: HelpSession): Promise<void> { this.sessions.set(s.id, clone(s)); }
   async getHelpSession(id: string): Promise<HelpSession | undefined> { const v = this.sessions.get(id); return v ? clone(v) : undefined; }
+  async updateHelpSession(s: HelpSession): Promise<void> { this.sessions.set(s.id, clone(s)); }
   async findHelpSession(studentId: string, taskId: string): Promise<HelpSession | undefined> {
     const v = [...this.sessions.values()].find((s) => s.studentId === studentId && s.taskId === taskId);
     return v ? clone(v) : undefined;

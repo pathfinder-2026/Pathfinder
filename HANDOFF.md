@@ -1,3 +1,227 @@
+# Handoff — Production UI Slice 3: Teacher workflow thread (TCH-1/3/4/5/6)
+
+**Date:** 2026-08-12
+**Scope:** The Teacher persona's core loop in the production app — content → approve →
+map → assessment → publish → dashboard — per `docs/Production_UI_Build_Plan.md` §12
+step 3 (+ the curriculum sign-off gate it depends on). Additive; no domain service
+changed. **Suite:** `npm test` → **279** (274 `services/api` + 5 `infra`); the same 274
+pass **vs Postgres**; `npm run typecheck` clean (api + infra + app); `apps/app`
+`vite build` clean; the whole thread was driven live in the browser (admin sign-off →
+invite accept → upload → 5 governance steps → map → generate → review-ack → publish →
+heatmap empty state).
+
+## What was built
+- **`services/api/src/http/teacherApi.ts`** — teacher-role-guarded (`TEACHER_ROLE_REQUIRED`),
+  school-scoped `/api/v1` surface wrapping tested services only: content library/upload
+  (server-side FNV content hash; per-item reject stays HTTP 200), per-step pipeline
+  endpoints (ingest / classify / classification-approve / attest / approve — each an
+  explicit teacher action, Decision 7), map-to-skills, skills node picker (honest
+  `signedOff:false` state), assessments (list/generate/detail with grounding-source
+  titles/ack/publish/unpublish), teacher classes + class mastery heatmap (synthetic
+  students keep positional labels — no fabricated PII).
+- **Admin skill-graph governance endpoints** (`adminApi.ts`): status / import-seed
+  (draft, ADR-0015) / **sign-off by the signed-in admin** (the human action the program
+  never self-certifies) + `configureCurriculum`. Surfaced as a "Curriculum skill graph"
+  card on the Structure screen.
+- **Invite list now returns `inviteToken`** for pending invites — the admin delivers
+  the link out-of-band until real email transport exists (single-use; gone once accepted).
+- **Branding READ opened to all school members** (config stays admin-only): white-label
+  must theme teacher/student/parent surfaces too (found live — teachers got default
+  branding; fixed + regression-tested).
+- **`apps/app` Teacher UI:** role routing (teacher "Enter" → TeacherHome hub), Content
+  Studio (upload + expandable pipeline rows, fixed governance chips, low-confidence
+  classification warning, block reasons, skill mapping), Assessments (generate with
+  shortfall/failed honesty, draft review with grounding sources, review-ack gate →
+  publish → reversible unpublish), Class dashboard (student × skill heatmap: level as
+  text + trend glyph + ●/★ flags — never colour-only; stale + no-data states).
+
+## Files & wiring
+- **New:** `http/teacherApi.ts`, `test/http-teacher-api.test.ts` (7 tests);
+  `apps/app/src/screens/{TeacherHome,TeacherContent,TeacherAssessments,TeacherDashboard}.tsx`.
+- **Changed:** `http/app.ts` (registerTeacherApi), `http/adminApi.ts` (graph endpoints,
+  inviteToken, branding read guard), `apps/app/src/{App.tsx,api.ts,components.tsx
+  (PageShell roleTag/backLabel),styles.css (heatmap)}`, `screens/{RoleHome,Structure}.tsx`,
+  `docs/Production_UI_Build_Plan.md` (status).
+
+## How to run / verify
+`npm run dev:api` + `npm run dev:app` → http://localhost:5174. Create a school, sign off
+the graph under **School structure → Curriculum skill graph**, invite a teacher (grab the
+invite link token from `GET /api/v1/schools/:id/invites`), open `/?token=…`, and walk the
+thread. Tests: `npm test` · `npm run test:pg-suite --workspace services/api` · `npm run
+typecheck`.
+
+## Deferred
+TCH-2 (content detail/versioning), full TCH-3 (mapping overrides/bulk remap), TCH-7..18
+(focus areas, cohorts, adaptive, peer, agent, reports, behavioural), student/parent/
+principal personas, S-NOTIF, the a11y pass — each has a paste-ready prompt in the build
+plan. Real teacher-class assignment UI (heatmap currently lists all school classes).
+
+---
+
+# Handoff — Production web app: School-Admin onboarding slice (FR-ADM / FR-ONB)
+
+**Date:** 2026-08-11
+**Scope:** First slice of the deferred production persona UIs (ADR-0012) — a fresh
+production app (`apps/app`) rendering the School-Admin onboarding journey end-to-end.
+Additive; no earlier milestone changed. Built at owner direction to test-drive a pilot.
+**Suite:** `npm test` → **271** (266 `services/api` + 5 `infra`); the same 266 also pass
+**vs Postgres**; `npm run typecheck` clean (api + infra + app); `apps/app` production
+`vite build` clean; the flow was driven live over HTTP.
+
+**Update (same slice, extended):** added **sign-in** for an existing admin
+(`POST /api/v1/auth/login`, resolves school + campus) with a sign-in/create toggle on the
+entry screen; and **account management** — a **People** screen that assigns roles
+(`PATCH .../memberships/:id/role`, FR-ADM-002; Principal per campus, FR-ADM-007) and edits
+names (`PATCH .../users/:id/name` -> new `AccountService.updateName`). The only-admin
+demotion guard surfaces as a 409. Covered by 2 more `http-admin-api.test.ts` cases (5 total).
+
+## What was built
+- **Production HTTP surface** `services/api/src/http/adminApi.ts` under `/api/v1`
+  (session-guarded, admin-scoped, same-school checked), wired into `buildApp`. Endpoints:
+  onboarding/start, onboarding state, complete-step, enter-workspace, classes, invites,
+  safeguarding, branding (get/set), summary. Only HTTP plumbing over tested services.
+- **Admin self-registration** `AuthService.setInitialPassword` (validated + hashed +
+  audited) so `POST /api/v1/onboarding/start` = createSchool + createAccount + password +
+  login -> session.
+- **Fresh production app `apps/app`** (React 19 + Vite, :5174, proxies /api -> :3000):
+  design tokens (`theme.css`) split themeable BRAND (`--pf-brand*`) from fixed GOVERNANCE
+  (`--gov-*`, never derived from brand — FR-WL-004 in the UI); screens Start (create
+  school + admin), Onboarding (the 7-step "waypoint trail" with a panel per step:
+  configure classes, invite teachers/students/parents, operations+branding, go-live with
+  zero-teacher confirm), Workspace (live summary). Live white-label theming + AA-floor
+  guardrail surfaced from the API.
+
+## Files & wiring
+- **New:** `http/adminApi.ts`, `test/http-admin-api.test.ts` (3 tests); `apps/app/*`
+  (package.json, tsconfig, vite.config, index.html, src/{main,App,api,brand,components,
+  theme.css,styles.css}, src/screens/{Start,Onboarding,Workspace}).
+- **Changed:** `authService.ts` (+setInitialPassword, +NotFoundError import), `http/app.ts`
+  (registerAdminApi), root `package.json` (+apps/app workspace, +dev:app), README, ADR-0031.
+
+## How to run / verify
+Two terminals: `npm run dev:api` then `npm run dev:app`, open http://localhost:5174.
+Tests: `npm test` (269) · `npm run test:pg-suite --workspace services/api` (264) ·
+`npm run typecheck`. Note: the dev API is in-memory, so data resets on restart. If :3000
+is held by a stale server, free it before `dev:api`.
+
+## Deferred
+Remaining personas (Teacher/Student/Parent/Principal) + their feature screens; real logo
+image upload UI; a formal WCAG 2.2 AA audit (NFR-A11Y-001) with automated a11y tests;
+wiring the app to cloud (live Bedrock / RDS / S3). The HTTP `/api/v1` surface grows with
+each new persona slice.
+
+---
+
+# Handoff — Appendix Milestone B — White-label / multi-tenant branding (FR-WL-001..004)
+
+**Date:** 2026-08-11
+**Scope:** The plan's Appendix Milestone B — configurable per-school branding, built on
+the Decision-5 token split. Additive; no earlier milestone changed behaviour.
+**Suite:** `npm test` → **266** (261 `services/api` + 5 `infra`); the same 261 acceptance
+tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run test:db` → 8;
+`npm run typecheck` clean.
+
+## What was built
+- **FR-WL-001 configure colour/logo** — `domain/branding.ts` (pure: WCAG-AA contrast
+  maths + `autoAdjust`, SVG active-content scan, white-label resolution) + `services/
+  brandingService.ts`. Brand colour validated against the AA floor; a failing colour is
+  NOT saved — `configureBranding` throws `BrandContrastError` carrying an accessible
+  `suggestion`. Logos: SVG with scripts/handlers/active content rejected
+  (`LOGO_ACTIVE_CONTENT`); raster malware-scanned via the shared `ScannerPort`
+  (`LOGO_INFECTED`); png/jpg/jpeg/svg only, <=25 MB. No config → default Pathfinder branding.
+- **FR-WL-002 full white-label** — product-name override + attribution removal on `user`
+  surfaces; `internal` surface ALWAYS resolves to the real Pathfinder identity
+  (presentation-layer only); revert is going-forward, not retroactive.
+- **FR-WL-003 consistency + point-in-time** — one `resolveBranding` drives app / report /
+  email; `issueReport` snapshots branding into a persisted `BrandedReport` (`getReport`
+  returns the original → never retroactively rebranded); logo-unavailable → text fallback
+  (school name) via `brandingHeader`.
+- **FR-WL-004 governance fixed** — `resolveBranding` always returns the frozen
+  `GOVERNANCE_TOKENS`; no branding field/column can set a governance colour;
+  `requestGovernanceOverride` is declined by design (`GOVERNANCE_TOKENS_FIXED`); AA floor
+  re-clamped at resolve time (server-side regardless of stored value).
+
+## Files & wiring
+- **New:** `domain/branding.ts`, `ports/brandingStore.ts`,
+  `adapters/memory/inMemoryBrandingStore.ts`, `adapters/postgres/pgBrandingStore.ts`,
+  `services/brandingService.ts`, `db/migrations/0016_branding.sql`
+  (`branding_configs` / `branding_logo_assets` / `branded_reports`), 4 test files
+  (`m-b-wl-001..004`, 15 tests).
+- **Changed:** `domain/errors.ts` (`BrandContrastError`); `context.ts` (wired
+  `brandingStore` + `branding`); `test/helpers.ts` + `test-pg/pgSetupEach.ts` (pg store +
+  truncate list); README, docs/decisions.md (**ADR-0030**), docs/traceability.md.
+
+## Decisions / deferred
+- ADR-0030. The **AA floor is white-on-primary** (the fixed on-primary text colour), not
+  best-of-black/white — any solid colour clears AA against one of them (~4.58 min), so the
+  meaningful floor is the pairing actually rendered. Enforced at BOTH configure and resolve.
+- Real logo image **bytes + object store (S3, ap-southeast-2)** deferred; the sanitise +
+  reference model is complete and test-covered. Governance override is structurally
+  impossible, not just refused.
+
+## How to verify
+`npm test` (266) · `npm run test:pg-suite --workspace services/api` (261 vs Postgres) ·
+`npm run test:db --workspace services/api` (8) · `npm run typecheck`. Migration 0016 is
+ASCII-only and auto-discovered by the pg harness.
+
+---
+
+# Handoff — Appendix Milestone A — CSV import + SSO (FR-ADM-003 / FR-INT-001)
+
+**Date:** 2026-08-11
+**Scope:** The plan's Appendix Milestone A — resequenced out of M0. FR-ADM-003 (CSV
+bulk import + SSO config) and FR-INT-001 (SSO sign-in). Additive; no earlier milestone
+changed behaviour.
+**Suite:** `npm test` → **251** (246 `services/api` + 5 `infra`); the same 246 acceptance
+tests also pass **vs Postgres** (`npm run test:pg-suite`); `npm run test:db` → 8;
+`npm run typecheck` clean.
+
+## What was built
+- **FR-ADM-003 CSV import** — `domain/csvImport.ts` (pure: RFC-4180-ish parser,
+  per-row validation, `sanitiseCell`/`isFormulaInjection`, result types) + `services/
+  csvImportService.ts` (`importUsers`, `exportUsersCsv`). Creates users/memberships/
+  enrolments via the existing `AccountService` — **no new tables for import**. Malformed
+  rows rejected with a specific error each; valid rows still import. Duplicate emails
+  (system **or** in-file) flagged + skipped, no conflicting account. Formula-injection
+  cells (`= + - @`, whitespace-stripped) neutralised with a leading `'` on import **and**
+  export; the row imports **flagged for review**. Students are enrolled into the named
+  class; class matched case-insensitively by name within the school.
+- **FR-ADM-003 / FR-INT-001 SSO** — `domain/sso.ts` (`SsoProvider`, `SsoConfig`, domain
+  helpers) + `ports/identityProviderPort.ts` (`IdentityProviderPort` + deterministic
+  `LocalIdentityProvider` with `setOutage`/`suspend`) + `services/ssoService.ts`
+  (`configure`, `signIn`). One provider + one domain per school (`sso_configs`, migration
+  **0015**). Domain mismatch → `SSO_DOMAIN_MISMATCH` (clear message). IdP outage →
+  `ServiceUnavailableError` code `SSO_IDP_UNAVAILABLE` (NOT an auth failure). Upstream
+  revoked → deny `SSO_ACCESS_REVOKED` **and** `deleteSessionsByUser` so a stale session
+  stops authorizing. Happy path issues a session, **no password created**.
+
+## Files & wiring
+- **New:** `domain/sso.ts`, `domain/csvImport.ts`, `ports/identityProviderPort.ts`,
+  `services/csvImportService.ts`, `services/ssoService.ts`, `db/migrations/0015_appendix_sso.sql`,
+  `test/appendix-adm-003-csv.test.ts` (5), `test/appendix-int-001-sso.test.ts` (4).
+- **Changed:** `domain/errors.ts` (`AuthError` optional `code` default `"AUTH"`;
+  new `ServiceUnavailableError`); `ports/dataStore.ts` + both adapters
+  (`getSsoConfig`/`saveSsoConfig`, `deleteSessionsByUser`); `context.ts` (wired `idp`,
+  `csvImport`, `sso`; hoisted `accountService`); `test-pg/pgSetupEach.ts` (added
+  `sso_configs` to TRUNCATE); README, docs/decisions.md (**ADR-0029**), docs/traceability.md.
+
+## Decisions / deferred
+- ADR-0029. Real Google/Microsoft **OIDC verification + directory lookup is deferred**
+  (like Bedrock, ADR-0013): the port, guards and edge-case tests exist; only the live
+  network provider is unwired. The `LocalIdentityProvider` stays in-memory in **both**
+  store backends (like the audit recorder).
+- Chose to store SSO as one-provider/one-domain per school (the MVP shape). CSV import
+  reuses `AccountService` rather than a bespoke path, so account-creation invariants
+  (audit, PII isolation) are shared.
+
+## How to verify
+`npm test` (251) · `npm run test:pg-suite --workspace services/api` (246 vs Postgres) ·
+`npm run test:db --workspace services/api` (8) · `npm run typecheck`. Migration 0015 is
+ASCII-only and auto-discovered by the pg harness. If the pg-suite fails at cluster start,
+kill a stray `postgres.exe` (holds port 5439).
+
+---
+
 # Handoff — Milestone 11 — Governance / audit hardening pass  (MVP COMPLETE)
 
 **Date:** 2026-08-11

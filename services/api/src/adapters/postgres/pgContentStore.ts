@@ -20,10 +20,11 @@ export class PgContentStore implements ContentStore {
   async insertContentItem(i: ContentItem): Promise<void> {
     const s = shareCols(i.share);
     await this.sql`insert into content_items
-      (id,school_id,owner_teacher_id,title,current_version_id,governance_status,approved_by,approved_at,published_at,rights_attested,archived,share_type,share_class_id,share_department,created_at)
+      (id,school_id,owner_teacher_id,title,current_version_id,governance_status,approved_by,approved_at,published_at,rights_attested,archived,share_type,share_class_id,share_department,syllabus_subject,syllabus_year_level,syllabus_source_url,created_at)
       values (${i.id},${i.schoolId},${i.ownerTeacherId},${i.title},${i.currentVersionId},
         ${i.governance.status},${i.governance.approvedBy},${i.governance.approvedAt},${i.governance.publishedAt},
-        ${i.rightsAttested},${i.archived},${s.type},${s.classId},${s.department},${i.createdAt})`;
+        ${i.rightsAttested},${i.archived},${s.type},${s.classId},${s.department},
+        ${i.officialSyllabus?.subject ?? null},${i.officialSyllabus?.yearLevel ?? null},${i.officialSyllabus?.sourceUrl ?? null},${i.createdAt})`;
   }
   async getContentItem(id: string): Promise<ContentItem | undefined> {
     return mapItem((await this.sql`select * from content_items where id=${id}`)[0]);
@@ -34,7 +35,9 @@ export class PgContentStore implements ContentStore {
       governance_status=${i.governance.status}, approved_by=${i.governance.approvedBy},
       approved_at=${i.governance.approvedAt}, published_at=${i.governance.publishedAt},
       rights_attested=${i.rightsAttested}, archived=${i.archived},
-      share_type=${s.type}, share_class_id=${s.classId}, share_department=${s.department} where id=${i.id}`;
+      share_type=${s.type}, share_class_id=${s.classId}, share_department=${s.department},
+      syllabus_subject=${i.officialSyllabus?.subject ?? null}, syllabus_year_level=${i.officialSyllabus?.yearLevel ?? null},
+      syllabus_source_url=${i.officialSyllabus?.sourceUrl ?? null} where id=${i.id}`;
   }
   async listContentItemsBySchool(schoolId: string): Promise<ContentItem[]> {
     return (await this.sql`select * from content_items where school_id=${schoolId}`).map(mapItem) as ContentItem[];
@@ -161,6 +164,10 @@ function mapItem(r: Row | undefined): ContentItem | undefined {
     rightsAttested: r.rights_attested,
     archived: r.archived,
     share: mapShare(r),
+    officialSyllabus:
+      r.syllabus_subject == null
+        ? null
+        : { subject: r.syllabus_subject, yearLevel: r.syllabus_year_level, sourceUrl: r.syllabus_source_url },
     createdAt: iso(r.created_at),
   };
 }

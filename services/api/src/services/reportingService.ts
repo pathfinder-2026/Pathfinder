@@ -92,7 +92,9 @@ export class ReportingService {
 
   /** FR-REP-002 — the whole-school report, aggregating all classes in THIS school. */
   async schoolReport(principalId: string, schoolId: string, monthIso: string): Promise<SchoolReport> {
-    await this.requireRole(principalId, schoolId, "principal");
+    // School-level only (FR-REP-002). Principals read it for oversight; Admins
+    // read it too because the prorated cost line is theirs to reconcile (ADM-9).
+    await this.requireOneOf(principalId, schoolId, ["principal", "admin"]);
     const classes = await this.store.listClassesBySchool(schoolId);
     const records = latestPerPair((await this.activity.listMasteryBySchool(schoolId)).filter((m) => !m.synthetic));
 
@@ -166,6 +168,13 @@ export class ReportingService {
     const memberships = await this.store.listMembershipsByUser(actorId);
     if (!memberships.some((m) => m.schoolId === schoolId && m.role === role)) {
       throw new ConflictError(`NOT_A_${role.toUpperCase()}`, `Only a ${role} may perform this action.`);
+    }
+  }
+
+  private async requireOneOf(actorId: string, schoolId: string, roles: ("admin" | "teacher" | "principal")[]): Promise<void> {
+    const memberships = await this.store.listMembershipsByUser(actorId);
+    if (!memberships.some((m) => m.schoolId === schoolId && roles.includes(m.role as never))) {
+      throw new ConflictError("ROLE_REQUIRED", `Only ${roles.join(" or ")} may perform this action.`);
     }
   }
 }

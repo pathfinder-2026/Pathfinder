@@ -21,6 +21,10 @@ const JSON_PURPOSES: Record<string, string> = {
     'Respond with ONLY a JSON object, no prose, of the shape: {"subject": string, "year": number, "topic": string, "outcome": string, "difficulty": "easy"|"medium"|"hard", "confidence": number between 0 and 1}.',
   "assessment.generate":
     'Respond with ONLY a JSON object, no prose, of the shape: {"prompt": string, "options": string[] | null, "modelAnswer": string, "rubric": string | null}. The question must be answerable from the supplied input alone.',
+  "assessment.grade":
+    'Respond with ONLY a JSON object, no prose, of the shape: {"results": [{"questionId": string, "score": number between 0 and 1, "correct": boolean}], "overallScore": number between 0 and 1}. ' +
+    "For each question in the supplied INPUT, grade the studentAnswer against its modelAnswer (or its rubric, for extended_response/scenario questions with no single correct string) — score partial credit fairly rather than only exact matches. " +
+    "overallScore is the mean of every per-question score. Include exactly one result per input question, in the same order.",
 };
 
 /** Prose purposes and the guardrails their output must respect. */

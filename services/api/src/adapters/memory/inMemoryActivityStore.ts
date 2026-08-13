@@ -8,6 +8,7 @@ export class InMemoryActivityStore implements ActivityStore {
   private misconceptions = new Map<string, MisconceptionSignal>();
 
   async insertMastery(r: MasteryRecord): Promise<void> { this.mastery.set(r.id, clone(r)); }
+  async updateMastery(r: MasteryRecord): Promise<void> { this.mastery.set(r.id, clone(r)); }
   async listMasteryBySchool(schoolId: string): Promise<MasteryRecord[]> {
     return [...this.mastery.values()].filter((r) => r.schoolId === schoolId).map(clone);
   }

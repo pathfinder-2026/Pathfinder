@@ -5,14 +5,17 @@ import type {
   AssessmentQuestion,
   AssessmentRequest,
   AssessmentVersion,
+  AttemptGradingResult,
   GenerationShortfall,
   QuestionType,
 } from "../domain/assessment";
 import type { NextActionKind } from "../domain/insights";
+import { masteryLevel, type MasteryRecord } from "../domain/mastery";
 import type { AuditRecorder } from "../platform/audit/auditLog";
 import type { AiServiceLayer } from "../platform/ai/aiServiceLayer";
 import type { Clock } from "../platform/clock";
 import { newId } from "../platform/ids";
+import type { ActivityStore } from "../ports/activityStore";
 import type { AssessmentStore } from "../ports/assessmentStore";
 import type { ContentStore } from "../ports/contentStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
@@ -41,6 +44,7 @@ export class AssessmentService {
     private readonly ai: AiServiceLayer,
     private readonly clock: Clock,
     private readonly audit: AuditRecorder,
+    private readonly activity: ActivityStore,
   ) {}
 
   /**
@@ -324,6 +328,9 @@ export class AssessmentService {
       interrupted: false,
       resumeDeadline: new Date(this.clock.now().getTime() + RESUME_WINDOW_MS).toISOString(),
       createdAt: now,
+      gradedScore: null,
+      gradedResults: null,
+      gradedAt: null,
     };
     await this.store.insertAttempt(attempt);
     return attempt;
@@ -359,12 +366,21 @@ export class AssessmentService {
     return (await this.store.listAttemptsByAssessment(assessmentId)).filter((a) => a.interrupted);
   }
 
-  /** The student submits: final answers are saved, then the attempt closes. */
+  /**
+   * The student submits: final answers are saved, the attempt closes, then
+   * every answered question is graded against its model answer/rubric through
+   * the single AI service layer (never a hand-rolled guess) and the result
+   * feeds ONE mastery data point for the assessment's skill-graph node —
+   * without this, Class Insights (heatmap/focus-areas/cohorts/adaptive) has no
+   * real signal to work from, ever, regardless of how many students submit.
+   * Grading is best-effort: a submit always succeeds even if grading fails: a
+   * flaky AI call must never block a student closing their attempt.
+   */
   async submitAttempt(attemptId: string, studentId: string, answers: Record<string, string> = {}): Promise<AssessmentAttempt> {
     const attempt = await this.requireAttempt(attemptId);
     if (attempt.studentId !== studentId) throw new NotFoundError("Attempt not found.");
     if (attempt.status === "submitted") return attempt;
-    const updated: AssessmentAttempt = {
+    let updated: AssessmentAttempt = {
       ...attempt,
       savedAnswers: { ...attempt.savedAnswers, ...answers },
       lastSavedAt: this.clock.isoNow(),
@@ -372,10 +388,102 @@ export class AssessmentService {
     };
     await this.store.updateAttempt(updated);
     this.audit.append({ action: "assessment.attempt.submitted", actorId: studentId, subjectType: "assessment", subjectId: attempt.assessmentId, metadata: { attemptId } });
+
+    try {
+      const graded = await this.gradeAndRecordMastery(updated);
+      if (graded) {
+        updated = { ...updated, gradedScore: graded.overallScore, gradedResults: graded.results, gradedAt: this.clock.isoNow() };
+        await this.store.updateAttempt(updated);
+      }
+    } catch (e) {
+      this.audit.append({
+        action: "assessment.attempt.grading_failed",
+        actorId: studentId,
+        subjectType: "assessment",
+        subjectId: attempt.assessmentId,
+        metadata: { attemptId, error: e instanceof Error ? e.message : String(e) },
+      });
+    }
     return updated;
   }
 
+  /** Attempts a Teacher can review — includes grading, never sent to the student. */
+  async listAttempts(assessmentId: string): Promise<AssessmentAttempt[]> {
+    return this.store.listAttemptsByAssessment(assessmentId);
+  }
+
   // ---- helpers ----
+
+  /**
+   * Grade every answered question through the AI service layer in ONE call,
+   * then upsert a real (non-synthetic) MasteryRecord for the assessment's
+   * node. Returns null when nothing was answered — no data point either way.
+   */
+  private async gradeAndRecordMastery(
+    attempt: AssessmentAttempt,
+  ): Promise<{ overallScore: number; results: AttemptGradingResult[] } | null> {
+    const assessment = await this.require(attempt.assessmentId);
+    const questions = await this.store.listQuestionsByAssessment(attempt.assessmentId);
+    const answered = questions
+      .map((q) => ({ q, answer: attempt.savedAnswers[q.id] }))
+      .filter((x): x is { q: AssessmentQuestion; answer: string } => !!x.answer && x.answer.trim().length > 0);
+    if (answered.length === 0) return null;
+
+    const completion = await this.ai.run(
+      {
+        purpose: "assessment.grade",
+        prompt: `Grade the student's submitted answers for assessment "${assessment.title}".`,
+        input: {
+          nodeId: assessment.request.nodeId,
+          questions: answered.map(({ q, answer }) => ({
+            questionId: q.id,
+            type: q.type,
+            prompt: q.prompt,
+            modelAnswer: q.modelAnswer,
+            rubric: q.rubric,
+            studentAnswer: answer,
+          })),
+        },
+        containsStudentData: true,
+      },
+      attempt.studentId,
+    );
+    const parsed = JSON.parse(completion.text) as { results: AttemptGradingResult[]; overallScore: number };
+    await this.upsertMastery(assessment.schoolId, attempt.studentId, assessment.request.nodeId, parsed.overallScore);
+    return parsed;
+  }
+
+  /** One mastery record per (student, node) — later submissions update it and push the prior score into history. */
+  private async upsertMastery(schoolId: string, studentId: string, nodeId: string, score: number): Promise<void> {
+    const existing = (await this.activity.listMasteryByNode(schoolId, nodeId)).find((m) => m.studentId === studentId);
+    const now = this.clock.isoNow();
+    if (existing) {
+      const updated: MasteryRecord = {
+        ...existing,
+        score,
+        level: masteryLevel(score),
+        dataPoints: existing.dataPoints + 1,
+        lastActivityAt: now,
+        history: [...(existing.history ?? []), existing.score],
+      };
+      await this.activity.updateMastery(updated);
+      return;
+    }
+    const record: MasteryRecord = {
+      id: newId(),
+      studentId,
+      schoolId,
+      nodeId,
+      level: masteryLevel(score),
+      score,
+      dataPoints: 1,
+      lastActivityAt: now,
+      history: [],
+      assistedScore: null,
+      synthetic: false,
+    };
+    await this.activity.insertMastery(record);
+  }
 
   private async collectGrounding(schoolId: string, nodeId: string): Promise<GroundingUnit[]> {
     const pool = await this.content.approvedPool(schoolId);

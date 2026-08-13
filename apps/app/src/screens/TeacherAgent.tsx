@@ -29,6 +29,7 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
 }) {
   const [suggestions, setSuggestions] = useState<AgentSuggestionRow[] | null>(null);
   const [skills, setSkills] = useState<SkillsResult | null>(null);
+  const [groundedNodeIds, setGroundedNodeIds] = useState<Set<string>>(new Set());
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [students, setStudents] = useState<{ id: string; label: string }[]>([]);
   const [form, setForm] = useState({ kind: "lesson_plan" as Kind, nodeId: "", topic: "", term: "Term 1", classId: "", studentId: "", obsAcademic: "", obsBehavioural: "" });
@@ -46,8 +47,14 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
   const [syllabusBusy, setSyllabusBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [sug, sk, cs] = await Promise.all([api.listAgentSuggestions(session), api.skills(session), api.teacherClasses(session)]);
+    const [sug, sk, cs, content] = await Promise.all([
+      api.listAgentSuggestions(session), api.skills(session), api.teacherClasses(session), api.listContent(session),
+    ]);
     setSuggestions(sug); setSkills(sk); setClasses(cs);
+    // The skills a draft can actually ground on: nodes with APPROVED mapped
+    // content (Content Studio state drives this — an unmapped skill would only
+    // ever produce an honest decline).
+    setGroundedNodeIds(new Set(content.filter((c) => c.status === "approved" && !c.archived).flatMap((c) => c.mappedNodeIds)));
     if (cs.length > 0 && !form.classId) {
       setForm((f) => ({ ...f, classId: cs[0].id }));
       const st = await api.classStudents(session, cs[0].id);
@@ -169,10 +176,27 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
               {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </Field>
-          <Field label="Skill" htmlFor="ag-skill">
+          <Field
+            label="Skill"
+            htmlFor="ag-skill"
+            hint="Only skills with approved Content Studio material can ground a draft — approve and map more content to unlock the rest."
+          >
             <select id="ag-skill" className="select" value={form.nodeId} onChange={(e) => setForm({ ...form, nodeId: e.target.value })}>
               <option value="">Choose…</option>
-              {skills?.signedOff && skills.nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+              {skills?.signedOff && (
+                <>
+                  <optgroup label="Ready to draft (approved content mapped)">
+                    {skills.nodes.filter((n) => groundedNodeIds.has(n.id)).map((n) => (
+                      <option key={n.id} value={n.id}>{n.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="No approved content yet — drafting would decline">
+                    {skills.nodes.filter((n) => !groundedNodeIds.has(n.id)).map((n) => (
+                      <option key={n.id} value={n.id} disabled>{n.label}</option>
+                    ))}
+                  </optgroup>
+                </>
+              )}
             </select>
           </Field>
         </div>

@@ -340,22 +340,23 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     await requireTeacherOf(req, schoolId);
     await requireAssessmentIn(schoolId, id);
     const attempts = await ctx.assessment.listAttempts(id);
-    const rows = await Promise.all(
-      attempts.map(async (a) => {
-        const pii = await ctx.store.getPersonalData(a.studentId);
-        return {
-          id: a.id,
-          studentId: a.studentId,
-          studentLabel: pii ? `${pii.firstName} ${pii.lastName}` : a.studentId,
-          status: a.status,
-          interrupted: a.interrupted,
-          gradedScore: a.gradedScore,
-          gradedResults: a.gradedResults,
-          gradedAt: a.gradedAt,
-        };
-      }),
-    );
-    return reply.send(rows);
+    // One PII lookup per DISTINCT student, sequentially — a parallel per-attempt
+    // fan-out here blew through the Supabase session pooler's client cap.
+    const labels = new Map<string, string>();
+    for (const studentId of new Set(attempts.map((a) => a.studentId))) {
+      const pii = await ctx.store.getPersonalData(studentId);
+      labels.set(studentId, pii ? `${pii.firstName} ${pii.lastName}` : studentId);
+    }
+    return reply.send(attempts.map((a) => ({
+      id: a.id,
+      studentId: a.studentId,
+      studentLabel: labels.get(a.studentId) ?? a.studentId,
+      status: a.status,
+      interrupted: a.interrupted,
+      gradedScore: a.gradedScore,
+      gradedResults: a.gradedResults,
+      gradedAt: a.gradedAt,
+    })));
   });
 
   app.post("/api/v1/schools/:schoolId/assessments/:id/acknowledge-review", async (req, reply) => {

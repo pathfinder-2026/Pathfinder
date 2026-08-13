@@ -84,6 +84,23 @@ export interface AssessmentRequest {
   difficulty: "easy" | "mixed" | "hard";
   typeMix?: TypeRequest[];
   versions?: number;
+  /**
+   * Set only by AssessmentService.generateTailored — this draft was shaped
+   * for ONE student (from the adaptive engine's recommendation), not the
+   * whole class. Stored on the request (persisted as part of the existing
+   * `request` jsonb column — no schema change) rather than as a top-level
+   * Assessment field, since it's a property of what was asked for, same as
+   * every other generation parameter here.
+   */
+  targetStudentId?: string | null;
+  /**
+   * Plain-language explanation connecting the adaptive recommendation to the
+   * generation parameters actually chosen (e.g. "independent work strong,
+   * assisted work weak, so this confirms mastery at the same difficulty
+   * before progressing"). Shown to the teacher on the review screen BEFORE
+   * question content — it's what they're actually approving.
+   */
+  tailoringRationale?: string | null;
   scheduledStart?: string;
 }
 

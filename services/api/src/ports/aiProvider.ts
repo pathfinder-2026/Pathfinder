@@ -23,6 +23,18 @@ export type ProviderDescriptor =
       region: string;
       zeroRetention: boolean;
       noTraining: boolean;
+      /**
+       * An explicit, operator-acknowledged exception to the AU-residency /
+       * zero-retention / no-training checks below (Foundational Decision 1).
+       * ABSENT by default — every provider must satisfy the checks normally.
+       * Set this ONLY when an operator has consciously decided to accept a
+       * provider that does NOT meet them (e.g. the direct Claude API, which
+       * has no Australia-specific region option) — never to paper over an
+       * unverified or accidental gap. `reason` is carried into the audit
+       * trail on every call so the exception is visible, not silent. See
+       * docs/decisions.md ADR-0034.
+       */
+      residencyException?: { reason: string };
     };
 
 /**

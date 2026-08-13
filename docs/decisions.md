@@ -125,6 +125,111 @@ through, so no call site can bypass it.
   the round-trip regression test; the deterministic provider and the whole
   existing suite pass unchanged.
 
+## ADR-0034 — Direct Anthropic API provider, live via an explicit residency exception
+A second remote `AiProvider` — `adapters/anthropic/anthropicProvider.ts` — calls
+the Claude API directly instead of Amazon Bedrock. Initially written and
+type-checked but unwired the same way `BedrockProvider` was at M1 (ADR-0013);
+the owner then explicitly chose to accept global/US inference for now rather
+than wait on a confirmed AU path, so it is wired live in `index.ts` behind a
+deliberate, two-gate opt-in — never a default, never silent.
+
+- **The residency gap this accepts.** Foundational Decision 1 requires every
+  remote AI provider to report an approved Australian region
+  (`assertCompliantProvider`/`AU_REGIONS`, checked unconditionally on every
+  call, not just when `containsStudentData` is true). Bedrock satisfies this by
+  pinning inference to `ap-southeast-2`. The direct Anthropic API has **no
+  Australia-specific residency control** — its only inference-geography option
+  (`inference_geo`) is `"us"` or `"global"`. Rather than fabricate
+  `"ap-southeast-2"` (the shortcut ADR-0013 already refused to take for
+  Bedrock), `ProviderDescriptor` gained an explicit, opt-in
+  `residencyException?: { reason }` field (`ports/aiProvider.ts`).
+  `assertCompliantProvider` honors it — skipping the region/retention/training
+  checks ONLY when present — instead of being weakened globally; a provider
+  descriptor without the field is still correctly refused
+  (`test/anthropic-remote-adapter.test.ts` proves both directions).
+- **Two independent gates, so the exception is never incidental:**
+  1. `AnthropicProvider`'s constructor THROWS unless
+     `acceptNonAuResidency: true` is passed, or `PF_AI_ACCEPT_NON_AU_RESIDENCY`
+     is set to `"true"` — an `ANTHROPIC_API_KEY` alone does not activate it.
+  2. Every `ai.call` audit entry carries the residency-exception reason
+     (`AiServiceLayer.run`, new `residencyException` metadata field) — the
+     acceptance is visible in the audit trail on every single call, not a
+     one-time flag nobody sees again.
+- **Not a substitute for PII masking (ADR-0033), nor solved by it.** Masking
+  replaces caller-declared names with pseudonyms before any provider sees a
+  request; residency is about which country's infrastructure processes the
+  request at all. They are independent, stacked layers — masking does not
+  relax the region requirement, and the region requirement does not depend on
+  whether masking ran. Accepting this residency exception does NOT relax
+  masking — ADR-0033 still runs unchanged for every call.
+- **Prompt caching, implemented correctly regardless of the residency
+  question.** `platform/ai/remotePrompt.ts` was split into
+  `buildRemoteSystemPrompt` (purpose-scoped, byte-identical across every call
+  sharing a purpose — a shared grounding preamble + the purpose's output
+  contract) and `buildRemoteUserPrompt` (the caller's varying instruction +
+  structured input). `AnthropicProvider` sends the stable half as a `system`
+  block with `cache_control: {type: "ephemeral"}` and the varying half as the
+  user turn, after the cache boundary — the correct placement per Anthropic's
+  prefix-cache model. `buildRemotePrompt` (Bedrock's single-string shape) now
+  composes the two parts and is unchanged in observable behaviour (existing
+  Bedrock tests pass unmodified).
+- **Model default is `claude-opus-5`** (current, non-date-suffixed), overridable
+  via `PF_ANTHROPIC_MODEL` — replacing the stale hardcoded
+  `anthropic.claude-3-5-sonnet-20240620-v1:0` id `BedrockProvider` still carries.
+- **`noTraining: true` is asserted as fact** (Anthropic's standard commercial
+  API policy does not train on API inputs/outputs by default, distinct from the
+  Claude.ai consumer product); `zeroRetention` stays `false` — true zero-data-
+  retention requires a separate account-level agreement not confirmed for this
+  org. Both are informational on the descriptor; the residency exception is
+  what actually admits the provider past the guard.
+- **Revisit** if/when a confirmed AU-region path exists for this transport
+  (e.g. Claude Platform on AWS pinned to `ap-southeast-2`) — at that point the
+  exception can be dropped and this provider brought to full parity with the
+  Bedrock path's original guarantee.
+
+## ADR-0035 — Official syllabus documents in Content Studio (no NESA API)
+NESA (NSW Education Standards Authority) ran a public Syllabus API from
+roughly 2019–2022; it was discontinued in March 2022 and the domain no longer
+resolves. There is currently no way to fetch NSW curriculum content live —
+confirmed by web search and a direct fetch attempt before building anything
+here, rather than assumed. Content Studio's official-syllabus feature is
+designed around that reality rather than around a fetch that doesn't exist.
+
+- **Tag, not a fetch.** `ContentItem` gained an optional `officialSyllabus:
+  { subject, yearLevel, sourceUrl } | null` (`domain/content.ts`,
+  `db/migrations/0017_official_syllabus.sql`). `sourceUrl` is always the
+  uploader's own pasted reference link — never generated or guessed by the
+  app. Tagging is orthogonal to governance: a tagged item still has to clear
+  the full existing approval pipeline (scan, classify, attest rights,
+  approve) before it enters the approved pool or can ground anything, exactly
+  like any other upload.
+- **First-time-only effort, not per-teacher-every-time.** Whoever teaches a
+  subject uploads its syllabus once (self-service, not centralized to a
+  single admin) and tags it; every other teacher of that subject/year finds
+  it already there via `GET .../syllabus?subject=&yearLevel=`. Updating it
+  when NESA revises a syllabus reuses the existing content-versioning
+  mechanism (`ContentService.addVersion`) — no separate "replace" feature was
+  needed.
+- **Topic picker rationalised to the syllabus, not the whole library.** The
+  lookup endpoint returns the syllabus item's actual skill-graph mappings
+  (`MappingService.mappingViews`) as its topic list, so a teacher drafting
+  from it picks from what THIS syllabus covers, not the full curriculum tree
+  — reusing the existing per-item mapping mechanism rather than adding a new
+  year-level dimension to the skill graph itself (the graph has no year-level
+  concept today; adding one was judged out of scope for this feature).
+- **No new grounding/drafting code.** Once a topic is chosen, the existing
+  `POST /agent/generate` (`kind: "lesson_plan"`) runs unchanged — grounding,
+  the honest-decline-when-ungrounded rule, and draft-until-teacher-publishes
+  all come from what already existed. Verified live against Claude Opus 5
+  (ADR-0034): given a thin source, the model declined to invent syllabus
+  outcome codes rather than fabricating them — the grounding preamble held up
+  under a real model call, not just the deterministic test provider.
+- **Fallback when nothing is on file.** The teacher sees a link to NESA's
+  real, verified curriculum site (`curriculum.nsw.edu.au`) with instructions
+  to find the current syllabus themselves — never a guessed subject/year deep
+  link, since NESA's page structure varies per subject and per-subject URLs
+  were never verified.
+
 ## ADR-0032 — Email delivery adapter behind the notification port (SES seam)
 No email transport existed: invites only ever reached the in-memory notification
 channel, so nothing was actually delivered (the admin UI's copyable invite links

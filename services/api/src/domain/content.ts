@@ -36,6 +36,20 @@ export type ShareScope =
   | { type: "class"; classId: string }
   | { type: "department"; department: string };
 
+/**
+ * Marks an item as THE official syllabus for a subject + year level, with a
+ * reference link to where it came from. Orthogonal to governance — a tagged
+ * item still must pass the full approval pipeline before it enters the
+ * approved pool or can be mapped/used for grounding, same as any other item.
+ * `sourceUrl` is stored, never generated: NESA has no public curriculum API
+ * (ADR-0035), so this is the uploader's own reference link, not a guessed one.
+ */
+export interface OfficialSyllabus {
+  subject: string;
+  yearLevel: number;
+  sourceUrl: string;
+}
+
 export interface ContentItem {
   id: string;
   schoolId: string;
@@ -47,6 +61,7 @@ export interface ContentItem {
   rightsAttested: boolean;
   archived: boolean;
   share: ShareScope;
+  officialSyllabus: OfficialSyllabus | null;
   createdAt: string;
 }
 

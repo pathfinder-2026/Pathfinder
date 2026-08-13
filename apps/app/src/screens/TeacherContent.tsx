@@ -33,6 +33,10 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   } | null>(null);
   const [overrideNode, setOverrideNode] = useState("");
   const [remapPrompt, setRemapPrompt] = useState<{ mappingId: string; newNodeId: string } | null>(null);
+  // Official syllabus tagging (ADR-0035) — subject/year/NESA-link form for the expanded item
+  const [syllabusSubject, setSyllabusSubject] = useState("");
+  const [syllabusYear, setSyllabusYear] = useState("");
+  const [syllabusUrl, setSyllabusUrl] = useState("");
 
   // Upload form
   const [title, setTitle] = useState("");
@@ -108,6 +112,19 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     setError(null); setBusy(itemId);
     try { await api.mapContent(session, itemId, [mapNode]); setMapNode(""); await refresh(); }
     catch (e) { setError((e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  const markSyllabus = async (itemId: string) => {
+    const yearLevel = Number(syllabusYear);
+    if (!syllabusSubject.trim() || !yearLevel || !syllabusUrl.trim()) return;
+    setError(null); setBusy(itemId);
+    try {
+      await api.markOfficialSyllabus(session, itemId, { subject: syllabusSubject.trim(), yearLevel, sourceUrl: syllabusUrl.trim() });
+      setSyllabusSubject(""); setSyllabusYear(""); setSyllabusUrl("");
+      setNotice("Marked as the official syllabus — every teacher of this subject/year will see it.");
+      await refresh();
+    } catch (e) { setError((e as Error).message); }
     finally { setBusy(null); }
   };
 
@@ -220,6 +237,29 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                             <p className="person__meta" style={{ margin: "0 0 6px" }}>
                               Versions: {detail.versions.map((v) => `v${v.versionNumber}${v.current ? " (current)" : ""}`).join(" · ") || "—"}
                             </p>
+                            {r.officialSyllabus ? (
+                              <p className="person__meta" style={{ margin: "0 0 10px" }}>
+                                <Chip state="approved">Official syllabus</Chip>{" "}
+                                {r.officialSyllabus.subject} · Year {r.officialSyllabus.yearLevel} —{" "}
+                                <a href={r.officialSyllabus.sourceUrl} target="_blank" rel="noreferrer">NESA source ↗</a>
+                              </p>
+                            ) : (
+                              <div style={{ marginTop: 6, marginBottom: 10 }}>
+                                <p className="person__meta" style={{ margin: "0 0 6px" }}>
+                                  Mark as the official syllabus for a subject/year, so every teacher of that class can find it instead of re-uploading:
+                                </p>
+                                <div className="row">
+                                  <Field label="Subject"><input className="input" value={syllabusSubject} onChange={(e) => setSyllabusSubject(e.target.value)} placeholder="Mathematics" /></Field>
+                                  <Field label="Year level"><input className="input" type="number" min={1} max={12} value={syllabusYear} onChange={(e) => setSyllabusYear(e.target.value)} placeholder="8" /></Field>
+                                </div>
+                                <Field label="NESA source link" hint="Paste the NESA curriculum page you downloaded this from.">
+                                  <input className="input" type="url" value={syllabusUrl} onChange={(e) => setSyllabusUrl(e.target.value)} placeholder="https://curriculum.nsw.edu.au/…" />
+                                </Field>
+                                <Button onClick={() => markSyllabus(r.id)} disabled={busy === r.id || !syllabusSubject.trim() || !syllabusYear || !syllabusUrl.trim()}>
+                                  Mark as official syllabus
+                                </Button>
+                              </div>
+                            )}
                             <div className="btn-row" style={{ marginTop: 6 }}>
                               <label className="person__meta" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                 Sharing

@@ -38,22 +38,56 @@ export function isKnownRemotePurpose(purpose: string): boolean {
 }
 
 /**
- * Build the full prompt a remote model needs: the caller's instruction, the
- * structured input serialised as JSON context, and the output contract for the
- * purpose. An unknown purpose is a programmer error — refuse loudly rather
- * than sending an under-specified prompt.
+ * A short, purpose-INDEPENDENT preamble shared by every remote call — the one
+ * invariant every purpose already enforces individually (never invent beyond
+ * the supplied grounding). Stable across every request regardless of purpose,
+ * so it belongs in the cacheable prefix alongside the per-purpose contract
+ * (see buildRemoteSystemPrompt) rather than in the per-call user turn.
  */
-export function buildRemotePrompt(request: AiCompletionRequest): string {
-  const contract = JSON_PURPOSES[request.purpose] ?? PROSE_PURPOSES[request.purpose];
+const SHARED_SYSTEM_PREAMBLE =
+  "You are a grounded assistant for Pathfinder, an Australian schools platform. " +
+  "Answer strictly from the supplied INPUT and grounding sources — never invent facts, " +
+  "names, or content beyond what is given. If the supplied material is insufficient to " +
+  "satisfy the OUTPUT REQUIREMENTS below, say so plainly rather than fabricating an answer.";
+
+/**
+ * The STABLE half of a remote prompt: the shared preamble plus the purpose's
+ * output contract. Identical for every call sharing the same purpose, which
+ * makes it the correct system-prompt / cache_control boundary — see
+ * AnthropicProvider. An unknown purpose is a programmer error — refuse loudly
+ * rather than sending an under-specified prompt.
+ */
+export function buildRemoteSystemPrompt(purpose: string): string {
+  const contract = JSON_PURPOSES[purpose] ?? PROSE_PURPOSES[purpose];
   if (!contract) {
-    throw new ValidationError(`Unknown AI purpose "${request.purpose}" — no remote prompt contract is defined for it.`);
+    throw new ValidationError(`Unknown AI purpose "${purpose}" — no remote prompt contract is defined for it.`);
   }
+  return `${SHARED_SYSTEM_PREAMBLE}\n\nOUTPUT REQUIREMENTS: ${contract}`;
+}
+
+/**
+ * The VARYING half of a remote prompt: the caller's instruction plus the
+ * structured input serialised as JSON context. Different on every call, so it
+ * belongs after the cached system prefix, never inside it.
+ */
+export function buildRemoteUserPrompt(request: AiCompletionRequest): string {
   const parts = [request.prompt.trim()];
   if (request.input !== undefined) {
     parts.push(`INPUT (JSON):\n\`\`\`json\n${JSON.stringify(request.input, null, 2)}\n\`\`\``);
   }
-  parts.push(`OUTPUT REQUIREMENTS: ${contract}`);
   return parts.join("\n\n");
+}
+
+/**
+ * Build the full prompt a remote model needs, as a single string — the shape
+ * BedrockProvider sends as one user turn (Bedrock's older invoke API has no
+ * separate cacheable system block worth splitting out here). Providers that
+ * DO support prompt caching (AnthropicProvider) should call
+ * buildRemoteSystemPrompt + buildRemoteUserPrompt separately instead, so the
+ * stable half can be marked cache_control and the varying half can't.
+ */
+export function buildRemotePrompt(request: AiCompletionRequest): string {
+  return [buildRemoteSystemPrompt(request.purpose), buildRemoteUserPrompt(request)].join("\n\n");
 }
 
 /**

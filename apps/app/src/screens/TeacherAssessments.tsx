@@ -123,6 +123,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut }: 
                 <li className="person" key={r.id}>
                   <span><strong>{r.title}</strong></span>
                   <span className="person__meta">{nodeLabel(r.nodeId)} · {r.questionCount} questions</span>
+                  {r.targetStudentId && <Chip state="pending">Tailored — one student</Chip>}
                   {r.shortfall && <Chip state="pending">Shortfall</Chip>}
                   <span className="spacer" />
                   <Chip state={r.status === "published" ? "approved" : "draft"}>{r.status === "published" ? "Published" : "Draft"}</Chip>
@@ -139,6 +140,11 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut }: 
             <h2 className="section">{detail.title} <Chip state={detail.status === "published" ? "approved" : "draft"}>{detail.status === "published" ? "Published" : "Draft"}</Chip></h2>
             <p className="muted">{nodeLabel(detail.nodeId)}</p>
           </div>
+          {detail.tailoringRationale && (
+            <Banner kind="brand">
+              <strong>Tailored for one student — why this shape:</strong> {detail.tailoringRationale}
+            </Banner>
+          )}
           {detail.shortfall && (
             <Banner kind="warn">
               Only {detail.shortfall.generated} of {detail.shortfall.requested} requested questions could be grounded in your approved material — {detail.shortfall.reason}. Approve and map more material to support more.

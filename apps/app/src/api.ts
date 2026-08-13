@@ -98,8 +98,13 @@ export interface ContentRow {
   } | null;
   mappedNodeIds: string[];
   approvalBlockReason: string | null;
+  officialSyllabus: { subject: string; yearLevel: number; sourceUrl: string } | null;
   createdAt: string;
 }
+
+export type SyllabusLookup =
+  | { found: false }
+  | { found: true; item: ContentRow; topics: { nodeId: string; label: string; chain: string[] }[] };
 
 export type UploadResult =
   | { status: "accepted"; contentItemId: string; versionId: string; flags: string[]; duplicateOfId?: string }
@@ -119,6 +124,8 @@ export interface AssessmentRow {
   reviewAcknowledged: boolean;
   flags: string[];
   publishedAt: string | null;
+  targetStudentId: string | null;
+  tailoringRationale: string | null;
   createdAt: string;
 }
 
@@ -132,6 +139,8 @@ export interface AssessmentDetail {
   reviewAcknowledged: boolean;
   publishedAt: string | null;
   scheduledStart: string | null;
+  targetStudentId: string | null;
+  tailoringRationale: string | null;
   questions: {
     id: string; order: number; type: string; prompt: string; options: string[] | null;
     modelAnswer: string | null; rubric: string | null; difficulty: string;
@@ -142,6 +151,9 @@ export interface AssessmentDetail {
 export type GenerateResult =
   | { status: "generated"; assessmentId: string; questionCount: number; shortfall: AssessmentRow["shortfall"]; flags: string[] }
   | { status: "failed"; reason: string };
+
+/** TCH-19 — generateTailored can also decline (hint/escalate aren't assessments). */
+export type TailoredGenerateResult = GenerateResult | { status: "declined"; message: string };
 
 export interface HeatmapData {
   class: { id: string; name: string };
@@ -223,6 +235,21 @@ export const api = {
     request<{ id: string; nodeId: string; flags: string[] }[]>("POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/map`, { nodeIds }, s.token),
   skills: (s: Session) => request<SkillsResult>("GET", `/api/v1/schools/${s.schoolId}/skills`, undefined, s.token),
 
+  // ---- Teacher: official syllabus (ADR-0035) — no NESA API exists, so this
+  // tags a Content Studio item as the syllabus for a subject+year and stores
+  // the uploader's own reference link; never a generated/guessed URL.
+  markOfficialSyllabus: (s: Session, itemId: string, body: { subject: string; yearLevel: number; sourceUrl: string }) =>
+    request<{ officialSyllabus: { subject: string; yearLevel: number; sourceUrl: string } }>(
+      "POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/mark-official-syllabus`, body, s.token,
+    ),
+  getSyllabus: (s: Session, subject: string, yearLevel: number) =>
+    request<SyllabusLookup>(
+      "GET",
+      `/api/v1/schools/${s.schoolId}/syllabus?subject=${encodeURIComponent(subject)}&yearLevel=${yearLevel}`,
+      undefined,
+      s.token,
+    ),
+
   // ---- Teacher: Assessment Builder + publish (TCH-4/5) ----
   listAssessments: (s: Session) => request<AssessmentRow[]>("GET", `/api/v1/schools/${s.schoolId}/assessments`, undefined, s.token),
   generateAssessment: (s: Session, body: { title: string; nodeId: string; count: number; difficulty: string }) =>
@@ -251,6 +278,14 @@ export const api = {
     request<AdaptivePanel>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/adaptive`, undefined, s.token),
   nextAction: (s: Session, classId: string, studentId: string, nodeId: string) =>
     request<NextActionResult>("GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/adaptive/next-action?studentId=${encodeURIComponent(studentId)}&nodeId=${encodeURIComponent(nodeId)}`, undefined, s.token),
+  /** TCH-19 — draft an assessment tailored to this student's own recommendation. Always a draft; review + publish are unchanged. */
+  generateTailoredAssessment: (s: Session, classId: string, studentId: string, nodeId: string) =>
+    request<TailoredGenerateResult>(
+      "POST",
+      `/api/v1/schools/${s.schoolId}/classes/${classId}/students/${studentId}/assessments/generate-tailored`,
+      { nodeId },
+      s.token,
+    ),
 
   // ---- Teacher: peer suite (TCH-10..12) ----
   classStudents: (s: Session, classId: string) =>

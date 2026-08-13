@@ -38,6 +38,7 @@ describe("M7 FR-STU-002/SAG — Ask for Help", () => {
     const attempt: AssessmentAttempt = {
       id: newId(), assessmentId: assessment.id, studentId, status: "in_progress", savedAnswers: {},
       lastSavedAt: ctx.clock.isoNow(), interrupted: false, resumeDeadline: ctx.clock.isoNow(), createdAt: ctx.clock.isoNow(),
+      gradedScore: null, gradedResults: null, gradedAt: null,
     };
     await ctx.assessmentStore.insertAttempt(attempt);
 

@@ -65,16 +65,20 @@ export class PgAssessmentStore implements AssessmentStore {
 
   async insertAttempt(a: AssessmentAttempt): Promise<void> {
     await this.sql`insert into assessment_attempts
-      (id,assessment_id,student_id,status,saved_answers,last_saved_at,interrupted,resume_deadline,created_at)
+      (id,assessment_id,student_id,status,saved_answers,last_saved_at,interrupted,resume_deadline,created_at,
+       graded_score,graded_results,graded_at)
       values (${a.id},${a.assessmentId},${a.studentId},${a.status},${this.sql.json(a.savedAnswers)},
-        ${a.lastSavedAt},${a.interrupted},${a.resumeDeadline},${a.createdAt})`;
+        ${a.lastSavedAt},${a.interrupted},${a.resumeDeadline},${a.createdAt},
+        ${a.gradedScore ?? null},${a.gradedResults ? this.sql.json(a.gradedResults as never) : null},${a.gradedAt ?? null})`;
   }
   async getAttempt(id: string): Promise<AssessmentAttempt | undefined> {
     return mapAttempt((await this.sql`select * from assessment_attempts where id=${id}`)[0]);
   }
   async updateAttempt(a: AssessmentAttempt): Promise<void> {
     await this.sql`update assessment_attempts set status=${a.status}, saved_answers=${this.sql.json(a.savedAnswers)},
-      last_saved_at=${a.lastSavedAt}, interrupted=${a.interrupted}, resume_deadline=${a.resumeDeadline} where id=${a.id}`;
+      last_saved_at=${a.lastSavedAt}, interrupted=${a.interrupted}, resume_deadline=${a.resumeDeadline},
+      graded_score=${a.gradedScore ?? null}, graded_results=${a.gradedResults ? this.sql.json(a.gradedResults as never) : null},
+      graded_at=${a.gradedAt ?? null} where id=${a.id}`;
   }
   async listAttemptsByAssessment(assessmentId: string): Promise<AssessmentAttempt[]> {
     return (await this.sql`select * from assessment_attempts where assessment_id=${assessmentId}`).map(mapAttempt) as AssessmentAttempt[];
@@ -129,5 +133,8 @@ function mapAttempt(r: Row): AssessmentAttempt | undefined {
     interrupted: r.interrupted,
     resumeDeadline: iso(r.resume_deadline),
     createdAt: iso(r.created_at),
+    gradedScore: r.graded_score === null || r.graded_score === undefined ? null : Number(r.graded_score),
+    gradedResults: r.graded_results ?? null,
+    gradedAt: isoOrNull(r.graded_at),
   };
 }

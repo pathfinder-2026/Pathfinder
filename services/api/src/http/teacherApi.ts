@@ -329,6 +329,36 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     });
   });
 
+  /**
+   * Every student attempt, WITH grading — reviewable by the teacher at any
+   * time (never sent to the student; matches the existing model-answer/rubric
+   * non-disclosure rule). Grading runs automatically on submit (TCH-19b: real
+   * mastery data from real submissions, not just synthetic test seed data).
+   */
+  app.get("/api/v1/schools/:schoolId/assessments/:id/attempts", async (req, reply) => {
+    const { schoolId, id } = req.params as { schoolId: string; id: string };
+    await requireTeacherOf(req, schoolId);
+    await requireAssessmentIn(schoolId, id);
+    const attempts = await ctx.assessment.listAttempts(id);
+    // One PII lookup per DISTINCT student, sequentially — a parallel per-attempt
+    // fan-out here blew through the Supabase session pooler's client cap.
+    const labels = new Map<string, string>();
+    for (const studentId of new Set(attempts.map((a) => a.studentId))) {
+      const pii = await ctx.store.getPersonalData(studentId);
+      labels.set(studentId, pii ? `${pii.firstName} ${pii.lastName}` : studentId);
+    }
+    return reply.send(attempts.map((a) => ({
+      id: a.id,
+      studentId: a.studentId,
+      studentLabel: labels.get(a.studentId) ?? a.studentId,
+      status: a.status,
+      interrupted: a.interrupted,
+      gradedScore: a.gradedScore,
+      gradedResults: a.gradedResults,
+      gradedAt: a.gradedAt,
+    })));
+  });
+
   app.post("/api/v1/schools/:schoolId/assessments/:id/acknowledge-review", async (req, reply) => {
     const { schoolId, id } = req.params as { schoolId: string; id: string };
     const auth = await requireTeacherOf(req, schoolId);

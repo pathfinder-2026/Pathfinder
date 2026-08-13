@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillsResult, type UploadResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
+import { extractTextFromFile } from "../fileText";
 
 const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md", "link"] as const;
 
@@ -42,6 +43,9 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   const [title, setTitle] = useState("");
   const [fileType, setFileType] = useState<string>("pdf");
   const [text, setText] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [pickedFile, setPickedFile] = useState<string | null>(null); // file name shown after extraction
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -83,6 +87,25 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     } catch (e) { setError((e as Error).message); }
   };
 
+  /** A real file chosen: extract its text in the browser, fill the form, let the teacher review before uploading. */
+  const chooseFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null); setNotice(null); setExtracting(true); setPickedFile(null);
+    try {
+      const extracted = await extractTextFromFile(file);
+      if (!title.trim()) setTitle(extracted.title);
+      setFileType(extracted.fileType);
+      setText(extracted.text);
+      setPickedFile(file.name);
+      setNotice(`Extracted ${extracted.text.length.toLocaleString()} characters from ${file.name} — review below, then Upload.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExtracting(false);
+      if (fileInputRef.current) fileInputRef.current.value = ""; // re-choosing the same file re-fires onChange
+    }
+  };
+
   const upload = async () => {
     setError(null); setNotice(null); setBusy("upload");
     try {
@@ -93,7 +116,7 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
         setNotice(result.flags.includes("likely_duplicate")
           ? "Uploaded — flagged as a likely duplicate of existing material."
           : "Uploaded. Walk it through the approval steps below.");
-        setTitle(""); setText("");
+        setTitle(""); setText(""); setPickedFile(null);
         setOpen(result.contentItemId);
         await refresh();
       }
@@ -153,6 +176,21 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
 
       <Card>
         <div className="card__head"><h2 className="section">Upload material</h2></div>
+        <Field
+          label="File"
+          hint="Choose a .pdf, .docx, .txt or .md — its text is extracted in your browser (the file itself never leaves your machine) and goes through the same scan/classify/attest/approve pipeline. Or paste text below instead."
+        >
+          <input
+            ref={fileInputRef}
+            className="input"
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            disabled={extracting}
+            onChange={(e) => void chooseFile(e.target.files?.[0] ?? null)}
+          />
+        </Field>
+        {extracting && <div className="muted">Extracting text…</div>}
+        {pickedFile && <div className="muted">From file: {pickedFile}</div>}
         <div className="row">
           <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
           <Field label="Type" hint={`Supported: ${FILE_TYPES.join(", ")}, media & images`}>

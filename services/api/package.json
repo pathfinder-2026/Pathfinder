@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "^0.116.0",
     "@aws-sdk/client-bedrock-runtime": "^3.716.0",
     "@aws-sdk/client-sesv2": "^3.1108.0",
+    "@fastify/cors": "^11.3.0",
     "drizzle-orm": "^0.36.4",
     "fastify": "^5.2.0",
     "postgres": "^3.4.5"

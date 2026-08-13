@@ -12,6 +12,12 @@ export class PgActivityStore implements ActivityStore {
       values (${r.id},${r.studentId},${r.schoolId},${r.nodeId},${r.level},${r.score},${r.dataPoints},${r.lastActivityAt},
         ${r.history && r.history.length ? this.sql.json(r.history) : null},${r.assistedScore ?? null},${r.synthetic})`;
   }
+  async updateMastery(r: MasteryRecord): Promise<void> {
+    await this.sql`update mastery_records set
+      level=${r.level}, score=${r.score}, data_points=${r.dataPoints}, last_activity_at=${r.lastActivityAt},
+      history=${r.history && r.history.length ? this.sql.json(r.history) : null}, assisted_score=${r.assistedScore ?? null}
+      where id=${r.id}`;
+  }
   async listMasteryBySchool(schoolId: string): Promise<MasteryRecord[]> {
     return (await this.sql`select * from mastery_records where school_id=${schoolId}`).map(mapMastery);
   }

@@ -96,6 +96,9 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "assessment.generate") {
       return { text: JSON.stringify(this.generateQuestion(request.input)) };
     }
+    if (request.purpose === "assessment.grade") {
+      return { text: JSON.stringify(this.gradeAnswers(request.input)) };
+    }
     if (request.purpose === "agent.generate") {
       return { text: this.agentDraft(request.input) };
     }
@@ -208,6 +211,38 @@ export class LocalClassifierProvider implements AiProvider {
       return { prompt: `A student encounters "${topic}" in a real context — what should they do?${v}`, options: null, modelAnswer: `Apply ${topic} to the scenario.`, rubric: null };
     }
     return { prompt: `Briefly describe "${topic}".${v}`, options: null, modelAnswer: `A short answer about ${topic}.`, rubric: null };
+  }
+
+  /**
+   * Deterministically grade each answered question by word-overlap between the
+   * student's answer and its modelAnswer/rubric — a stand-in for the model in
+   * dev/tests. Real grading (production) goes through AnthropicProvider using
+   * the same "assessment.grade" contract (remotePrompt.ts).
+   */
+  private gradeAnswers(input: unknown): {
+    results: { questionId: string; score: number; correct: boolean }[];
+    overallScore: number;
+  } {
+    const f = (input ?? {}) as {
+      questions?: { questionId: string; modelAnswer?: string | null; rubric?: string | null; studentAnswer?: string }[];
+    };
+    const questions = f.questions ?? [];
+    const results = questions.map((q) => {
+      const student = (q.studentAnswer ?? "").trim().toLowerCase();
+      if (!student) return { questionId: q.questionId, score: 0, correct: false };
+      const target = `${q.modelAnswer ?? ""} ${q.rubric ?? ""}`.trim().toLowerCase();
+      const targetWords = new Set(target.split(/\W+/).filter((w) => w.length > 3));
+      if (targetWords.size === 0) {
+        const score = student === target ? 1 : 0.5;
+        return { questionId: q.questionId, score, correct: score >= 0.67 };
+      }
+      const studentWords = new Set(student.split(/\W+/).filter((w) => w.length > 3));
+      const overlap = [...targetWords].filter((w) => studentWords.has(w)).length;
+      const score = Math.min(1, overlap / targetWords.size);
+      return { questionId: q.questionId, score, correct: score >= 0.67 };
+    });
+    const overallScore = results.length === 0 ? 0 : results.reduce((sum, r) => sum + r.score, 0) / results.length;
+    return { results, overallScore };
   }
 
   private classify(input: unknown): {

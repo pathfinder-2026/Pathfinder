@@ -74,6 +74,7 @@ describe("M5a FR-ADP-001/002 — adaptive engine", () => {
       id: newId(), assessmentId: assessment.id, studentId: withAttempt, status: "in_progress",
       savedAnswers: {}, lastSavedAt: ctx.clock.isoNow(), interrupted: false,
       resumeDeadline: ctx.clock.isoNow(), createdAt: ctx.clock.isoNow(),
+      gradedScore: null, gradedResults: null, gradedAt: null,
     };
     await ctx.assessmentStore.insertAttempt(attempt);
 

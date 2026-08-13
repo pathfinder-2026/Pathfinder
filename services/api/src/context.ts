@@ -244,7 +244,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     knowledge: new KnowledgeService(contentStore, audit),
     skillGraph,
     mapping: new MappingService(skillGraphStore, contentStore, contentService, clock, audit),
-    assessment: new AssessmentService(assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit),
+    assessment: new AssessmentService(assessmentStore, contentService, contentStore, skillGraphStore, ai, clock, audit, activityStore),
     synthetic: new SyntheticService(store, activityStore, skillGraphStore, clock, audit),
     dashboard: new TeacherDashboardService(activityStore, dashboardStore, skillGraphStore, contentService, store, clock, audit),
     cohorts: new CohortService(activityStore, dashboardStore, store, clock, audit),

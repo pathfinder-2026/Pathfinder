@@ -106,6 +106,13 @@ export interface AssessmentRequest {
 
 export type AttemptStatus = "in_progress" | "submitted";
 
+/** One question's grading outcome from AssessmentService.gradeAndRecordMastery. */
+export interface AttemptGradingResult {
+  questionId: string;
+  score: number; // 0..1
+  correct: boolean;
+}
+
 export interface AssessmentAttempt {
   id: string;
   assessmentId: string;
@@ -119,4 +126,14 @@ export interface AssessmentAttempt {
   /** Latest time the student may resume after an interruption. */
   resumeDeadline: string;
   createdAt: string;
+  /**
+   * Grading against each answered question's model answer/rubric, computed on
+   * submit via the AI service layer (never a hand-rolled guess) and readable by
+   * the Teacher at any time (teacherApi assessment-attempts listing) — never
+   * surfaced to the student, matching the existing model-answer/rubric
+   * non-disclosure rule. Null when nothing was submitted to grade.
+   */
+  gradedScore: number | null;
+  gradedResults: AttemptGradingResult[] | null;
+  gradedAt: string | null;
 }

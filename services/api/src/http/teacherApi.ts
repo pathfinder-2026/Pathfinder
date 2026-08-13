@@ -329,6 +329,35 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     });
   });
 
+  /**
+   * Every student attempt, WITH grading — reviewable by the teacher at any
+   * time (never sent to the student; matches the existing model-answer/rubric
+   * non-disclosure rule). Grading runs automatically on submit (TCH-19b: real
+   * mastery data from real submissions, not just synthetic test seed data).
+   */
+  app.get("/api/v1/schools/:schoolId/assessments/:id/attempts", async (req, reply) => {
+    const { schoolId, id } = req.params as { schoolId: string; id: string };
+    await requireTeacherOf(req, schoolId);
+    await requireAssessmentIn(schoolId, id);
+    const attempts = await ctx.assessment.listAttempts(id);
+    const rows = await Promise.all(
+      attempts.map(async (a) => {
+        const pii = await ctx.store.getPersonalData(a.studentId);
+        return {
+          id: a.id,
+          studentId: a.studentId,
+          studentLabel: pii ? `${pii.firstName} ${pii.lastName}` : a.studentId,
+          status: a.status,
+          interrupted: a.interrupted,
+          gradedScore: a.gradedScore,
+          gradedResults: a.gradedResults,
+          gradedAt: a.gradedAt,
+        };
+      }),
+    );
+    return reply.send(rows);
+  });
+
   app.post("/api/v1/schools/:schoolId/assessments/:id/acknowledge-review", async (req, reply) => {
     const { schoolId, id } = req.params as { schoolId: string; id: string };
     const auth = await requireTeacherOf(req, schoolId);

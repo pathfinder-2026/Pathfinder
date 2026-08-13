@@ -72,6 +72,7 @@ export interface Account {
   userId: string;
   role: string;
   campusId: string | null;
+  classId: string | null;
   firstName: string | null;
   lastName: string | null;
   email: string | null;
@@ -168,8 +169,8 @@ export const api = {
     ),
   campuses: (s: Session) => request<{ id: string; name: string }[]>("GET", `/api/v1/schools/${s.schoolId}/campuses`, undefined, s.token),
   accounts: (s: Session) => request<Account[]>("GET", `/api/v1/schools/${s.schoolId}/accounts`, undefined, s.token),
-  changeRole: (s: Session, membershipId: string, role: string, campusId?: string | null) =>
-    request<{ role: string }>("PATCH", `/api/v1/schools/${s.schoolId}/memberships/${membershipId}/role`, { role, campusId }, s.token),
+  changeRole: (s: Session, membershipId: string, role: string, campusId?: string | null, classId?: string | null) =>
+    request<{ role: string }>("PATCH", `/api/v1/schools/${s.schoolId}/memberships/${membershipId}/role`, { role, campusId, classId }, s.token),
   updateName: (s: Session, userId: string, firstName: string, lastName: string) =>
     request<{ ok: boolean }>("PATCH", `/api/v1/schools/${s.schoolId}/users/${userId}/name`, { firstName, lastName }, s.token),
   importUsers: (s: Session, csv: string) =>
@@ -424,6 +425,8 @@ export const api = {
     ),
   notifications: (s: Session) =>
     request<{ id: string; type: string; subject: string; body: string; at: string }[]>("GET", "/api/v1/notifications", undefined, s.token),
+  handoverClass: (s: Session, fromTeacherId: string, toTeacherId: string) =>
+    request<{ classId: string | null; tasksTransferred: number; helpSessionsTransferred: number }>("POST", `/api/v1/schools/${s.schoolId}/handover`, { fromTeacherId, toTeacherId }, s.token),
 };
 
 export interface PrincipalTeacherReport {

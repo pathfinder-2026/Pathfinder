@@ -9,8 +9,8 @@ const TREND_GLYPH: Record<string, string> = { up: "↑", down: "↓", flat: "→
  * by colour alone: every cell carries its level as text, a trend glyph, and
  * intervention/extension markers; insufficient-data and stale cells say so.
  */
-export function TeacherDashboard({ session, displayName, onBack, onSignOut }: {
-  session: Session; displayName: string; onBack: () => void; onSignOut: () => void;
+export function TeacherDashboard({ session, displayName, onBack, onSignOut, onOpenInsights }: {
+  session: Session; displayName: string; onBack: () => void; onSignOut: () => void; onOpenInsights?: () => void;
 }) {
   const [classes, setClasses] = useState<{ id: string; name: string }[] | null>(null);
   const [classId, setClassId] = useState("");
@@ -53,6 +53,11 @@ export function TeacherDashboard({ session, displayName, onBack, onSignOut }: {
           </select>
         </Field>
         {classes && classes.length === 0 && <div className="muted">No classes yet — your administrator can add them under School structure.</div>}
+        {onOpenInsights && (
+          <div className="btn-row" style={{ marginTop: 10 }}>
+            <button className="linkish" onClick={onOpenInsights}>Open Class insights (focus areas · groups · next actions) →</button>
+          </div>
+        )}
       </Card>
 
       {loading ? <Card><div className="muted">Loading heatmap…</div></Card>

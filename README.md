@@ -117,6 +117,38 @@ docs             foundational-decisions, decisions (ADRs), traceability
 npm install
 ```
 
+## Run on a real PostgreSQL (e.g. Supabase)
+
+The API defaults to the in-memory store (state resets on restart). Point it at
+a real PostgreSQL and it runs on the same adapters the whole acceptance suite
+is verified against:
+
+1. **Residency (Foundational Decision 1):** the database MUST be in
+   ap-southeast-2 (Sydney). For Supabase, check Project Settings → General →
+   Region before anything else — a project in another region cannot be moved.
+2. In Supabase: **Connect → Session pooler** (or the direct connection) and
+   copy the connection string. Set it yourself (never commit it):
+
+   ```powershell
+   $env:PF_DATABASE_URL = "postgresql://…?sslmode=require"
+   ```
+
+3. Apply the schema (idempotent — records applied files in `schema_migrations`
+   and only runs what's new):
+
+   ```bash
+   npm run db:migrate --workspace services/api
+   ```
+
+4. Start the API in the same shell (`npm run dev:api`). The boot banner
+   confirms the backend: `storage: PostgreSQL @ <host>`. Seed a demo world
+   with `npm run demo` — on a real database it survives restarts.
+
+Notes: the Supabase↔GitHub integration does NOT apply this schema by itself
+(it manages a `supabase/` directory we don't use) — `db:migrate` is the
+mechanism. Audit + notifications remain in-memory in both modes for now
+(see Deferred).
+
 ## Verify (run the full regression suite)
 
 ```bash

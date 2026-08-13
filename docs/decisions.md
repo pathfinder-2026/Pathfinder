@@ -94,6 +94,37 @@ without real binaries, S3 or a live model:
   images (≤25 MB), links; documents ≤50 MB. `.zip`/unknown → unsupported.
 - **Near-duplicate** = token-set Jaccard ≥ 0.8; exact = identical content hash.
 
+## ADR-0033 — PII masking at the AI choke point (caller-declared, request-scoped)
+Student/teacher names are replaced with stable, readable pseudonyms ("Student A",
+"Teacher B") before ANY provider sees a request, and restored in the completion.
+Implemented as a pure module (`platform/ai/piiMasking.ts`) called from
+`AiServiceLayer.run()` — the one place every provider call already passes
+through, so no call site can bypass it.
+
+- **Caller-declared, not guessed.** The request contract gains
+  `piiValues?: { role, values[] }[]`: the calling service names the people it
+  KNOWS are referenced (one entry per person; `values` are name variants, the
+  first being the canonical form restored on unmask). This is honest about the
+  knowledge source — the layer never pretends to detect arbitrary names in free
+  text. `parent.summary` declares the child; `help.hint` declares the student
+  (task titles are teacher-authored and may name them). Names buried inside
+  uploaded material (`content.classify`) are a documented phase-2 limitation.
+- **Only when `containsStudentData: true`**; otherwise a structural no-op.
+- **Request-scoped mapping.** The token → name map lives only inside one
+  `run()` frame — never persisted, logged or audited. The audit records THAT
+  masking happened (`piiMasked` count on the existing `ai.call` entry) and,
+  post-hoc, `ai.mask.unresolved` when the model emits a pseudonym that was
+  never issued (the token labels carry no PII); the FR-GOV-002
+  audit-before-action ordering is preserved.
+- **Robust substitution.** Masking is word-bounded and exact-case ("Ada" never
+  touches "Adapt"; "Mark" the person never matches "mark" the verb), longest
+  variant first. Unmasking is case-insensitive (models drift casing) and the
+  trailing word boundary handles possessives ("Student A's" → "Sana's").
+  Hallucinated tokens are left verbatim and flagged, never guessed at.
+- The M8 rule that a parent summary contains the child's real name doubles as
+  the round-trip regression test; the deterministic provider and the whole
+  existing suite pass unchanged.
+
 ## ADR-0032 — Email delivery adapter behind the notification port (SES seam)
 No email transport existed: invites only ever reached the in-memory notification
 channel, so nothing was actually delivered (the admin UI's copyable invite links

@@ -70,6 +70,7 @@ import { CoCurricularService } from "./services/coCurricularService";
 import { ReportingService } from "./services/reportingService";
 import { GovernanceService } from "./services/governanceService";
 import { CsvImportService } from "./services/csvImportService";
+import { HandoverService } from "./services/handoverService";
 import { SsoService } from "./services/ssoService";
 import { BrandingService } from "./services/brandingService";
 
@@ -127,6 +128,7 @@ export interface AppContext {
   reporting: ReportingService;
   governance: GovernanceService;
   csvImport: CsvImportService;
+  handover: HandoverService;
   sso: SsoService;
   branding: BrandingService;
 }
@@ -260,6 +262,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     reporting: new ReportingService(reportingStore, activityStore, assessmentStore, agentStore, parentStore, store, skillGraphStore, clock, audit),
     governance: new GovernanceService(store, workspaceStore, reportingStore, activityStore, clock, audit),
     csvImport: new CsvImportService(store, accountService, clock, audit),
+    handover: new HandoverService(store, workspaceStore, clock, audit),
     sso: new SsoService(store, idp, clock, audit),
     branding: new BrandingService(brandingStore, store, scanner, clock, audit),
   };

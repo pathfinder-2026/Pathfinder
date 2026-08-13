@@ -16,23 +16,40 @@ export function People({ session, displayName, onBack, onSignOut }: {
   const [pending, setPending] = useState<Awaited<ReturnType<typeof api.listInvites>>>([]);
   const [links, setLinks] = useState<Awaited<ReturnType<typeof api.listParentLinks>>>([]);
   const [linkForm, setLinkForm] = useState({ parentId: "", studentId: "", relationship: "parent" });
+  const [handover, setHandover] = useState({ from: "", to: "" });
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ firstName: "", lastName: "" });
 
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+
   const load = useCallback(async () => {
-    const [a, c, inv, pl] = await Promise.all([api.accounts(session), api.campuses(session), api.listInvites(session), api.listParentLinks(session)]);
+    const [a, c, inv, pl, cls] = await Promise.all([
+      api.accounts(session), api.campuses(session), api.listInvites(session), api.listParentLinks(session), api.listClasses(session),
+    ]);
     setRows(a);
     setCampuses(c);
     setPending(inv.filter((i) => i.inviteToken));
     setLinks(pl);
+    setClasses(cls);
   }, [session]);
   useEffect(() => { void load(); }, [load]);
 
   const changeRole = async (r: Account, role: string) => {
     setError(null);
     try {
-      await api.changeRole(session, r.membershipId, role, role === "principal" ? r.campusId ?? campuses[0]?.id ?? null : r.campusId);
+      await api.changeRole(session, r.membershipId, role, role === "principal" ? r.campusId ?? campuses[0]?.id ?? null : r.campusId, r.classId);
+      await load();
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  /** Assign a teacher or student to a class (FR-ADM-002; the class dashboard,
+   *  adaptive escalations and year-group calendar all key off this). */
+  const changeClass = async (r: Account, classId: string) => {
+    setError(null);
+    try {
+      await api.changeRole(session, r.membershipId, r.role, r.campusId, classId || null);
       await load();
     } catch (e) { setError((e as Error).message); }
   };
@@ -57,6 +74,7 @@ export function People({ session, displayName, onBack, onSignOut }: {
           <h1 style={{ marginTop: 10 }}>People</h1>
           <p className="lede">Assign roles and edit names. Access updates immediately — no re-login needed.</p>
           {error && <Banner kind="error">{error}</Banner>}
+          {notice && <Banner kind="brand">{notice}</Banner>}
 
           <Card>
             <ul className="people">
@@ -80,6 +98,15 @@ export function People({ session, displayName, onBack, onSignOut }: {
                           {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
                         </select>
                       </label>
+                      {(r.role === "teacher" || r.role === "student") && (
+                        <label className="person__meta" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          Class
+                          <select className="select" style={{ width: "auto" }} value={r.classId ?? ""} onChange={(e) => changeClass(r, e.target.value)} aria-label={`Class for ${r.firstName ?? "person"}`}>
+                            <option value="">None</option>
+                            {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </label>
+                      )}
                       <Chip state={statusChip(r.status)}>{r.status === "active" ? "Active" : "Invited"}</Chip>
                       <button className="linkish" onClick={() => { setEditing(r.membershipId); setDraft({ firstName: r.firstName ?? "", lastName: r.lastName ?? "" }); }}>Edit name</button>
                     </>
@@ -87,7 +114,7 @@ export function People({ session, displayName, onBack, onSignOut }: {
                 </li>
               ))}
             </ul>
-            <p className="muted" style={{ marginTop: 14 }}>Changing someone to <strong>Principal</strong> assigns them to a campus. The school's only administrator can't be demoted until another admin exists.</p>
+            <p className="muted" style={{ marginTop: 14 }}>Teachers and students are assigned to a <strong>class</strong> here — the class dashboard, adaptive escalations and year-group calendars all key off it. Changing someone to <strong>Principal</strong> assigns them to a campus. The school's only administrator can't be demoted until another admin exists.</p>
           </Card>
 
           <Card>
@@ -131,6 +158,45 @@ export function People({ session, displayName, onBack, onSignOut }: {
                 ))}
               </ul>
             )}
+          </Card>
+
+          <Card>
+            <div className="card__head">
+              <h2 className="section">Absence cover — hand a class over</h2>
+              <p className="muted">
+                When a teacher is away, hand their class to a covering teacher. The covering teacher gets everything
+                through <strong>their own login</strong> — the class dashboards, the absent teacher's assigned tasks,
+                and the Ask-for-Help transcripts (which follow the tasks). Logins are never shared: every action stays
+                attributed to the person who took it. Reversible by handing back.
+              </p>
+            </div>
+            <div className="row">
+              <label className="field"><span className="field__label">Absent teacher</span>
+                <select className="select" value={handover.from} onChange={(e) => setHandover({ ...handover, from: e.target.value })}>
+                  <option value="">Choose…</option>
+                  {rows.filter((r) => r.role === "teacher").map((r) => (
+                    <option key={r.userId} value={r.userId}>{r.firstName} {r.lastName}{r.classId ? ` — ${classes.find((c) => c.id === r.classId)?.name ?? "class"}` : " (no class)"}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field"><span className="field__label">Covering teacher</span>
+                <select className="select" value={handover.to} onChange={(e) => setHandover({ ...handover, to: e.target.value })}>
+                  <option value="">Choose…</option>
+                  {rows.filter((r) => r.role === "teacher" && r.userId !== handover.from).map((r) => (
+                    <option key={r.userId} value={r.userId}>{r.firstName} {r.lastName}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <Button variant="primary" disabled={!handover.from || !handover.to} onClick={async () => {
+              setError(null); setNotice(null);
+              try {
+                const r = await api.handoverClass(session, handover.from, handover.to);
+                setNotice(`Handed over: ${r.classId ? "class reassigned, " : ""}${r.tasksTransferred} task(s) and ${r.helpSessionsTransferred} help transcript(s) now belong to the covering teacher.`);
+                setHandover({ from: "", to: "" });
+                await load();
+              } catch (e) { setError((e as Error).message); }
+            }}>Hand over</Button>
           </Card>
 
           {pending.length > 0 && (

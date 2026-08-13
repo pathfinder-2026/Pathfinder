@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillsResult, type UploadResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
 
-const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md"] as const;
+const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md", "link"] as const;
 
 function govChip(status: string): { state: GovState; label: string } {
   if (status === "approved" || status === "published") return { state: "approved", label: "Approved" };
@@ -138,16 +138,22 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
         <div className="card__head"><h2 className="section">Upload material</h2></div>
         <div className="row">
           <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-          <Field label="File type" hint={`Supported: ${FILE_TYPES.join(", ")}, media & images`}>
+          <Field label="Type" hint={`Supported: ${FILE_TYPES.join(", ")}, media & images`}>
             <select className="select" value={fileType} onChange={(e) => setFileType(e.target.value)}>
-              {FILE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {FILE_TYPES.map((t) => <option key={t} value={t}>{t === "link" ? "link (URL)" : t}</option>)}
               <option value="exe">exe (unsupported — try it)</option>
             </select>
           </Field>
         </div>
-        <Field label="Content" hint="Headings (lines starting with #) become groundable sections — more sections support more assessment questions.">
-          <textarea className="input" style={{ minHeight: 120, fontFamily: "monospace", fontSize: 13 }} value={text} onChange={(e) => setText(e.target.value)} />
-        </Field>
+        {fileType === "link" ? (
+          <Field label="URL" hint="The link goes through the same governance pipeline as a file: scan, classify, attest rights, approve.">
+            <input className="input" type="url" placeholder="https://…" value={text} onChange={(e) => setText(e.target.value)} />
+          </Field>
+        ) : (
+          <Field label="Content" hint="Headings (lines starting with #) become groundable sections — more sections support more assessment questions.">
+            <textarea className="input" style={{ minHeight: 120, fontFamily: "monospace", fontSize: 13 }} value={text} onChange={(e) => setText(e.target.value)} />
+          </Field>
+        )}
         <Button variant="primary" onClick={upload} disabled={busy === "upload" || !title.trim() || !text.trim()}>
           {busy === "upload" ? "Uploading…" : "Upload"}
         </Button>

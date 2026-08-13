@@ -51,6 +51,9 @@ export class PgWorkspaceStore implements WorkspaceStore {
     const rows = await this.sql`select * from help_sessions where id=${id}`;
     return rows[0] ? mapSession(rows[0]) : undefined;
   }
+  async updateHelpSession(s: HelpSession): Promise<void> {
+    await this.sql`update help_sessions set teacher_id=${s.teacherId} where id=${s.id}`;
+  }
   async findHelpSession(studentId: string, taskId: string): Promise<HelpSession | undefined> {
     const rows = await this.sql`select * from help_sessions where student_id=${studentId} and task_id=${taskId} limit 1`;
     return rows[0] ? mapSession(rows[0]) : undefined;

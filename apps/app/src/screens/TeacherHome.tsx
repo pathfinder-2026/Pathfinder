@@ -58,12 +58,20 @@ export function TeacherHome({ session, displayName, onNavigate, onSignOut }: {
           )}
 
           <Card>
-            <div className="card__head"><h2 className="section">At a glance</h2></div>
+            <div className="card__head"><h2 className="section">At a glance</h2><p className="muted">Every tile opens the tool behind it.</p></div>
             <div className="tiles">
-              <div className="tile"><div className="tile__num">{counts?.library ?? "—"}</div><div className="tile__label">Library items</div></div>
-              <div className="tile"><div className="tile__num">{counts?.approved ?? "—"}</div><div className="tile__label">Approved</div></div>
-              <div className="tile"><div className="tile__num">{counts?.drafts ?? "—"}</div><div className="tile__label">Assessment drafts</div></div>
-              <div className="tile"><div className="tile__num">{counts?.published ?? "—"}</div><div className="tile__label">Published</div></div>
+              {([
+                { num: counts?.library, label: "Library items", view: "teacher-content" },
+                { num: counts?.approved, label: "Approved", view: "teacher-content" },
+                { num: counts?.drafts, label: "Assessment drafts", view: "teacher-assessments" },
+                { num: counts?.published, label: "Published", view: "teacher-assessments" },
+              ] as { num: number | undefined; label: string; view: View }[]).map((t) => (
+                <button key={t.label} className="tile" style={{ textAlign: "left", cursor: "pointer", background: "var(--pf-card)" }}
+                  onClick={() => onNavigate(t.view)} aria-label={`${t.label} — open`}>
+                  <div className="tile__num">{t.num ?? "—"}</div>
+                  <div className="tile__label">{t.label}</div>
+                </button>
+              ))}
             </div>
           </Card>
 

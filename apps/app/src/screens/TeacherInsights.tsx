@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type AdaptivePanel, type CohortGroup, type FocusAreaRow, type NextActionResult, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
 
+/** Actions the adaptive engine hands to a human/other flow rather than an assessment. */
+const NOT_ASSESSABLE = new Set(["hint", "escalate"]);
+
 /**
  * TCH-7/8/9 — class intelligence: focus areas (FR-TDB-002), cohort suggestions
  * (FR-COH-001/002) and adaptive recommendations (FR-ADP-001/002). Everything on
@@ -23,6 +26,7 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tailoredBusy, setTailoredBusy] = useState(false);
 
   useEffect(() => {
     Promise.all([api.teacherClasses(session), api.skills(session)]).then(([cs, sk]) => {
@@ -61,9 +65,21 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
   };
 
   const runLookup = async () => {
-    setError(null); setNextAction(null);
+    setError(null); setNotice(null); setNextAction(null);
     try { setNextAction(await api.nextAction(session, classId, lookup.studentId, lookup.nodeId)); }
     catch (e) { setError((e as Error).message); }
+  };
+
+  /** TCH-19 — draft an assessment tailored to this student's own recommendation. */
+  const draftTailored = async () => {
+    if (!nextAction) return;
+    setError(null); setNotice(null); setTailoredBusy(true);
+    try {
+      const result = await api.generateTailoredAssessment(session, classId, lookup.studentId, lookup.nodeId);
+      if (result.status === "declined") setNotice(result.message);
+      else if (result.status === "failed") setError(result.reason);
+      else setNotice("Tailored draft created — review the rationale and questions in Assessments before publishing.");
+    } catch (e) { setError((e as Error).message); } finally { setTailoredBusy(false); }
   };
 
   const pct = (f: number) => `${Math.round(f * 100)}%`;
@@ -225,6 +241,17 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
               <Banner kind={nextAction.escalated ? "warn" : "brand"}>
                 <strong style={{ textTransform: "capitalize" }}>{nextAction.action}</strong> — {nextAction.reason}
               </Banner>
+              {NOT_ASSESSABLE.has(nextAction.action) ? (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  {nextAction.action === "hint" ? "Not an assessment — draft a hint via the Teacher Agent instead." : "Escalated — this needs a teaching decision, not another assessment."}
+                </p>
+              ) : (
+                <div style={{ marginTop: 8 }}>
+                  <Button variant="primary" onClick={draftTailored} disabled={tailoredBusy}>
+                    {tailoredBusy ? "Drafting…" : "Draft assessment tailored to this"}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </Card>

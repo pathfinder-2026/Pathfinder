@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type AgentSuggestionRow, type Session, type SkillsResult } from "../api";
+import { api, type AgentSuggestionRow, type Session, type SkillsResult, type SyllabusLookup } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+
+/** NESA's real curriculum site (verified) — the generic fallback when no
+ * syllabus is on file yet. Never a guessed subject/year-specific deep link;
+ * only the uploader's own pasted link (stored alongside the document) is
+ * ever shown once one exists. */
+const NESA_CURRICULUM_SITE = "https://curriculum.nsw.edu.au/";
 
 const KINDS = [
   { value: "unit_sequence", label: "Unit sequence" },
@@ -32,6 +38,13 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Draft-from-official-syllabus (ADR-0035)
+  const [syllabusSubject, setSyllabusSubject] = useState("");
+  const [syllabusYear, setSyllabusYear] = useState("");
+  const [syllabusLookup, setSyllabusLookup] = useState<SyllabusLookup | null>(null);
+  const [syllabusTopic, setSyllabusTopic] = useState("");
+  const [syllabusBusy, setSyllabusBusy] = useState(false);
+
   const load = useCallback(async () => {
     const [sug, sk, cs] = await Promise.all([api.listAgentSuggestions(session), api.skills(session), api.teacherClasses(session)]);
     setSuggestions(sug); setSkills(sk); setClasses(cs);
@@ -62,6 +75,28 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
     finally { setBusy(false); }
   };
 
+  const findSyllabus = async () => {
+    const yearLevel = Number(syllabusYear);
+    if (!syllabusSubject.trim() || !yearLevel) return;
+    setError(null); setSyllabusBusy(true); setSyllabusTopic("");
+    try { setSyllabusLookup(await api.getSyllabus(session, syllabusSubject.trim(), yearLevel)); }
+    catch (e) { setError((e as Error).message); }
+    finally { setSyllabusBusy(false); }
+  };
+
+  /** Draft straight from the chosen syllabus topic — reuses the same generate() flow below. */
+  const draftFromSyllabus = async () => {
+    if (!syllabusTopic) return;
+    setForm((f) => ({ ...f, kind: "lesson_plan", nodeId: syllabusTopic }));
+    setBusy(true); setError(null); setDeclined(null); setNotice(null);
+    try {
+      const result = await api.agentGenerate(session, { kind: "lesson_plan", nodeId: syllabusTopic });
+      if (result.status === "declined") setDeclined(result.message);
+      else { setNotice("Initial lesson drafted from the official syllabus — review it below before using it."); await load(); }
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
   const saveEdit = async () => {
     if (!editing) return;
     setError(null);
@@ -76,6 +111,54 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
       {error && <Banner kind="error">{error}</Banner>}
       {notice && <Banner kind="brand">{notice}</Banner>}
       {declined && <Banner kind="warn">{declined}</Banner>}
+
+      <Card>
+        <div className="card__head"><h2 className="section">Draft from the official syllabus</h2></div>
+        <div className="row">
+          <Field label="Subject" htmlFor="syl-subject"><input id="syl-subject" className="input" value={syllabusSubject} onChange={(e) => setSyllabusSubject(e.target.value)} placeholder="Mathematics" /></Field>
+          <Field label="Year level" htmlFor="syl-year"><input id="syl-year" className="input" type="number" min={1} max={12} value={syllabusYear} onChange={(e) => setSyllabusYear(e.target.value)} placeholder="8" /></Field>
+        </div>
+        <Button onClick={findSyllabus} disabled={syllabusBusy || !syllabusSubject.trim() || !syllabusYear}>
+          {syllabusBusy ? "Looking…" : "Find syllabus"}
+        </Button>
+
+        {syllabusLookup && !syllabusLookup.found && (
+          <Banner kind="warn">
+            No syllabus on file yet for {syllabusSubject} Year {syllabusYear}. Find the current one on{" "}
+            <a href={NESA_CURRICULUM_SITE} target="_blank" rel="noreferrer">NESA's curriculum site ↗</a>, download it, then upload it in{" "}
+            Content Studio and mark it as the official syllabus for this subject/year — after that, it's here for every teacher, not just you.
+          </Banner>
+        )}
+
+        {syllabusLookup?.found && (
+          <div style={{ marginTop: 10, border: "1px solid var(--pf-border)", borderRadius: 10, padding: 14 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <strong>{syllabusLookup.item.title}</strong>
+              <Chip state="approved">Official syllabus</Chip>
+              <span className="person__meta">on file as of {new Date(syllabusLookup.item.createdAt).toLocaleDateString()}</span>
+            </div>
+            <p className="person__meta" style={{ margin: "6px 0" }}>
+              <a href={syllabusLookup.item.officialSyllabus?.sourceUrl} target="_blank" rel="noreferrer">View latest on NESA ↗</a>
+              {" — check it's still current, and re-upload in Content Studio if NESA has since revised it."}
+            </p>
+            {syllabusLookup.topics.length === 0 ? (
+              <Banner kind="warn">This syllabus hasn't been mapped to any topics yet — map it in Content Studio before drafting from it.</Banner>
+            ) : (
+              <>
+                <Field label="Topic from this syllabus" htmlFor="syl-topic">
+                  <select id="syl-topic" className="select" value={syllabusTopic} onChange={(e) => setSyllabusTopic(e.target.value)}>
+                    <option value="">Choose…</option>
+                    {syllabusLookup.topics.map((t) => <option key={t.nodeId} value={t.nodeId}>{t.chain.join(" → ")}</option>)}
+                  </select>
+                </Field>
+                <Button variant="primary" onClick={draftFromSyllabus} disabled={busy || !syllabusTopic}>
+                  {busy ? "Drafting…" : "Draft initial lesson"}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card>
         <div className="card__head"><h2 className="section">Draft something</h2></div>

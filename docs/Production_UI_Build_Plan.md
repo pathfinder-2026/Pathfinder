@@ -432,6 +432,45 @@ These hold for **every** screen. A prompt that violates one is wrong.
   > `CoCurricularService`); (17) parent-comms **drafts** (never auto-sent); (18) a teacher
   > calendar. Add endpoints + tests. Suite green.
 
+### [TCH-19] Individually-tailored assessment generation — ⬜ — FR-ADP-001 + FR-ASM-001 (proposed)
+- **Build prompt:**
+  > Build individually-tailored assessment generation, bridging the existing adaptive
+  > recommendation engine and the existing Assessment Builder — today they don't talk to
+  > each other. Given a teacher-chosen `(studentId, nodeId)`, call
+  > `AdaptiveEngine.nextAction()` to get that student's actual recommended action
+  > (remediation / extension / revision / reassessment / hint) and its `reason`, then
+  > generate an assessment SCOPED to that recommendation: remediation/reassessment →
+  > lower/matching difficulty on the same node; extension → harder difficulty or the
+  > next node along a skill-graph edge; **hint is not an assessment** — decline honestly
+  > rather than generating one. Reuse `AssessmentService.generate()` under the hood — do
+  > not duplicate its grounding/decline logic. Add a nullable `targetStudentId` to
+  > `Assessment`/`AssessmentRequest` (existing class-wide assessments keep `null`,
+  > unchanged); when set, **only that student** can see or attempt it — extend the
+  > existing student-visibility check, don't bypass it.
+  >
+  > **Rationale, not just a label.** Every tailored draft carries a `tailoringRationale`
+  > string that plainly connects the two halves: *why the student needed this* (the
+  > adaptive engine's own `reason` — e.g. "independent work strong, assisted work weak")
+  > *and what that translated into* (e.g. "so this generates 5 medium-difficulty
+  > questions on the same node to confirm before progressing, rather than harder
+  > questions on the next node"). Don't just concatenate the adaptive reason and the
+  > generation params separately — state the connection between them in one coherent
+  > sentence or two, the same way `shortfall.reason` already explains itself on regular
+  > assessments. This rationale is the first thing the teacher sees on the review screen,
+  > before question content — it's what they're actually approving.
+  >
+  > **Governance stays identical to every other draft in this system**: created as a
+  > draft, the teacher reviews the rationale and content, acknowledges it via the
+  > existing `acknowledgeReview`/`publish` endpoints — nothing reaches the student until
+  > the teacher explicitly publishes it, exactly like class assessments today. Wrap with
+  > a new endpoint next to the existing `.../adaptive/next-action` route; add a "Generate
+  > tailored assessment" action on `TeacherInsights.tsx` next to where that recommendation
+  > already displays, and show the rationale prominently on the review card. Tests: the
+  > action→difficulty/node mapping, the rationale text actually reflects the chosen
+  > params (not a generic template), the hint-declines-honestly case, the
+  > student-visibility restriction (target student sees it, classmates don't, verified
+  > with a marker-based test), and the no-grounding decline. Suite green.
+
 ---
 
 ## 7. Student persona

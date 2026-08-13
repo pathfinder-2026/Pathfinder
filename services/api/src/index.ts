@@ -1,4 +1,5 @@
 import { buildApp } from "./http/app";
+import { AnthropicProvider } from "./adapters/anthropic/anthropicProvider";
 import { EmailChannel, SesTransport } from "./adapters/email/emailChannel";
 import { createSql } from "./adapters/postgres/pgClient";
 import { buildPgStores } from "./adapters/postgres/pgContext";
@@ -48,12 +49,27 @@ if (process.env.PF_EMAIL_FROM) {
   );
 }
 
+// AI provider defaults to the local deterministic provider (no network egress).
+// The direct Claude API is OPT-IN via TWO independent env vars — an API key
+// alone is not enough, because AnthropicProvider has no AU-region guarantee
+// (ADR-0034) and its constructor itself refuses without the second flag:
+//   ANTHROPIC_API_KEY                credentials for the Claude API
+//   PF_AI_ACCEPT_NON_AU_RESIDENCY    "true" — explicit operator acknowledgment
+//                                    that this provider does not meet the
+//                                    AU-residency guarantee normally required
+//   PF_ANTHROPIC_MODEL               model override (default claude-opus-5)
+let aiBackend = "local deterministic (no network egress)";
+if (process.env.ANTHROPIC_API_KEY) {
+  options.aiProvider = new AnthropicProvider();
+  aiBackend = `Anthropic API (${options.aiProvider.describe().provider}) — NON-AU residency, ADR-0034`;
+}
+
 const app = buildApp({ ...options, extraChannels });
 app
   .listen({ port, host })
   .then((address) => {
     // eslint-disable-next-line no-console
-    console.log(`Pathfinder API listening on ${address} — storage: ${backend}`);
+    console.log(`Pathfinder API listening on ${address} — storage: ${backend} — ai: ${aiBackend}`);
   })
   .catch((error) => {
     // eslint-disable-next-line no-console

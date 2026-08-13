@@ -16,6 +16,7 @@
     "db:migrate": "node --import tsx src/adapters/postgres/migrate.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@aws-sdk/client-bedrock-runtime": "^3.716.0",
     "@aws-sdk/client-sesv2": "^3.1108.0",
     "drizzle-orm": "^0.36.4",

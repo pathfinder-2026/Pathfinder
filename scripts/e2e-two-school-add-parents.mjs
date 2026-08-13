@@ -44,14 +44,22 @@ async function addParentsForSchool(def) {
   pos(P("PA1"), `All ${parents.length} parents accept invites and hold sessions`,
     parents.every((p) => !!parentSessions[p.email]));
 
+  // Idempotency guard: the link-create endpoint has no dedupe of its own, so on a
+  // re-run (e.g. after a partial failure) skip pairs that already have a link and
+  // just (re-)verify it — cheap and safe — instead of creating a duplicate row.
+  const existingLinks = (await GET(`${S}/parent-links`, { token: adminTok })).body ?? [];
+  const existingByLabel = new Map(existingLinks.map((l) => [`${l.parentLabel}|${l.childLabel}`, l]));
+
   let linkedCount = 0;
-  const linkIdByParentEmail = {};
   for (const p of parents) {
     const parentUserId = parentSessions[p.email].userId;
     const studentUserId = rowOf(p.forStudent.email).userId;
-    const link = await POST(`${S}/parent-links`, { token: adminTok, body: { parentId: parentUserId, studentId: studentUserId, relationship: p.relationship } });
-    await POST(`${S}/parent-links/${link.body.id}/verify`, { token: adminTok });
-    linkIdByParentEmail[p.email] = link.body.id;
+    const label = `${p.firstName} ${p.lastName}|${p.forStudent.firstName} ${p.forStudent.lastName}`;
+    const already = existingByLabel.get(label);
+    const linkId = already
+      ? already.id
+      : (await POST(`${S}/parent-links`, { token: adminTok, body: { parentId: parentUserId, studentId: studentUserId, relationship: p.relationship } })).body.id;
+    await POST(`${S}/parent-links/${linkId}/verify`, { token: adminTok });
     linkedCount++;
   }
   pos(P("PA2"), `Admin links + verifies all ${linkedCount} parent-child relationships`, linkedCount === parents.length);
@@ -67,10 +75,12 @@ async function addParentsForSchool(def) {
   };
   const extraSession = await inviteMany(S, adminTok, "parent", [extraParent]);
   const extra = extraSession[extraParent.email];
-  const extraLink = await POST(`${S}/parent-links`, { token: adminTok, body: { parentId: extra.userId, studentId: rowOf(richStudent.email).userId, relationship: extraParent.relationship } });
+  const extraLabel = `${extraParent.firstName} ${extraParent.lastName}|${richStudent.firstName} ${richStudent.lastName}`;
+  if (!existingByLabel.has(extraLabel)) {
+    await POST(`${S}/parent-links`, { token: adminTok, body: { parentId: extra.userId, studentId: rowOf(richStudent.email).userId, relationship: extraParent.relationship } });
+  } // deliberately never verified — this is the negative test case
   const unverifiedDash = await GET(`${S}/parent/children/${rowOf(richStudent.email).userId}/dashboard`, { token: extra.token });
   neg(P("PA3"), "An UNVERIFIED parent link yields no data (hard 401)", unverifiedDash.status === 401);
-  void extraLink;
 
   // ---- verified-parent positive path, using richStudent's REGULAR (verified) parent ----
   const primaryParentEmail = parents[0].email; // paired 1:1 with students[0] = richStudent

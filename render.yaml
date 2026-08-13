@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: pathfinder-api
+    runtime: node
+    plan: free
+    # Singapore is the closest Render region to ap-southeast-2 (Render has no
+    # literal Australia region). Foundational Decision 1 pins AI-provider and
+    # database residency to ap-southeast-2 — this only concerns where the API
+    # *process* runs, not where the AI calls or Postgres data live, but it's a
+    # known gap worth being aware of, not silently ignored.
+    region: singapore
+    # Root stays at the repo root (not services/api) because the API reads
+    # files outside its own folder at runtime (e.g. db/seeds/*.json via a
+    # relative path in adminApi.ts) — the whole monorepo needs to be present
+    # and commands need to run from a context where those paths resolve.
+    buildCommand: npm install
+    startCommand: npm run start --workspace services/api
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PF_DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PF_AI_ACCEPT_NON_AU_RESIDENCY
+        value: "true"
+      - key: PF_ANTHROPIC_MODEL
+        sync: false

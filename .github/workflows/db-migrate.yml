@@ -1,0 +1,37 @@
+name: Database Migration
+
+# Applies db/migrations/*.sql to the target PostgreSQL database via the
+# project's own idempotent runner (services/api/src/adapters/postgres/migrate.ts).
+# NOT the Supabase CLI migration system — this repo doesn't use that.
+#
+# One-time setup (do this in the GitHub UI, not via chat/commits):
+#   Repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+#   Name: PF_DATABASE_URL
+#   Value: the Supabase Session pooler connection string, e.g.
+#     postgresql://postgres.<project-ref>:<password>@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require
+#
+# Runs automatically only when migration files change on main. Can also be
+# triggered manually any time from the Actions tab (Run workflow).
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "db/migrations/**"
+      - "services/api/src/adapters/postgres/migrate.ts"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - run: npm run db:migrate --workspace services/api
+        env:
+          PF_DATABASE_URL: ${{ secrets.PF_DATABASE_URL }}

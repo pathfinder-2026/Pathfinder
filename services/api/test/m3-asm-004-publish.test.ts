@@ -51,6 +51,23 @@ describe("FR-ASM-004 draft-until-publish", () => {
     expect(pub.status).toBe("published");
   });
 
+  it("edge — a zero-question assessment (legacy shortfall rows) can never be published", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    // Simulate a pre-existing empty assessment (created before upfront declines).
+    const empty = {
+      id: "empty-1", schoolId, teacherId, title: "Empty", status: "draft" as const,
+      generationStatus: "generated" as const, publishedAt: null, scheduledStart: null,
+      reviewAcknowledged: false, shortfall: { requested: 3, generated: 0, reason: "no approved content" },
+      flags: [], createdAt: ctx.clock.isoNow(),
+      request: { title: "Empty", nodeId: NODE, count: 3, difficulty: "mixed" as const },
+    };
+    await ctx.assessmentStore.insertAssessment(empty);
+
+    // Even a review-acknowledged empty assessment is refused.
+    await ctx.assessment.acknowledgeReview("empty-1", teacherId);
+    await expect(ctx.assessment.publish("empty-1", teacherId)).rejects.toThrow(/no questions/i);
+  });
+
   it("edge (NEW v1.4) — direct-link access to an unpublished assessment is denied at the permission layer and logged", async () => {
     const { ctx, schoolId, teacherId } = await setup();
     const id = await generatedAssessment(ctx, schoolId, teacherId);

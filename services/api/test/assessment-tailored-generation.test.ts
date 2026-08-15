@@ -159,11 +159,10 @@ describe("AssessmentService.generateTailored", () => {
     const result = await ctx.assessment.generateTailored(schoolId, teacherId, {
       studentId, nodeId: unmappedNode, action: action.action, reason: action.reason,
     });
-    // Same honest behaviour as generate() itself: still "generated", but with
-    // zero questions and a shortfall explaining why — never a crash, never invented.
-    expect(result.status).toBe("generated");
-    if (result.status !== "generated") throw new Error("expected generated");
-    expect(result.questionCount).toBe(0);
-    expect(result.shortfall?.reason).toMatch(/no approved content/i);
+    // Same honest behaviour as generate() itself: an upfront decline with a fix
+    // path — no empty draft saved, never a crash, never invented.
+    expect(result.status).toBe("declined");
+    if (result.status !== "declined") throw new Error("expected declined");
+    expect(result.message).toMatch(/mapped to this skill/i);
   });
 });

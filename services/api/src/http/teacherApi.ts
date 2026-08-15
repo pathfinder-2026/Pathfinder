@@ -241,6 +241,18 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   });
 
   // ---- Assessment Builder + review/publish (TCH-4/5) ----
+
+  /**
+   * Per-skill grounding capacity (questions each node can support right now) —
+   * drives the content-aware skill picker so teachers can't request what the
+   * approved pool can't deliver.
+   */
+  app.get("/api/v1/schools/:schoolId/assessment-capacity", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireTeacherOf(req, schoolId);
+    return reply.send(await ctx.assessment.groundingCapacity(schoolId));
+  });
+
   app.get("/api/v1/schools/:schoolId/assessments", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };
     const auth = await requireTeacherOf(req, schoolId);

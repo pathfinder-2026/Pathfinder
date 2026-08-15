@@ -246,6 +246,19 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     expect(body.status).toBe("generated");
     expect(body.questionCount).toBeLessThan(10);
     expect(body.shortfall).toMatchObject({ requested: 10 });
+
+    // The capacity endpoint tells the picker exactly what each skill can ground.
+    const cap = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/assessment-capacity`, headers: teacher.auth })).json();
+    expect(cap[NODE]).toBe(2);
+
+    // A skill with no grounded material declines upfront — no empty draft saved.
+    const declined = await app.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/assessments/generate`, headers: teacher.auth,
+      payload: { title: "Nothing here", nodeId: "sub-common-denominator", count: 3, difficulty: "mixed" },
+    });
+    expect(declined.json()).toMatchObject({ status: "declined" });
+    const list = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/assessments`, headers: teacher.auth })).json();
+    expect(list.map((r: { title: string }) => r.title)).not.toContain("Nothing here");
     await app.close();
   });
 

@@ -57,7 +57,7 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     expect(a?.status).toBe("draft"); // stays draft (FR-ASM-004)
   });
 
-  it("edge — unapproved content referenced: the generator excludes it and notifies why", async () => {
+  it("edge — unapproved content referenced: declines upfront with a fix path, saves nothing", async () => {
     const { ctx, schoolId, teacherId } = await setup();
     // Content exists but is only a pending upload (never approved/mapped).
     const up = await ctx.content.uploadOne(schoolId, teacherId, {
@@ -69,10 +69,40 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     const res = await ctx.assessment.generate(schoolId, teacherId, {
       title: "Quiz", nodeId: NODE, count: 5, difficulty: "mixed",
     });
-    expect(res.status).toBe("generated");
-    if (res.status !== "generated") throw new Error("unreachable");
-    expect(res.questionCount).toBe(0);
-    expect(res.flags).toContain("excluded_unapproved_content");
+    // No empty draft is created — the teacher gets an actionable refusal instead.
+    expect(res.status).toBe("declined");
+    if (res.status !== "declined") throw new Error("unreachable");
+    expect(res.message).toMatch(/awaiting approval/i);
+    expect(await ctx.assessmentStore.listAssessmentsByTeacher(teacherId)).toHaveLength(0);
+    expect(ctx.audit.find((e) => e.action === "assessment.generation.declined")).toHaveLength(1);
+  });
+
+  it("edge — approved material later reverted to draft: the decline NAMES the content to fix", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    const contentItemId = await makeMappedContent(ctx, schoolId, teacherId, NODE, { sections: 2 });
+    // A re-upload/edit resets governance to draft; the mapping survives.
+    const item = (await ctx.contentStore.getContentItem(contentItemId))!;
+    await ctx.contentStore.updateContentItem({
+      ...item,
+      governance: { status: "draft", approvedBy: null, approvedAt: null, publishedAt: null },
+    });
+
+    const res = await ctx.assessment.generate(schoolId, teacherId, {
+      title: "Quiz", nodeId: NODE, count: 2, difficulty: "mixed",
+    });
+    expect(res.status).toBe("declined");
+    if (res.status !== "declined") throw new Error("unreachable");
+    expect(res.message).toContain(item.title);
+    expect(res.pendingContent).toHaveLength(1);
+    expect(res.pendingContent[0]).toMatchObject({ id: contentItemId, status: "draft" });
+  });
+
+  it("grounding capacity reports per-node question capacity for the picker", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    await makeMappedContent(ctx, schoolId, teacherId, NODE, { sections: 3 });
+    const capacity = await ctx.assessment.groundingCapacity(schoolId);
+    expect(capacity[NODE]).toBe(3);
+    expect(capacity["sub-common-denominator"]).toBeUndefined();
   });
 
   it("edge (NEW v1.4) — generation fails mid-run: clear failed state, no partial draft, audit-logged", async () => {

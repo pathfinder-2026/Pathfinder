@@ -114,7 +114,7 @@ export function App() {
   const backToTeacher = () => setView("teacher-home");
   if (view === "teacher-home") return <TeacherHome session={session} displayName={displayName} onNavigate={setView} onSignOut={onSignOut} />;
   if (view === "teacher-content") return <TeacherContent session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
-  if (view === "teacher-assessments") return <TeacherAssessments session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+  if (view === "teacher-assessments") return <TeacherAssessments session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} onOpenContent={() => setView("teacher-content")} />;
   if (view === "teacher-dashboard") return <TeacherDashboard session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} onOpenInsights={() => setView("teacher-insights")} />;
   if (view === "teacher-insights") return <TeacherInsights session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} onOpenContent={() => setView("teacher-content")} />;
   if (view === "teacher-peer") return <TeacherPeer session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;

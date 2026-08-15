@@ -155,6 +155,7 @@ export interface AssessmentDetail {
 
 export type GenerateResult =
   | { status: "generated"; assessmentId: string; questionCount: number; shortfall: AssessmentRow["shortfall"]; flags: string[] }
+  | { status: "declined"; message: string; pendingContent: { id: string; title: string; status: string }[] }
   | { status: "failed"; reason: string };
 
 /** TCH-19 — generateTailored can also decline (hint/escalate aren't assessments). */
@@ -262,6 +263,7 @@ export const api = {
 
   // ---- Teacher: Assessment Builder + publish (TCH-4/5) ----
   listAssessments: (s: Session) => request<AssessmentRow[]>("GET", `/api/v1/schools/${s.schoolId}/assessments`, undefined, s.token),
+  assessmentCapacity: (s: Session) => request<Record<string, number>>("GET", `/api/v1/schools/${s.schoolId}/assessment-capacity`, undefined, s.token),
   generateAssessment: (s: Session, body: { title: string; nodeId: string; count: number; difficulty: string }) =>
     request<GenerateResult>("POST", `/api/v1/schools/${s.schoolId}/assessments/generate`, body, s.token),
   getAssessment: (s: Session, id: string) => request<AssessmentDetail>("GET", `/api/v1/schools/${s.schoolId}/assessments/${id}`, undefined, s.token),

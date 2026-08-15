@@ -26,6 +26,7 @@ const RESUME_WINDOW_MS = 30 * 60 * 1000;
 
 export type GenerateResult =
   | { status: "generated"; assessmentId: string; questionCount: number; shortfall: GenerationShortfall | null; flags: string[] }
+  | { status: "declined"; message: string; pendingContent: { id: string; title: string; status: string }[] }
   | { status: "failed"; reason: string };
 
 interface GroundingUnit {
@@ -56,14 +57,13 @@ export class AssessmentService {
   async generate(schoolId: string, teacherId: string, request: AssessmentRequest): Promise<GenerateResult> {
     const grounding = await this.collectGrounding(schoolId, request.nodeId);
 
-    // Distinguish "no approved content" from "referenced content not approved".
-    const flags: string[] = [];
+    // Nothing can ground this node: decline upfront with an actionable fix path
+    // instead of saving a permanent zero-question draft.
     if (grounding.length === 0) {
-      const anyPending = (await this.contentStore.listContentItemsBySchool(schoolId)).some(
-        (i) => i.governance.status !== "approved" && i.governance.status !== "published",
-      );
-      if (anyPending) flags.push("excluded_unapproved_content");
+      return this.declineUngrounded(schoolId, teacherId, request);
     }
+
+    const flags: string[] = [];
 
     // Plan the question types.
     const requested = request.typeMix
@@ -88,7 +88,7 @@ export class AssessmentService {
     const toGenerate = Math.min(plannedTypes.length, grounding.length);
     const shortfall: GenerationShortfall | null =
       toGenerate < requested
-        ? { requested, generated: toGenerate, reason: grounding.length === 0 ? (flags.includes("excluded_unapproved_content") ? "referenced content is not approved" : "no approved content on this topic") : "insufficient approved content" }
+        ? { requested, generated: toGenerate, reason: "insufficient approved content" }
         : null;
 
     const versionCount = Math.max(1, Math.min(request.versions ?? 1, VERSION_LABELS.length));
@@ -235,6 +235,11 @@ export class AssessmentService {
   async publish(assessmentId: string, teacherId: string): Promise<Assessment> {
     const a = await this.require(assessmentId);
     if (a.generationStatus !== "generated") throw new ConflictError("NOT_GENERATED", "Assessment did not generate successfully.");
+    // The review gates below pass vacuously on zero questions — an empty
+    // assessment must never reach students.
+    if ((await this.store.listQuestionsByAssessment(assessmentId)).length === 0) {
+      throw new ConflictError("EMPTY_ASSESSMENT", "This assessment has no questions, so it can't be published to students.");
+    }
     if (!a.reviewAcknowledged) {
       throw new ConflictError("REVIEW_REQUIRED", "Review the generated questions before publishing.");
     }
@@ -483,6 +488,63 @@ export class AssessmentService {
       synthetic: false,
     };
     await this.activity.insertMastery(record);
+  }
+
+  /**
+   * The honest, actionable refusal when a node has zero grounded material:
+   * names any content covering the node that is awaiting (re-)approval so the
+   * teacher knows exactly what to fix in Content Studio. Nothing is persisted.
+   */
+  private async declineUngrounded(
+    schoolId: string,
+    teacherId: string,
+    request: AssessmentRequest,
+  ): Promise<GenerateResult> {
+    const items = (await this.contentStore.listContentItemsBySchool(schoolId)).filter((i) => !i.archived);
+    const unapproved = items.filter(
+      (i) => i.governance.status !== "approved" && i.governance.status !== "published",
+    );
+    const pendingContent: { id: string; title: string; status: string }[] = [];
+    for (const item of unapproved) {
+      const mappings = await this.graph.listMappingsByContent(item.id);
+      if (mappings.some((m) => m.nodeId === request.nodeId)) {
+        pendingContent.push({ id: item.id, title: item.title, status: item.governance.status });
+      }
+    }
+
+    const message =
+      pendingContent.length > 0
+        ? `Can't generate yet — ${pendingContent.map((p) => `“${p.title}”`).join(", ")} cover${pendingContent.length === 1 ? "s" : ""} this skill but ${pendingContent.length === 1 ? "isn't" : "aren't"} approved. Complete the approval steps in Content Studio, then generate again.`
+        : unapproved.length > 0
+          ? "Can't generate yet — no approved material is mapped to this skill. You have material awaiting approval in Content Studio; approve it and map it to this skill first."
+          : "Can't generate yet — no material is mapped to this skill. Upload material in Content Studio, approve it, and map it to this skill first.";
+
+    this.audit.append({
+      action: "assessment.generation.declined",
+      actorId: teacherId,
+      subjectType: "skill_node",
+      subjectId: request.nodeId,
+      metadata: { pendingContentIds: pendingContent.map((p) => p.id) },
+    });
+    return { status: "declined", message, pendingContent };
+  }
+
+  /**
+   * How many questions each skill node can ground right now (one per approved,
+   * mapped section) — lets the UI disable empty skills and show capacity
+   * BEFORE the teacher fills in the generate form.
+   */
+  async groundingCapacity(schoolId: string): Promise<Record<string, number>> {
+    const capacity: Record<string, number> = {};
+    for (const item of await this.content.approvedPool(schoolId)) {
+      const mappings = await this.graph.listMappingsByContent(item.id);
+      if (mappings.length === 0) continue;
+      const sections = (await this.contentStore.listChunksByVersion(item.currentVersionId)).length;
+      for (const nodeId of new Set(mappings.map((m) => m.nodeId))) {
+        capacity[nodeId] = (capacity[nodeId] ?? 0) + sections;
+      }
+    }
+    return capacity;
   }
 
   private async collectGrounding(schoolId: string, nodeId: string): Promise<GroundingUnit[]> {

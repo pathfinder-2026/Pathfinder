@@ -72,6 +72,17 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     return reply.send(await ctx.onboarding.getUserOnboarding(auth.user.id));
   });
 
+  app.post("/api/v1/onboarding/me/steps/:step/complete", async (req, reply) => {
+    const auth = await requireUser(req);
+    const { step } = req.params as { step: string };
+    return reply.send(await ctx.onboarding.completeUserStep(auth.user.id, step));
+  });
+
+  app.post("/api/v1/onboarding/me/enter", async (req, reply) => {
+    const auth = await requireUser(req);
+    return reply.send(await ctx.onboarding.enterUserWorkspace(auth.user.id));
+  });
+
   // ---- Sign in an existing user; resolve their school context ----
   app.post("/api/v1/auth/login", async (req, reply) => {
     const { email, password } = req.body as { email: string; password: string };

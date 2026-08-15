@@ -215,8 +215,30 @@ describe("Production Admin API — onboarding over HTTP", () => {
     expect(accepted.json().roles).toContain("teacher");
 
     const ob = await a.inject({ method: "GET", url: "/api/v1/onboarding/me", headers: teacherAuth });
-    expect(ob.json()).toMatchObject({ state: "ready", roles: ["teacher"] });
+    expect(ob.json()).toMatchObject({ state: "ready", roles: ["teacher"], completedSteps: [], entered: false });
     expect(ob.json().steps).toContain("review-classes");
+
+    // Entering is blocked until every step is ticked off.
+    const early = await a.inject({ method: "POST", url: "/api/v1/onboarding/me/enter", headers: teacherAuth });
+    expect(early.json()).toMatchObject({ ok: false, blocked: true, redirectTo: "profile" });
+
+    // Steps persist server-side, so the checklist survives a new session (FR-ONB-001).
+    for (const step of ob.json().steps as string[]) {
+      const done = await a.inject({ method: "POST", url: `/api/v1/onboarding/me/steps/${step}/complete`, headers: teacherAuth });
+      expect(done.statusCode).toBe(200);
+    }
+    const unknown = await a.inject({ method: "POST", url: "/api/v1/onboarding/me/steps/not-a-step/complete", headers: teacherAuth });
+    expect(unknown.statusCode).toBe(400);
+
+    const entered = await a.inject({ method: "POST", url: "/api/v1/onboarding/me/enter", headers: teacherAuth });
+    expect(entered.json()).toMatchObject({ ok: true, entered: true });
+
+    // A fresh login sees the completed state — no checklist replay.
+    const relogin = await a.inject({ method: "POST", url: "/api/v1/auth/login", payload: { email: "newt@riverbank.edu", password: "password123" } });
+    const freshAuth = { authorization: `Bearer ${relogin.json().token}` };
+    const again = await a.inject({ method: "GET", url: "/api/v1/onboarding/me", headers: freshAuth });
+    expect(again.json()).toMatchObject({ state: "ready", entered: true });
+    expect(again.json().completedSteps).toEqual(ob.json().steps);
     await a.close();
   });
 

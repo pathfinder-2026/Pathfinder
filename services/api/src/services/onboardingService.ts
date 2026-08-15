@@ -1,6 +1,7 @@
 import { NotFoundError, ValidationError } from "../domain/errors";
 import type { Role } from "../domain/types";
 import type { AuditRecorder } from "../platform/audit/auditLog";
+import type { Clock } from "../platform/clock";
 import type { DataStore, OnboardingProgress } from "../ports/dataStore";
 
 /** The seven School-Admin onboarding steps, in required order (FR-ONB-002). */
@@ -26,7 +27,7 @@ const ROLE_STEPS: Record<Role, string[]> = {
 
 export type UserOnboarding =
   | { state: "waiting_on_school_setup"; roles: Role[] }
-  | { state: "ready"; roles: Role[]; steps: string[] };
+  | { state: "ready"; roles: Role[]; steps: string[]; completedSteps: string[]; entered: boolean };
 
 export type EnterWorkspaceResult =
   | { ok: true; workspaceEntered: true }
@@ -36,6 +37,7 @@ export type EnterWorkspaceResult =
 export class OnboardingService {
   constructor(
     private readonly store: DataStore,
+    private readonly clock: Clock,
     private readonly audit: AuditRecorder,
   ) {}
 
@@ -68,7 +70,75 @@ export class OnboardingService {
         if (!steps.includes(step)) steps.push(step);
       }
     }
-    return { state: "ready", roles, steps };
+    const progress = await this.store.getUserOnboarding(userId);
+    return {
+      state: "ready",
+      roles,
+      steps,
+      completedSteps: (progress?.completedSteps ?? []).filter((s) => steps.includes(s)),
+      entered: progress?.enteredAt != null,
+    };
+  }
+
+  /** Mark one of the user's role-onboarding steps complete (FR-ONB-001). */
+  async completeUserStep(userId: string, step: string): Promise<UserOnboarding> {
+    const onboarding = await this.getUserOnboarding(userId);
+    if (onboarding.state !== "ready") {
+      throw new ValidationError("Onboarding is not available until school setup is complete.");
+    }
+    if (!onboarding.steps.includes(step)) {
+      throw new ValidationError(`Unknown onboarding step "${step}" for this role.`);
+    }
+    const progress = (await this.store.getUserOnboarding(userId)) ?? {
+      userId,
+      completedSteps: [],
+      enteredAt: null,
+    };
+    if (!progress.completedSteps.includes(step)) {
+      progress.completedSteps.push(step);
+      await this.store.saveUserOnboarding(progress);
+      this.audit.append({
+        action: "onboarding.user-step.completed",
+        actorId: userId,
+        subjectType: "user",
+        subjectId: userId,
+        metadata: { step },
+      });
+    }
+    return this.getUserOnboarding(userId);
+  }
+
+  /**
+   * Finish role onboarding by entering the workspace. Blocked until every step
+   * is complete, so the client can't skip the checklist by calling this early.
+   */
+  async enterUserWorkspace(
+    userId: string,
+  ): Promise<{ ok: true; entered: true } | { ok: false; blocked: true; redirectTo: string }> {
+    const onboarding = await this.getUserOnboarding(userId);
+    if (onboarding.state !== "ready") {
+      throw new ValidationError("Onboarding is not available until school setup is complete.");
+    }
+    const missing = onboarding.steps.find((s) => !onboarding.completedSteps.includes(s));
+    if (missing) return { ok: false, blocked: true, redirectTo: missing };
+
+    const progress = (await this.store.getUserOnboarding(userId)) ?? {
+      userId,
+      completedSteps: [],
+      enteredAt: null,
+    };
+    if (!progress.enteredAt) {
+      progress.enteredAt = this.clock.isoNow();
+      await this.store.saveUserOnboarding(progress);
+      this.audit.append({
+        action: "onboarding.user-workspace.entered",
+        actorId: userId,
+        subjectType: "user",
+        subjectId: userId,
+        metadata: {},
+      });
+    }
+    return { ok: true, entered: true };
   }
 
   // ---- FR-ONB-002: the 7-step School-Admin onboarding flow ----

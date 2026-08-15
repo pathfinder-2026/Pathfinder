@@ -38,6 +38,17 @@ function inviteToken(): string | null {
   return new URLSearchParams(window.location.search).get("token");
 }
 
+/**
+ * The workspace a non-admin's roles resolve to. A dual-role Principal-Teacher
+ * enters via their Teacher capacity (the M9 transcript rule).
+ */
+function personaView(roles: string[]): View | undefined {
+  return roles.includes("teacher") ? "teacher-home"
+    : roles.includes("principal") ? "principal-home"
+    : roles.includes("student") ? "student-home"
+    : roles.includes("parent") ? "parent-home" : undefined;
+}
+
 export function App() {
   const token = inviteToken();
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -58,7 +69,11 @@ export function App() {
         const ob = await api.onboarding(s);
         setView(ob.workspaceEntered ? "workspace" : "onboarding");
       } else {
-        setView("role-home");
+        // Returning users who finished role onboarding go straight to their
+        // workspace; only first-timers see the "Getting started" checklist.
+        const ob = await api.myOnboarding(s);
+        const home = personaView(me.roles);
+        setView(ob.state === "ready" && ob.entered && home ? home : "role-home");
       }
     } catch { clearSession(); setSession(null); setView("start"); }
   }, []);
@@ -89,12 +104,8 @@ export function App() {
   if (!session || view === "start") return <Start onStarted={onStarted} />;
   if (view === "loading") return <div className="center muted">Loading…</div>;
   if (view === "role-home") {
-    // Every persona now has a real workspace. A dual-role Principal-Teacher
-    // enters via their Teacher capacity (the M9 transcript rule).
-    const enterView: View | undefined = roles.includes("teacher") ? "teacher-home"
-      : roles.includes("principal") ? "principal-home"
-      : roles.includes("student") ? "student-home"
-      : roles.includes("parent") ? "parent-home" : undefined;
+    // Every persona now has a real workspace.
+    const enterView = personaView(roles);
     return <RoleHome session={session} displayName={displayName} onSignOut={onSignOut}
       onEnterWorkspace={enterView ? () => setView(enterView) : undefined} />;
   }

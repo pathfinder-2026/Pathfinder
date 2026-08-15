@@ -17,6 +17,7 @@ import type {
   DataStore,
   OnboardingProgress,
   Session,
+  UserOnboardingProgress,
 } from "../../ports/dataStore";
 import type { SafeguardingConfig } from "../../domain/safeguarding";
 import type { SchoolPolicy } from "../../domain/principal";
@@ -42,6 +43,7 @@ export class InMemoryStore implements DataStore {
   private credentials = new Map<string, Credential>();
   private sessions = new Map<string, Session>();
   private onboarding = new Map<string, OnboardingProgress>();
+  private userOnboarding = new Map<string, UserOnboardingProgress>();
   private safeguarding = new Map<string, SafeguardingConfig>();
   private policies = new Map<string, SchoolPolicy>();
   private ssoConfigs = new Map<string, SsoConfig>();
@@ -269,6 +271,13 @@ export class InMemoryStore implements DataStore {
   }
   async saveOnboarding(progress: OnboardingProgress): Promise<void> {
     this.onboarding.set(progress.schoolId, InMemoryStore.clone(progress));
+  }
+  async getUserOnboarding(userId: string): Promise<UserOnboardingProgress | undefined> {
+    const o = this.userOnboarding.get(userId);
+    return o ? InMemoryStore.clone(o) : undefined;
+  }
+  async saveUserOnboarding(progress: UserOnboardingProgress): Promise<void> {
+    this.userOnboarding.set(progress.userId, InMemoryStore.clone(progress));
   }
 
   async getSafeguardingConfig(schoolId: string): Promise<SafeguardingConfig | undefined> {

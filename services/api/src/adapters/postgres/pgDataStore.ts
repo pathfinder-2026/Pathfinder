@@ -12,7 +12,7 @@ import type {
   Term,
   User,
 } from "../../domain/types";
-import type { Credential, DataStore, OnboardingProgress, Session } from "../../ports/dataStore";
+import type { Credential, DataStore, OnboardingProgress, Session, UserOnboardingProgress } from "../../ports/dataStore";
 import type { SafeguardingConfig } from "../../domain/safeguarding";
 import type { SchoolPolicy } from "../../domain/principal";
 import type { SsoConfig } from "../../domain/sso";
@@ -225,6 +225,18 @@ export class PgDataStore implements DataStore {
       values (${p.schoolId},${this.sql.json(p.completedSteps)},${p.workspaceEntered})
       on conflict (school_id) do update set completed_steps=${this.sql.json(p.completedSteps)},
         workspace_entered=${p.workspaceEntered}`;
+  }
+  async getUserOnboarding(userId: string): Promise<UserOnboardingProgress | undefined> {
+    const r = (await this.sql`select * from user_onboarding where user_id=${userId}`)[0];
+    return r
+      ? { userId: r.user_id, completedSteps: r.completed_steps, enteredAt: isoOrNull(r.entered_at) }
+      : undefined;
+  }
+  async saveUserOnboarding(p: UserOnboardingProgress): Promise<void> {
+    await this.sql`insert into user_onboarding (user_id,completed_steps,entered_at)
+      values (${p.userId},${this.sql.json(p.completedSteps)},${p.enteredAt})
+      on conflict (user_id) do update set completed_steps=${this.sql.json(p.completedSteps)},
+        entered_at=${p.enteredAt}`;
   }
 
   async getSafeguardingConfig(schoolId: string): Promise<SafeguardingConfig | undefined> {

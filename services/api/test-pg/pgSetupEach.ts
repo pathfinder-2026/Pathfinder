@@ -18,7 +18,7 @@ const TABLES = [
   "assessment_attempts", "assessment_questions", "assessment_versions", "assessments",
   "content_mappings", "skill_prerequisites", "skill_nodes", "skill_graph_versions",
   "school_curricula", "skill_mastery_refs", "content_references", "chunks", "concepts",
-  "classifications", "content_versions", "content_items", "onboarding_progress",
+  "classifications", "content_versions", "content_items", "user_onboarding", "onboarding_progress",
   "sessions", "credentials", "notifications", "audit_log", "inference_records",
   "enrolment_history", "enrolments", "invites", "memberships", "personal_data",
   "users", "classes", "terms", "academic_years", "campuses", "lessons", "questions",

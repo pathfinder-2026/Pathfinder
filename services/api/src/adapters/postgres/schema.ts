@@ -195,6 +195,12 @@ export const onboardingProgress = pgTable("onboarding_progress", {
   workspaceEntered: boolean("workspace_entered").notNull().default(false),
 });
 
+export const userOnboarding = pgTable("user_onboarding", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  completedSteps: jsonb("completed_steps").notNull(),
+  enteredAt: timestamp("entered_at", { withTimezone: true }),
+});
+
 // ---- Milestone 1: Content Studio + Knowledge Engine ----
 
 export const contentItems = pgTable(

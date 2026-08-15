@@ -36,6 +36,13 @@ export interface OnboardingProgress {
   workspaceEntered: boolean;
 }
 
+/** Role onboarding progress (FR-ONB-001), tracked per user. */
+export interface UserOnboardingProgress {
+  userId: string;
+  completedSteps: string[];
+  enteredAt: string | null;
+}
+
 /**
  * Persistence port. Every method is async so the same interface is satisfied by
  * both the in-memory adapter (dev/tests) and the Amazon RDS/Aurora PostgreSQL
@@ -119,6 +126,8 @@ export interface DataStore {
   // Onboarding
   getOnboarding(schoolId: string): Promise<OnboardingProgress | undefined>;
   saveOnboarding(progress: OnboardingProgress): Promise<void>;
+  getUserOnboarding(userId: string): Promise<UserOnboardingProgress | undefined>;
+  saveUserOnboarding(progress: UserOnboardingProgress): Promise<void>;
 
   // Safeguarding config (M7 — a hard precondition for Ask for Help)
   getSafeguardingConfig(schoolId: string): Promise<SafeguardingConfig | undefined>;

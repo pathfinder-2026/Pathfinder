@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Session } from "../api";
+import { api, type MyOnboarding, type Session } from "../api";
 import { Banner, Button, Card, Chip, TopBar } from "../components";
 
 const STEP_COPY: Record<string, { title: string; desc: string }> = {
@@ -22,12 +22,36 @@ export function RoleHome({ session, displayName, onSignOut, onEnterWorkspace }: 
   /** When set, "Enter" routes into a real persona workspace instead of the hold card. */
   onEnterWorkspace?: () => void;
 }) {
-  const [ob, setOb] = useState<Awaited<ReturnType<typeof api.myOnboarding>> | null>(null);
+  const [ob, setOb] = useState<MyOnboarding | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
   const [entered, setEntered] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.myOnboarding(session).then(setOb).catch((e) => setError((e as Error).message)); }, [session]);
+  useEffect(() => {
+    api.myOnboarding(session)
+      .then((o) => {
+        setOb(o);
+        if (o.state === "ready") setDone(new Set(o.completedSteps));
+      })
+      .catch((e) => setError((e as Error).message));
+  }, [session]);
+
+  // Persist "Mark done" so the checklist doesn't reappear on the next login.
+  const markDone = async (step: string) => {
+    setError(null);
+    setDone((prev) => new Set([...prev, step]));
+    try { await api.completeMyStep(session, step); }
+    catch (e) { setError((e as Error).message); }
+  };
+
+  const enterWorkspace = async () => {
+    setError(null);
+    try {
+      const res = await api.enterMyWorkspace(session);
+      if (!res.ok) return setError(`Finish “${STEP_COPY[res.redirectTo]?.title ?? res.redirectTo}” first.`);
+      if (onEnterWorkspace) onEnterWorkspace(); else setEntered(true);
+    } catch (e) { setError((e as Error).message); }
+  };
 
   const role = ob?.roles?.[0] ?? "member";
   const roleTag = ob ? ob.roles.join(" · ") : "Member";
@@ -69,13 +93,13 @@ export function RoleHome({ session, displayName, onSignOut, onEnterWorkspace }: 
                           <span>{done.has(s) ? "✓ " : ""}<strong>{c.title}</strong> — <span className="person__meta">{c.desc}</span></span>
                           <span className="spacer" />
                           {done.has(s) ? <Chip state="approved">Done</Chip>
-                            : <Button onClick={() => setDone(new Set([...done, s]))}>Mark done</Button>}
+                            : <Button onClick={() => void markDone(s)}>Mark done</Button>}
                         </li>
                       );
                     })}
                   </ul>
                   <div className="btn-row">
-                    <Button variant="primary" onClick={() => (onEnterWorkspace ? onEnterWorkspace() : setEntered(true))} disabled={done.size < ob.steps.length}>Enter</Button>
+                    <Button variant="primary" onClick={() => void enterWorkspace()} disabled={done.size < ob.steps.length}>Enter</Button>
                     {done.size < ob.steps.length && <span className="muted">Complete the steps to continue</span>}
                   </div>
                 </Card>

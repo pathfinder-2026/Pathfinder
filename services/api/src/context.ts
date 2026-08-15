@@ -237,7 +237,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
     principals: new PrincipalService(store, audit),
     invites: new InviteService(store, clock, audit, notifications),
     auth: new AuthService(store, clock, audit),
-    onboarding: new OnboardingService(store, audit),
+    onboarding: new OnboardingService(store, clock, audit),
     content: contentService,
     classification: new ClassificationService(contentStore, storage, ai, audit),
     ingestion: new IngestionService(contentStore, storage, extractor, clock, audit),

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Session } from "../api";
 import { Banner, Card, Chip, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 
 /**
  * TCH-14 — Ask-for-Help transcripts, visible to the ASSIGNING teacher only
@@ -25,7 +26,7 @@ export function TeacherTranscripts({ session, displayName, onBack, onSignOut }: 
   };
 
   return (
-    <PageShell displayName={displayName} title="Ask-for-Help transcripts" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Ask-for-Help transcripts" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Transcripts for tasks you assigned. Only the assigning teacher can read a transcript — they are unreachable from any Principal surface or export.">
       {error && <Banner kind="error">{error}</Banner>}
@@ -38,7 +39,10 @@ export function TeacherTranscripts({ session, displayName, onBack, onSignOut }: 
           {(sessions ?? []).map((s) => (
             <li className="person" key={s.sessionId}>
               <button className="linkish" onClick={() => open(s.sessionId)}><strong>{s.taskTitle}</strong></button>
-              <span className="person__meta">{s.studentLabel}</span>
+              <span className="person__meta">{s.studentLabel} · {s.messageCount} message{s.messageCount === 1 ? "" : "s"}</span>
+              {/* Triage at a glance — no need to open every conversation. */}
+              {s.safeguarding && <Chip state="draft">Safeguarding raised</Chip>}
+              {s.refusals > 0 && <Chip state="pending">{s.refusals} refusal{s.refusals === 1 ? "" : "s"}</Chip>}
               <span className="spacer" />
               <span className="person__meta">{new Date(s.createdAt).toLocaleDateString()}</span>
             </li>

@@ -128,6 +128,22 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     return reply.send(await contentRow(item));
   });
 
+  /**
+   * The extracted text of an item, section by section — so a teacher can READ
+   * what they are approving instead of approving a filename. Any item in the
+   * school (approval state is what the teacher is deciding about here).
+   */
+  app.get("/api/v1/schools/:schoolId/content/:itemId/sections", async (req, reply) => {
+    const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
+    await requireTeacherOf(req, schoolId);
+    const item = await requireItemIn(schoolId, itemId);
+    const chunks = await ctx.contentStore.listChunksByVersion(item.currentVersionId);
+    return reply.send({
+      title: item.title,
+      sections: [...chunks].sort((a, b) => a.order - b.order).map((c) => ({ heading: c.heading, text: c.text })),
+    });
+  });
+
   app.post("/api/v1/schools/:schoolId/content/:itemId/ingest", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
@@ -847,16 +863,25 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const { schoolId } = req.params as { schoolId: string };
     const auth = await requireTeacherOf(req, schoolId);
     const tasks = (await ctx.workspaceStore.listTasksByTeacher(auth.user.id)).filter((t) => t.schoolId === schoolId);
-    const rows: { sessionId: string; taskTitle: string; studentLabel: string; createdAt: string }[] = [];
+    const rows: {
+      sessionId: string; taskTitle: string; studentLabel: string; createdAt: string;
+      messageCount: number; refusals: number; safeguarding: boolean;
+    }[] = [];
     for (const task of tasks) {
       const session = await ctx.workspaceStore.findHelpSession(task.studentId, task.id);
       if (!session) continue;
       const pii = await ctx.store.getPersonalData(task.studentId);
+      // Triage signals on the LIST, so a teacher can see which conversations
+      // need attention without opening every one of them.
+      const messages = await ctx.workspaceStore.listHelpMessages(session.id);
       rows.push({
         sessionId: session.id,
         taskTitle: task.title,
         studentLabel: pii ? `${pii.firstName} ${pii.lastName}` : "Student",
         createdAt: session.createdAt,
+        messageCount: messages.length,
+        refusals: messages.filter((m) => m.kind === "declined_offtopic" || m.kind === "declined_direct_answer" || m.kind === "blocked_safety").length,
+        safeguarding: messages.some((m) => m.kind === "safeguarding"),
       });
     }
     return reply.send(rows);

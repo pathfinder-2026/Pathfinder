@@ -1,13 +1,47 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillsResult, type UploadResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import { extractTextFromFile } from "../fileText";
 
 const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md", "link"] as const;
 
-function govChip(status: string): { state: GovState; label: string } {
-  if (status === "approved" || status === "published") return { state: "approved", label: "Approved" };
-  return { state: "draft", label: "Pending approval" };
+/**
+ * ONE derived status per item, by precedence. Items used to show up to five
+ * chips at once — including flatly contradictory pairs like "Processing failed"
+ * beside "Pending approval" — leaving the teacher to reverse-engineer the
+ * pipeline. Precedence makes a contradiction impossible by construction.
+ */
+type ItemState = "broken" | "processing" | "ready" | "action";
+
+function itemState(r: ContentRow): ItemState {
+  if (r.ingestionStatus === "failed") return "broken";
+  if (r.ingestionStatus === "pending" || r.ingestionStatus === "processing") return "processing";
+  if (r.status === "approved" || r.status === "published") return "ready";
+  return "action";
+}
+
+const STATE_CHIP: Record<ItemState, { state: GovState; label: string }> = {
+  broken: { state: "pending", label: "Couldn't be read" },
+  processing: { state: "draft", label: "Processing" },
+  ready: { state: "approved", label: "Ready to use" },
+  action: { state: "draft", label: "Action needed" },
+};
+
+/**
+ * The governance gates in the teacher's language, each with the reason it
+ * exists. Same five gates as before — renamed from pipeline jargon
+ * (ingestion / classification / attestation) into what they mean.
+ */
+function checklist(r: ContentRow): { label: string; why: string; done: boolean }[] {
+  return [
+    { label: "Uploaded", why: "Your file is in the library.", done: true },
+    { label: "Text extracted", why: "We read the file so questions can be grounded in it.", done: r.ingestionStatus === "ingested" },
+    { label: "Subject confirmed", why: "You check the suggested subject and topic.", done: r.classification?.status === "approved" },
+    { label: "Rights confirmed", why: "You confirm it's yours to use with students.", done: r.rightsAttested },
+    { label: "Approved", why: "Nothing reaches students until you approve it.", done: r.status === "approved" || r.status === "published" },
+    { label: "Mapped to skills", why: "Links it to the curriculum so it can ground assessments.", done: r.mappedNodeIds.length > 0 },
+  ];
 }
 
 /**
@@ -33,6 +67,8 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     classes: { id: string; name: string }[];
   } | null>(null);
   const [overrideNode, setOverrideNode] = useState("");
+  const [preview, setPreview] = useState<{ itemId: string; title: string; sections: { heading: string; text: string }[] } | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [remapPrompt, setRemapPrompt] = useState<{ mappingId: string; newNodeId: string } | null>(null);
   // Official syllabus tagging (ADR-0035) — subject/year/NESA-link form for the expanded item
   const [syllabusSubject, setSyllabusSubject] = useState("");
@@ -151,6 +187,16 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     finally { setBusy(null); }
   };
 
+  /** Read what you're approving — the extracted text, section by section. */
+  const togglePreview = async (itemId: string) => {
+    if (preview?.itemId === itemId) return setPreview(null);
+    setError(null);
+    try {
+      const p = await api.contentSections(session, itemId);
+      setPreview({ itemId, ...p });
+    } catch (e) { setError((e as Error).message); }
+  };
+
   /** The next pipeline action for an item, or null when fully approved. */
   const nextAction = (r: ContentRow): { step: Parameters<typeof api.contentStep>[2]; label: string; governance?: boolean } | null => {
     if (r.status === "approved" || r.status === "published") return null;
@@ -165,7 +211,7 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   const nodeOptions = skills?.signedOff ? skills.nodes.filter((n) => n.type === "subskill" || n.type === "skill") : [];
 
   return (
-    <PageShell displayName={displayName} title="Content Studio" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Content Studio" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Only material you explicitly approve joins the pool that grounds assessments and suggestions. Each governance step below is yours to take — nothing is approved automatically.">
       {error && <Banner kind="error">{error}</Banner>}
@@ -193,10 +239,12 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
         {pickedFile && <div className="muted">From file: {pickedFile}</div>}
         <div className="row">
           <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-          <Field label="Type" hint={`Supported: ${FILE_TYPES.join(", ")}, media & images`}>
+          {/* Set automatically from the chosen file; a teacher only touches this
+              when pasting text or adding a link. (The old list carried an
+              "exe (unsupported — try it)" testing artifact — removed.) */}
+          <Field label="Type" hint={pickedFile ? "Set from the file you chose." : `Supported: ${FILE_TYPES.join(", ")}, media & images`}>
             <select className="select" value={fileType} onChange={(e) => setFileType(e.target.value)}>
               {FILE_TYPES.map((t) => <option key={t} value={t}>{t === "link" ? "link (URL)" : t}</option>)}
-              <option value="exe">exe (unsupported — try it)</option>
             </select>
           </Field>
         </div>
@@ -221,44 +269,70 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
           : (
             <ul className="people">
               {rows.map((r) => {
-                const chip = govChip(r.status);
+                const state = itemState(r);
+                const chip = STATE_CHIP[state];
                 const action = nextAction(r);
                 const expanded = open === r.id;
+                const steps = checklist(r);
+                const doneCount = steps.filter((s) => s.done).length;
                 return (
                   <li key={r.id} style={{ display: "block", padding: 0, border: "1px solid var(--pf-border)", borderRadius: "var(--pf-radius-sm)" }}>
                     <button className="person" style={{ width: "100%", background: "none", border: "none", font: "inherit", cursor: "pointer", textAlign: "left" }}
                       onClick={() => setOpen(expanded ? null : r.id)} aria-expanded={expanded}>
                       <span className="person__avatar" aria-hidden="true">{(r.fileType ?? "?").slice(0, 3).toUpperCase()}</span>
                       <span><strong>{r.title}</strong></span>
-                      <span className="person__meta">{r.mappedNodeIds.length > 0 ? `${r.mappedNodeIds.length} skill${r.mappedNodeIds.length > 1 ? "s" : ""} mapped` : "not mapped"}</span>
+                      <span className="person__meta">
+                        {state === "broken" ? "needs a readable file" : `${doneCount} of ${steps.length} steps done`}
+                      </span>
                       <span className="spacer" />
-                      {r.ingestionStatus === "failed" && <Chip state="pending">Processing failed</Chip>}
+                      {/* Exactly one status — never a contradictory pair. */}
                       <Chip state={chip.state}>{chip.label}</Chip>
                     </button>
-                    {expanded && (
+                    {expanded && state === "broken" && (
+                      // Recovery card: nothing else is actionable until the file
+                      // is readable, so nothing else is shown.
                       <div style={{ padding: "0 14px 14px" }}>
-                        <div className="legend" style={{ marginBottom: 10 }}>
-                          <Chip state={r.ingestionStatus === "ingested" ? "approved" : "draft"}>Ingestion: {r.ingestionStatus ?? "—"}</Chip>
-                          <Chip state={r.classification?.status === "approved" ? "approved" : "draft"}>
-                            Classification: {r.classification ? `${r.classification.subject} · ${r.classification.topic} (${r.classification.status})` : "not yet suggested"}
-                          </Chip>
-                          <Chip state={r.rightsAttested ? "approved" : "draft"}>Rights: {r.rightsAttested ? "attested" : "not attested"}</Chip>
-                        </div>
+                        <Banner kind="warn">
+                          We couldn't read this file, so it can't be approved or used to ground anything.
+                          Upload a new version of the material — a text-based PDF, .docx, .txt or .md works best.
+                        </Banner>
+                      </div>
+                    )}
+                    {expanded && state !== "broken" && (
+                      <div style={{ padding: "0 14px 14px" }}>
+                        <ol style={{ listStyle: "none", padding: 0, margin: "0 0 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                          {steps.map((s) => (
+                            <li key={s.label} style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "baseline" }}>
+                              <span aria-hidden="true" style={{ color: s.done ? "var(--pf-brand)" : "var(--pf-slate)" }}>{s.done ? "✓" : "○"}</span>
+                              <span>
+                                <strong style={{ fontWeight: s.done ? 400 : 600 }}>{s.label}</strong>
+                                {" — "}<span className="person__meta">{s.why}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
                         {r.classification?.lowConfidence && (
-                          <Banner kind="warn">The AI classification is low-confidence — review it carefully before approving.</Banner>
+                          <Banner kind="warn">The AI's subject suggestion is low-confidence — read the material below before confirming it.</Banner>
+                        )}
+                        {r.classification && r.classification.status !== "approved" && (
+                          <p className="person__meta" style={{ margin: "0 0 10px" }}>
+                            Suggested subject: {r.classification.subject} · {r.classification.topic}
+                          </p>
                         )}
                         {r.approvalBlockReason && (
-                          <p className="muted" style={{ margin: "0 0 10px" }}>Approval blocked: {r.approvalBlockReason}.</p>
+                          <p className="muted" style={{ margin: "0 0 10px" }}>Not ready to approve yet: {r.approvalBlockReason}.</p>
                         )}
                         <div className="btn-row" style={{ marginTop: 0 }}>
+                          {/* Exactly one primary next action — the teacher never
+                              has to work out the ordering themselves. */}
                           {action && (
-                            <Button variant={action.governance ? "primary" : "default"} onClick={() => step(r.id, action.step)} disabled={busy === r.id}>
+                            <Button variant="primary" onClick={() => step(r.id, action.step)} disabled={busy === r.id}>
                               {busy === r.id ? "Working…" : action.label}
                             </Button>
                           )}
-                          {!action && r.status !== "approved" && r.status !== "published" && r.ingestionStatus === "failed" && (
-                            <span className="muted">Processing failed — fix the source material and upload a new version.</span>
-                          )}
+                          <Button variant="ghost" onClick={() => void togglePreview(r.id)} disabled={busy === r.id}>
+                            {preview?.itemId === r.id ? "Hide material" : "Read material"}
+                          </Button>
                           {(r.status === "approved" || r.status === "published") && skills?.signedOff && (
                             <>
                               <select className="select" style={{ maxWidth: 320 }} value={mapNode} onChange={(e) => setMapNode(e.target.value)} aria-label="Skill to map">
@@ -270,8 +344,29 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                           )}
                         </div>
 
-                        {detail && (
-                          <div style={{ marginTop: 14, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
+                        {preview?.itemId === r.id && (
+                          <div style={{ marginTop: 12, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
+                            {preview.sections.length === 0 ? (
+                              <p className="muted">No text has been extracted from this file yet.</p>
+                            ) : preview.sections.map((s, i) => (
+                              <div key={i} style={{ marginBottom: 12 }}>
+                                <h4 style={{ fontSize: 13, margin: "0 0 3px" }}>{s.heading}</h4>
+                                <p style={{ fontSize: 13, margin: 0, whiteSpace: "pre-wrap" }}>{s.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Advanced controls stay out of the way until asked for:
+                            the default card is status, checklist, one button. */}
+                        <div className="btn-row" style={{ marginTop: 10 }}>
+                          <button className="linkish" onClick={() => setShowAdvanced(!showAdvanced)} aria-expanded={showAdvanced}>
+                            {showAdvanced ? "Hide options" : "More options (versions, sharing, official syllabus, mapping overrides)"}
+                          </button>
+                        </div>
+
+                        {showAdvanced && detail && (
+                          <div style={{ marginTop: 4, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
                             <p className="person__meta" style={{ margin: "0 0 6px" }}>
                               Versions: {detail.versions.map((v) => `v${v.versionNumber}${v.current ? " (current)" : ""}`).join(" · ") || "—"}
                             </p>

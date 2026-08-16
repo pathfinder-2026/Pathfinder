@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AgentSuggestionRow, type Session, type SkillsResult, type SyllabusLookup } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import { SkillPicker } from "../SkillPicker";
 
 /** NESA's real curriculum site (verified) — the generic fallback when no
@@ -113,7 +114,7 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
   };
 
   return (
-    <PageShell displayName={displayName} title="Teacher Agent" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Teacher Agent" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Drafts grounded strictly in your approved content — a request with no grounding is declined, never invented. Drafts persist unsent; you edit and send them yourself.">
       {error && <Banner kind="error">{error}</Banner>}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type PeerResults, type PeerTestRow, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import type { GovState } from "../components";
 import { SkillPicker } from "../SkillPicker";
 
@@ -86,7 +87,7 @@ export function TeacherPeer({ session, displayName, onBack, onSignOut }: {
   const bandText: Record<string, string> = { above: "above average", at: "at average", below: "below average" };
 
   return (
-    <PageShell displayName={displayName} title="Peer testing" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Peer testing" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Build peer tests, deliver them to a cohort, and decide what students see. Computed figures are locked — you publish or withhold them, and corrections go through a logged path.">
       {error && <Banner kind="error">{error}</Banner>}

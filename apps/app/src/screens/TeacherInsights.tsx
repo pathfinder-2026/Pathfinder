@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AdaptivePanel, type CohortGroup, type FocusAreaRow, type NextActionResult, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import { SkillPicker } from "../SkillPicker";
 
 /** Actions the adaptive engine hands to a human/other flow rather than an assessment. */
@@ -100,7 +101,7 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
   const groupStudents = [...new Map((groups ?? []).flatMap((g) => g.students).map((s) => [s.id, s])).values()];
 
   return (
-    <PageShell displayName={displayName} title="Class insights" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Class insights" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Focus areas, suggested groups and adaptive recommendations — all suggestions. Nothing is assigned to a student unless you explicitly assign it.">
       {error && <Banner kind="error">{error}</Banner>}

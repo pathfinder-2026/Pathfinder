@@ -56,14 +56,18 @@ export function Card({ children }: { children: ReactNode }) {
 /** Standard sub-page shell: top bar, back link, title/lede, sign out. */
 export function PageShell({
   displayName, title, lede, onBack, onSignOut, children, roleTag = "Administrator", backLabel = "Back to workspace",
+  topRight,
 }: {
   displayName: string; title: string; lede?: string;
   onBack: () => void; onSignOut: () => void; children: ReactNode;
   roleTag?: string; backLabel?: string;
+  /** Top-bar slot — teacher screens pass the notification bell so alerts are
+   *  reachable everywhere, not only from the home screen. */
+  topRight?: ReactNode;
 }) {
   return (
     <div className="app">
-      <TopBar title={displayName} roleTag={roleTag} />
+      <TopBar title={displayName} roleTag={roleTag} right={topRight} />
       <main className="main">
         <div className="container">
           <button className="linkish" onClick={onBack}>← {backLabel}</button>

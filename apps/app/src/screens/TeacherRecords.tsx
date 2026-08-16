@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Session } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 
 const CATEGORIES = ["collaboration", "communication", "resilience", "participation"] as const;
 const DOMAINS = ["sport", "arts", "music"] as const;
@@ -92,7 +93,7 @@ export function TeacherRecords({ session, displayName, onBack, onSignOut }: {
   const pct = (n: number) => `${Math.round(n * 100)}%`;
 
   return (
-    <PageShell displayName={displayName} title="Records & reports" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Records & reports" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Term growth, behavioural/social observations (your words, never a score), co-curricular capabilities, and your calendar.">
       {error && <Banner kind="error">{error}</Banner>}

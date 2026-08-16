@@ -295,6 +295,10 @@ export const api = {
   mapContent: (s: Session, itemId: string, nodeIds: string[]) =>
     request<{ id: string; nodeId: string; flags: string[] }[]>("POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/map`, { nodeIds }, s.token),
   /** `classId` narrows to the graph that class teaches (its subject × year). */
+  contentSections: (s: Session, itemId: string) =>
+    request<{ title: string; sections: { heading: string; text: string }[] }>(
+      "GET", `/api/v1/schools/${s.schoolId}/content/${itemId}/sections`, undefined, s.token,
+    ),
   skills: (s: Session, classId?: string) =>
     request<SkillsResult>(
       "GET", `/api/v1/schools/${s.schoolId}/skills${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`,
@@ -400,7 +404,11 @@ export const api = {
   editAgentDraft: (s: Session, id: string, content: string) =>
     request<AgentSuggestionRow>("PATCH", `/api/v1/schools/${s.schoolId}/agent/suggestions/${id}`, { content }, s.token),
   helpSessions: (s: Session) =>
-    request<{ sessionId: string; taskTitle: string; studentLabel: string; createdAt: string }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions`, undefined, s.token),
+    request<{
+      sessionId: string; taskTitle: string; studentLabel: string; createdAt: string;
+      /** Triage signals so a teacher can prioritise without opening each one. */
+      messageCount: number; refusals: number; safeguarding: boolean;
+    }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions`, undefined, s.token),
   helpTranscript: (s: Session, sessionId: string) =>
     request<{ role: "student" | "assistant"; kind: string; text: string; at: string }[]>("GET", `/api/v1/schools/${s.schoolId}/help-sessions/${sessionId}/transcript`, undefined, s.token),
 

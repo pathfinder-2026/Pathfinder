@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type HeatmapData, type Session } from "../api";
 import { Banner, Card, Field, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import { MasteryDistribution } from "../MasteryDistribution";
 
 const TREND_GLYPH: Record<string, string> = { up: "↑", down: "↓", flat: "→" };
@@ -82,7 +83,7 @@ export function TeacherDashboard({ session, displayName, onBack, onSignOut, onOp
   const filtersActive = !!(skillFilter || bandFilter || trendFilter || flagFilter);
 
   return (
-    <PageShell displayName={displayName} title="Class dashboard" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Class dashboard" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Mastery by student and skill, with trend and intervention/extension flags. Cells with too little data say so — no invented signal.">
       {error && <Banner kind="error">{error}</Banner>}

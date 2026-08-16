@@ -146,9 +146,15 @@ export class StudentWorkspaceService {
     // Notify the assigning teacher once for each newly-overdue task.
     for (const task of tasks) {
       if (isOverdue(task, nowIso) && !task.overdueNotified) {
+        // Name the student: "a student has an overdue task" made the teacher
+        // open every alert to find out who it was about.
+        const pii = await this.store.getPersonalData(studentId);
+        const who = pii ? `${pii.firstName} ${pii.lastName}` : "A student";
         await this.notifications.send({
-          type: "alert.overdue", to: task.teacherId, subject: "A student has an overdue task",
-          body: `Task "${task.title}" is overdue.`, context: { taskId: task.id, studentId },
+          type: "alert.overdue", to: task.teacherId,
+          subject: `${who} has an overdue task`,
+          body: `"${task.title}" was due ${task.dueDate.slice(0, 10)}.`,
+          context: { taskId: task.id, studentId, classId: task.classId },
         });
         task.overdueNotified = true;
         await this.workspace.updateTask(task);

@@ -17,6 +17,7 @@ import type { DataStore } from "../ports/dataStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { AgentStore } from "../ports/agentStore";
 import type { ContentService } from "./contentService";
+import { graphOfNode } from "./curriculumScope";
 
 const DECLINE_MESSAGE =
   "No approved content grounds this request, so I won't invent an ungrounded plan. Upload and approve relevant content first.";
@@ -145,7 +146,7 @@ export class AgentService {
       {
         purpose: "agent.generate",
         prompt: `Draft ${kind} grounded strictly in the approved sources.`,
-        input: { kind, term: opts.term, topic: opts.topic ?? this.nodeTopic(nodeId), sources, personalised: opts.personalised ?? true },
+        input: { kind, term: opts.term, topic: opts.topic ?? (await this.nodeTopic(schoolId, nodeId)), sources, personalised: opts.personalised ?? true },
         containsStudentData: opts.containsStudentData ?? false,
       },
       teacherId,
@@ -201,8 +202,16 @@ export class AgentService {
     return (await this.activity.listMasteryBySchool(schoolId)).some((r) => studentIds.has(r.studentId));
   }
 
-  private nodeTopic(nodeId: string): string {
-    return nodeId; // resolved to a label by the caller/UI; the id keeps it deterministic
+  /**
+   * The skill's human label for draft text. This used to return the raw node id,
+   * which the UI never resolved — so teachers read drafts saying
+   * 'a lesson plan on "skill-add-fractions"'. Falls back to the id only if the
+   * node genuinely isn't in a signed-off graph.
+   */
+  private async nodeTopic(schoolId: string, nodeId: string): Promise<string> {
+    const version = await graphOfNode(this.graph, schoolId, nodeId);
+    if (!version) return nodeId;
+    return (await this.graph.getNode(version.id, nodeId))?.label ?? nodeId;
   }
 
   private async owned(teacherId: string, suggestionId: string): Promise<AgentSuggestion> {

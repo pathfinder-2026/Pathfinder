@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AssessmentDetail, type AssessmentRow, type AttemptRow, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { NotificationBell } from "../NotificationBell";
 import { SkillPicker } from "../SkillPicker";
 
 /**
@@ -92,7 +93,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   const nodeLabel = (id: string) => (skills?.signedOff ? skills.nodes.find((n) => n.id === id)?.label : null) ?? id;
 
   return (
-    <PageShell displayName={displayName} title="Assessments" roleTag="Teacher" backLabel="Back to teacher home"
+    <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Assessments" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
       lede="Drafts are generated only from your approved, skill-mapped material — never invented. Every draft stays invisible to students until you review it and explicitly publish.">
       {error && <Banner kind="error">{error}</Banner>}

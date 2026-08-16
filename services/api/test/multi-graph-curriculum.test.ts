@@ -5,6 +5,7 @@ import {
   makeMappedContent,
   makeTeacher,
   readScienceSeedGraph,
+  readSeedGraph,
   seedSchoolWithAdmin,
   setupSignedGraph,
 } from "./helpers";
@@ -77,12 +78,18 @@ describe("Multi-graph curriculum — a signed-off graph per subject × year", ()
     expect(scienceY9).toBeUndefined();
   });
 
-  it("rejects a graph whose node ids collide — mastery references ids directly", async () => {
+  it("rejects colliding node ids ACROSS subjects, but allows a new version of the same graph", async () => {
     const { ctx } = await setup();
-    // Re-importing the same seed would duplicate every node id, so a Year 7
-    // student's mastery could land on a Year 8 skill of the same id.
-    await expect(ctx.skillGraph.importGraph(readScienceSeedGraph(), "expert-2")).resolves.toBeDefined();
-    await expect(ctx.skillGraph.importGraph(readScienceSeedGraph(), "expert-2")).rejects.toThrow(/unique across every curriculum graph/i);
+
+    // A new version of the SAME curriculum reuses ids by design — that is what
+    // versioning means, and the ids still denote the same skills.
+    await expect(ctx.skillGraph.importGraph(readSeedGraph(), "expert-1")).resolves.toBeDefined();
+
+    // The same nodes filed under a DIFFERENT subject is refused: mastery and
+    // mappings reference bare ids, so it would merge two skills' evidence.
+    await expect(
+      ctx.skillGraph.importGraph(readSeedGraph(), "expert-2", { subject: "Science", yearLevel: 7 }),
+    ).rejects.toThrow(/unique across curriculum graphs/i);
   });
 
   it("maps content into the right subject's graph, and grounds generation from it", async () => {

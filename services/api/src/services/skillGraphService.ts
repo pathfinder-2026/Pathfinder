@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError } from "../domain/errors";
 import {
   ancestorChain,
   findPrerequisiteCycle,
+  scopeLabel,
   validateGraphSource,
   type GraphScope,
   type PrerequisiteEdge,
@@ -40,11 +41,13 @@ export class SkillGraphService {
     scope: GraphScope = {},
   ): Promise<SkillGraphVersion> {
     validateGraphSource(source); // throws on cycle / bad refs / difficulty-as-node
-    await this.assertNodeIdsUnused(source);
 
     const meta = source._meta ?? {};
     const subjectNode = source.nodes.find((n) => n.type === "subject");
     const yearLevel = scope.yearLevel ?? numberOrNull(meta.yearLevel);
+    const subject = scope.subject ?? (meta.subject ? String(meta.subject) : subjectNode?.label ?? null);
+    await this.assertNodeIdsUnused(source, { subject, yearLevel });
+
     const version: SkillGraphVersion = {
       id: newId(),
       name: String(meta.name ?? "Skill Graph"),
@@ -54,7 +57,7 @@ export class SkillGraphService {
       signedOffBy: null,
       signedOffAt: null,
       createdAt: this.clock.isoNow(),
-      subject: scope.subject ?? (meta.subject ? String(meta.subject) : subjectNode?.label ?? null),
+      subject,
       yearLevel,
     };
     await this.store.insertGraphVersion(version);
@@ -76,21 +79,28 @@ export class SkillGraphService {
   }
 
   /**
-   * Node ids must be unique across every graph in the school, not just within
-   * one. Mastery records and content mappings reference a bare node id, so two
-   * graphs sharing an id would silently merge two different skills' evidence —
-   * a Year 7 student's "fractions" mastery landing on the Year 8 skill.
+   * Node ids must be unique across graphs of DIFFERENT scope. Mastery records
+   * and content mappings reference a bare node id, so a Science graph reusing a
+   * Maths id would silently merge two different skills' evidence.
+   *
+   * Graphs of the SAME subject × year are successive versions of one curriculum
+   * — they are *expected* to share ids (that is what versioning means), and the
+   * ids still denote the same skill, so they are left alone.
    */
-  private async assertNodeIdsUnused(source: SkillGraphSource): Promise<void> {
+  private async assertNodeIdsUnused(source: SkillGraphSource, scope: GraphScope): Promise<void> {
+    const sameScope = (v: SkillGraphVersion) =>
+      norm(v.subject) === norm(scope.subject) && (v.yearLevel ?? null) === (scope.yearLevel ?? null);
+
     const incoming = new Set(source.nodes.map((n) => n.id));
     for (const version of await this.store.listGraphVersions()) {
+      if (sameScope(version)) continue;
       const clashes = (await this.store.listNodes(version.id))
         .filter((n) => incoming.has(n.id))
         .map((n) => n.id);
       if (clashes.length > 0) {
         throw new ValidationError(
-          `Node ids already used by "${version.name}": ${clashes.slice(0, 5).join(", ")}${clashes.length > 5 ? ` (+${clashes.length - 5} more)` : ""}. ` +
-            "Skill ids must be unique across every curriculum graph, because mastery and content mappings reference them directly.",
+          `Node ids already used by "${version.name}" (${scopeLabel(version)}): ${clashes.slice(0, 5).join(", ")}${clashes.length > 5 ? ` (+${clashes.length - 5} more)` : ""}. ` +
+            "Skill ids must be unique across curriculum graphs, because mastery and content mappings reference them directly.",
         );
       }
     }
@@ -166,3 +176,5 @@ function numberOrNull(value: unknown): number | null {
   const n = Number(value);
   return value == null || Number.isNaN(n) ? null : n;
 }
+
+const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();

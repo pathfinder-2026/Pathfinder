@@ -107,6 +107,14 @@ export function readSeedGraph(): SkillGraphSource {
   return JSON.parse(readFileSync(path, "utf8")) as SkillGraphSource;
 }
 
+/** The AI-drafted NSW Y7 Science seed — a second subject, for multi-graph tests. */
+export function readScienceSeedGraph(): SkillGraphSource {
+  const path = fileURLToPath(
+    new URL("../../../db/seeds/pathfinder_skill_graph_nsw_y7_science_v0.1.json", import.meta.url),
+  );
+  return JSON.parse(readFileSync(path, "utf8")) as SkillGraphSource;
+}
+
 /**
  * Import the seed graph, sign it off (simulating the curriculum expert), and
  * configure the school on NSW. Returns the signed-off graph version id.

@@ -8,6 +8,7 @@ import { newId } from "../platform/ids";
 import type { ActivityStore } from "../ports/activityStore";
 import type { DataStore } from "../ports/dataStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
+import { allSignedOffNodes } from "./curriculumScope";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -245,12 +246,11 @@ export class SyntheticService {
     await this.activity.insertMastery(record);
   }
 
-  /** Skill nodes the school's signed-off graph exposes (the "mapped skills"). */
+  /** Skill nodes across every signed-off graph (the "mapped skills"). */
   private async mappedSkills(schoolId: string): Promise<string[]> {
-    const config = await this.graph.getSchoolCurriculum(schoolId);
-    const version = await this.graph.latestSignedOffVersion(config?.curriculum ?? "NSW");
-    if (!version) return [];
-    return (await this.graph.listNodes(version.id)).filter((n) => n.type === "skill").map((n) => n.id);
+    return (await allSignedOffNodes(this.graph, schoolId))
+      .filter((n) => n.type === "skill")
+      .map((n) => n.id);
   }
 
   private async studentsInSchool(schoolId: string): Promise<User[]> {

@@ -74,8 +74,8 @@ export class PgDataStore implements DataStore {
 
   // Classes
   async insertClass(k: ClassRoom): Promise<void> {
-    await this.sql`insert into classes (id,school_id,campus_id,name,year_group,created_at)
-      values (${k.id},${k.schoolId},${k.campusId},${k.name},${k.yearGroup ?? null},${k.createdAt})`;
+    await this.sql`insert into classes (id,school_id,campus_id,name,year_group,subject,created_at)
+      values (${k.id},${k.schoolId},${k.campusId},${k.name},${k.yearGroup ?? null},${k.subject ?? null},${k.createdAt})`;
   }
   async getClass(id: string): Promise<ClassRoom | undefined> {
     return mapClass((await this.sql`select * from classes where id=${id}`)[0]);
@@ -308,7 +308,7 @@ function mapTerm(r: Row): Term {
   return { id: r!.id, academicYearId: r!.academic_year_id, name: r!.name, startDate: asDate(r!.start_date), endDate: asDate(r!.end_date) };
 }
 function mapClass(r: Row): ClassRoom | undefined {
-  return r && { id: r.id, schoolId: r.school_id, campusId: r.campus_id, name: r.name, yearGroup: r.year_group ?? null, createdAt: iso(r.created_at) };
+  return r && { id: r.id, schoolId: r.school_id, campusId: r.campus_id, name: r.name, yearGroup: r.year_group ?? null, subject: r.subject ?? null, createdAt: iso(r.created_at) };
 }
 function mapUser(r: Row): User | undefined {
   return r && { id: r.id, schoolId: r.school_id, status: r.status, synthetic: r.synthetic, createdAt: iso(r.created_at) };

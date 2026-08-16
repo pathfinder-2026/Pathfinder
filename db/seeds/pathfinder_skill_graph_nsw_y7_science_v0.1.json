@@ -1,0 +1,54 @@
+{
+  "_meta": {
+    "name": "Pathfinder Skill Graph — NSW Year 7 Science",
+    "version": "0.1",
+    "curriculum": "NSW",
+    "subject": "Science",
+    "yearLevel": 7,
+    "stage": "Stage 4 (Year 7)",
+    "syllabus": "NESA Science 7–10 Syllabus (2023) — Stage 4 (representative draft subset)",
+    "status": "draft",
+    "signedOff": false,
+    "reviewerNote": "AI-DRAFTED representative subset, added to prove the platform supports one signed-off graph per subject × year level (previously the only graph was Year 8 Mathematics, so a Science class had nothing to map onto). NOT signed off: a curriculum expert must review and expand it before live classroom use. Node ids are prefixed 'sci-' because ids must be unique across every graph — mastery records and content mappings reference them directly.",
+    "difficultyNote": "Difficulty is an item/question attribute, never a graph node (Foundational Decision 4)."
+  },
+  "nodes": [
+    { "id": "sci-subject", "type": "subject", "label": "Science", "parentId": null, "curriculum": "NSW" },
+
+    { "id": "sci-strand-physical", "type": "strand", "label": "Physical World", "parentId": "sci-subject", "curriculum": "NSW" },
+    { "id": "sci-strand-living", "type": "strand", "label": "Living World", "parentId": "sci-subject", "curriculum": "NSW" },
+    { "id": "sci-strand-inquiry", "type": "strand", "label": "Working Scientifically", "parentId": "sci-subject", "curriculum": "NSW" },
+
+    { "id": "sci-out-forces", "type": "outcome", "label": "Describes the action of forces in everyday situations", "parentId": "sci-strand-physical", "curriculum": "NSW" },
+    { "id": "sci-out-cells", "type": "outcome", "label": "Describes the structure and function of living things", "parentId": "sci-strand-living", "curriculum": "NSW" },
+    { "id": "sci-out-inquiry", "type": "outcome", "label": "Plans and conducts fair investigations", "parentId": "sci-strand-inquiry", "curriculum": "NSW" },
+
+    { "id": "sci-topic-forces", "type": "topic", "label": "Forces", "parentId": "sci-out-forces", "curriculum": "NSW" },
+    { "id": "sci-topic-cells", "type": "topic", "label": "Cells and body systems", "parentId": "sci-out-cells", "curriculum": "NSW" },
+    { "id": "sci-topic-method", "type": "topic", "label": "Scientific method", "parentId": "sci-out-inquiry", "curriculum": "NSW" },
+
+    { "id": "sci-concept-force-types", "type": "concept", "label": "Contact and non-contact forces", "parentId": "sci-topic-forces", "curriculum": "NSW" },
+    { "id": "sci-concept-force-effects", "type": "concept", "label": "Effects of forces on motion", "parentId": "sci-topic-forces", "curriculum": "NSW" },
+    { "id": "sci-concept-cell-structure", "type": "concept", "label": "Cell structure", "parentId": "sci-topic-cells", "curriculum": "NSW" },
+    { "id": "sci-concept-variables", "type": "concept", "label": "Variables in an investigation", "parentId": "sci-topic-method", "curriculum": "NSW" },
+
+    { "id": "sci-skill-identify-forces", "type": "skill", "label": "Identify contact and non-contact forces", "parentId": "sci-concept-force-types", "curriculum": "NSW", "foundational": true },
+    { "id": "sci-skill-force-diagrams", "type": "skill", "label": "Draw and interpret force diagrams", "parentId": "sci-concept-force-types", "curriculum": "NSW" },
+    { "id": "sci-skill-predict-motion", "type": "skill", "label": "Predict the effect of balanced and unbalanced forces", "parentId": "sci-concept-force-effects", "curriculum": "NSW" },
+    { "id": "sci-skill-cell-parts", "type": "skill", "label": "Label the parts of plant and animal cells", "parentId": "sci-concept-cell-structure", "curriculum": "NSW", "foundational": true },
+    { "id": "sci-skill-cell-function", "type": "skill", "label": "Relate cell structures to their functions", "parentId": "sci-concept-cell-structure", "curriculum": "NSW" },
+    { "id": "sci-skill-identify-variables", "type": "skill", "label": "Identify independent, dependent and controlled variables", "parentId": "sci-concept-variables", "curriculum": "NSW", "foundational": true },
+    { "id": "sci-skill-fair-test", "type": "skill", "label": "Design a fair test", "parentId": "sci-concept-variables", "curriculum": "NSW" },
+
+    { "id": "sci-sub-newton-first", "type": "subskill", "label": "Apply the idea of balanced forces at rest", "parentId": "sci-skill-predict-motion", "curriculum": "NSW" },
+    { "id": "sci-sub-microscope", "type": "subskill", "label": "Use a microscope to observe cells", "parentId": "sci-skill-cell-parts", "curriculum": "NSW" }
+  ],
+  "prerequisites": [
+    { "from": "sci-skill-identify-forces", "to": "sci-skill-force-diagrams" },
+    { "from": "sci-skill-force-diagrams", "to": "sci-skill-predict-motion" },
+    { "from": "sci-skill-predict-motion", "to": "sci-sub-newton-first" },
+    { "from": "sci-skill-cell-parts", "to": "sci-skill-cell-function" },
+    { "from": "sci-skill-cell-parts", "to": "sci-sub-microscope" },
+    { "from": "sci-skill-identify-variables", "to": "sci-skill-fair-test" }
+  ]
+}

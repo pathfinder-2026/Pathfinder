@@ -47,6 +47,53 @@ export interface SkillGraphVersion {
   signedOffBy: string | null;
   signedOffAt: string | null;
   createdAt: string;
+  /** Subject this graph teaches, e.g. "Mathematics". Null = unscoped (legacy). */
+  subject: string | null;
+  /** Year level, e.g. 8. Null = applies to any year within the subject. */
+  yearLevel: number | null;
+}
+
+/**
+ * What a caller is teaching, used to pick the right graph once a school has more
+ * than one. A scope with a subject NEVER falls back to a different subject's
+ * graph — answering a Science question out of the Maths graph would be worse
+ * than answering honestly that no Science curriculum is signed off yet.
+ */
+export interface GraphScope {
+  subject?: string | null;
+  yearLevel?: number | null;
+}
+
+const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+/**
+ * Rank a candidate graph against a scope: higher is a better fit, -1 rejects.
+ * An exact subject+year match beats a subject-only ("any year") graph; a scope
+ * that names no subject accepts anything (how every pre-multi-graph caller
+ * still resolves).
+ */
+export function scoreGraphMatch(version: SkillGraphVersion, scope?: GraphScope): number {
+  // A scope that names no subject cannot narrow: matching on year alone would
+  // hand a Year 7 Maths class the Year 7 SCIENCE graph simply because the years
+  // agree. Guessing the subject is a worse failure than not narrowing at all —
+  // callers show every graph instead and let the teacher choose.
+  if (!scope || scope.subject == null) return 0;
+
+  // An unscoped legacy graph can still serve a subject request (there is nothing
+  // else it could be), but a *different* named subject never can.
+  if (version.subject != null && norm(version.subject) !== norm(scope.subject)) return -1;
+  if (scope.yearLevel != null && version.yearLevel != null && version.yearLevel !== scope.yearLevel) return -1;
+
+  let score = 0;
+  if (version.subject != null) score += 2;
+  if (scope.yearLevel != null && version.yearLevel != null) score += 1;
+  return score;
+}
+
+/** Human label for a graph's scope, e.g. "Mathematics · Year 8". */
+export function scopeLabel(version: SkillGraphVersion): string {
+  const parts = [version.subject, version.yearLevel != null ? `Year ${version.yearLevel}` : null];
+  return parts.filter(Boolean).join(" · ") || version.name;
 }
 
 /** Raw seed/JSON shape imported into a version. */

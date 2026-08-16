@@ -122,11 +122,30 @@ export interface SkillNodeRow {
   type: string;
   /** Parent in the curriculum hierarchy — drives the cascading skill picker. */
   parentId: string | null;
+  /** Which signed-off graph this node came from (a school can have several). */
+  versionId?: string;
+  subject?: string | null;
+  yearLevel?: number | null;
+}
+
+export interface SkillGraphSummary {
+  versionId: string;
+  name: string;
+  subject: string | null;
+  yearLevel: number | null;
+  scopeLabel: string;
 }
 
 export type SkillsResult =
   | { signedOff: false; hasDraft: boolean }
-  | { signedOff: true; versionId: string; versionName: string; nodes: SkillNodeRow[] };
+  | {
+      signedOff: true;
+      versionId: string;
+      versionName: string;
+      /** Every signed-off graph in scope — one per subject × year level. */
+      graphs: SkillGraphSummary[];
+      nodes: SkillNodeRow[];
+    };
 
 export interface AssessmentRow {
   id: string;
@@ -253,7 +272,12 @@ export const api = {
     request<Record<string, unknown>>("POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/${step}`, {}, s.token),
   mapContent: (s: Session, itemId: string, nodeIds: string[]) =>
     request<{ id: string; nodeId: string; flags: string[] }[]>("POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/map`, { nodeIds }, s.token),
-  skills: (s: Session) => request<SkillsResult>("GET", `/api/v1/schools/${s.schoolId}/skills`, undefined, s.token),
+  /** `classId` narrows to the graph that class teaches (its subject × year). */
+  skills: (s: Session, classId?: string) =>
+    request<SkillsResult>(
+      "GET", `/api/v1/schools/${s.schoolId}/skills${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`,
+      undefined, s.token,
+    ),
 
   // ---- Teacher: official syllabus (ADR-0035) — no NESA API exists, so this
   // tags a Content Studio item as the syllabus for a subject+year and stores

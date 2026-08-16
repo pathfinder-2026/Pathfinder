@@ -13,6 +13,11 @@ interface TeachableNode {
   path: string[];
 }
 
+/** "Mathematics · Year 8" — two graphs can share a subject across year levels. */
+function subjectLabel(node: SkillNodeRow): string {
+  return node.yearLevel != null ? `${node.label} · Year ${node.yearLevel}` : node.label;
+}
+
 /**
  * Subject → Strand → Skill picker over the signed-off graph's real hierarchy.
  *
@@ -116,8 +121,10 @@ export function SkillPicker({
       ).map(([groupLabel, items]) => ({ label: groupLabel, items }));
 
   const selected = teachable.find((t) => t.node.id === value);
+  // With one subject in scope the picker states it rather than asking; with
+  // several, the Subject dropdown above is the scope and this stays quiet.
   const scopeNote = subjects.length === 1 && skills?.signedOff
-    ? `${subjects[0]!.label} · ${skills.versionName}`
+    ? `${subjectLabel(subjects[0]!)} · ${skills.versionName}`
     : null;
 
   if (skills && !skills.signedOff) {
@@ -139,7 +146,7 @@ export function SkillPicker({
             onChange={(e) => { setSubjectId(e.target.value); setStrandId(""); onChange(""); }}
           >
             <option value="">All subjects</option>
-            {subjects.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {subjects.map((s) => <option key={s.id} value={s.id}>{subjectLabel(s)}</option>)}
           </select>
         </Field>
       )}

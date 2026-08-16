@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AuthError, ConflictError } from "../domain/errors";
+import { AuthError, ConflictError, ValidationError } from "../domain/errors";
 import type { AppContext } from "../context";
 import type { Role } from "../domain/types";
-import type { SkillGraphSource } from "../domain/skillGraph";
+import { scopeLabel, type SkillGraphSource } from "../domain/skillGraph";
 import { ADMIN_STEPS, type AdminStep } from "../services/onboardingService";
 
 /** The committed AI-drafted NSW Y8 Maths seed graph (ships draft/unsigned — ADR-0015). */
@@ -191,8 +191,10 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
   app.post("/api/v1/schools/:schoolId/classes", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };
     const auth = await requireAdminOf(req, schoolId);
-    const { campusId, name, yearGroup } = req.body as { campusId: string; name: string; yearGroup?: string | null };
-    const klass = await ctx.schools.createClass(schoolId, campusId, name, auth.user.id, yearGroup ?? null);
+    const { campusId, name, yearGroup, subject } = req.body as {
+      campusId: string; name: string; yearGroup?: string | null; subject?: string | null;
+    };
+    const klass = await ctx.schools.createClass(schoolId, campusId, name, auth.user.id, yearGroup ?? null, subject ?? null);
     return reply.status(201).send(klass);
   });
 
@@ -392,6 +394,44 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
     await ctx.mapping.configureCurriculum(schoolId, "NSW");
     const nodes = await ctx.skillGraphStore.listNodes(version.id);
     return reply.status(201).send({ versionId: version.id, name: version.name, status: version.status, nodes: nodes.length });
+  });
+
+  /**
+   * Every curriculum graph the school has, with its subject × year scope and
+   * sign-off state — one signed-off graph per subject/year is the model now.
+   */
+  app.get("/api/v1/schools/:schoolId/skill-graphs", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireAdminOf(req, schoolId);
+    const versions = await ctx.skillGraphStore.listGraphVersions();
+    return reply.send(await Promise.all(versions.map(async (v) => ({
+      versionId: v.id, name: v.name, status: v.status, curriculum: v.curriculum,
+      subject: v.subject, yearLevel: v.yearLevel, scopeLabel: scopeLabel(v),
+      signedOffAt: v.signedOffAt,
+      nodes: (await ctx.skillGraphStore.listNodes(v.id)).length,
+    }))));
+  });
+
+  /**
+   * Import a curriculum graph for a subject × year. Imports as DRAFT — sign-off
+   * stays a human governance action (Decision 4). Node ids must not collide with
+   * an existing graph's, since mastery references them directly.
+   */
+  app.post("/api/v1/schools/:schoolId/skill-graphs/import", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireAdminOf(req, schoolId);
+    const { source, subject, yearLevel } = req.body as {
+      source: SkillGraphSource; subject?: string | null; yearLevel?: number | null;
+    };
+    if (!source?.nodes?.length) throw new ValidationError("A skill graph source with nodes is required.");
+    const version = await ctx.skillGraph.importGraph(source, auth.user.id, {
+      subject: subject ?? null, yearLevel: yearLevel ?? null,
+    });
+    const nodes = await ctx.skillGraphStore.listNodes(version.id);
+    return reply.status(201).send({
+      versionId: version.id, name: version.name, status: version.status,
+      subject: version.subject, yearLevel: version.yearLevel, nodes: nodes.length,
+    });
   });
 
   app.post("/api/v1/schools/:schoolId/skill-graph/:versionId/sign-off", async (req, reply) => {

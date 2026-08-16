@@ -178,6 +178,8 @@ export class SchoolService {
     name: string,
     actorId: string | null = null,
     yearGroup: string | null = null,
+    /** Subject taught — with yearGroup this picks the class's curriculum graph. */
+    subject: string | null = null,
   ): Promise<ClassRoom> {
     const school = await this.store.getSchool(schoolId);
     if (!school) throw new NotFoundError("School not found.");
@@ -192,6 +194,7 @@ export class SchoolService {
       campusId,
       name: name.trim(),
       yearGroup,
+      subject: subject?.trim() || null,
       createdAt: this.clock.isoNow(),
     };
     await this.store.insertClass(klass);
@@ -200,7 +203,7 @@ export class SchoolService {
       actorId,
       subjectType: "class",
       subjectId: klass.id,
-      metadata: { schoolId, campusId },
+      metadata: { schoolId, campusId, subject: klass.subject, yearGroup },
     });
     return klass;
   }

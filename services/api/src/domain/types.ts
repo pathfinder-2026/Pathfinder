@@ -67,6 +67,12 @@ export interface ClassRoom {
   name: string;
   /** Year group (e.g. "8"); drives restricted calendar-event visibility (M7). */
   yearGroup?: string | null;
+  /**
+   * Subject taught (e.g. "Mathematics"). With yearGroup this resolves which
+   * signed-off skill graph the class works against once a school has more than
+   * one; null keeps the pre-multi-graph behaviour of accepting any graph.
+   */
+  subject?: string | null;
   createdAt: string;
 }
 

@@ -6,6 +6,7 @@ import { newId } from "../platform/ids";
 import type { ContentStore } from "../ports/contentStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
+import { curriculumOf, graphOfNode } from "./curriculumScope";
 
 export interface MapOptions {
   source?: "ai" | "teacher";
@@ -58,11 +59,14 @@ export class MappingService {
       throw new ConflictError("CONTENT_NOT_APPROVED", "Only approved content can be mapped.");
     }
 
-    const version = await this.requireSignedOffVersion(item.schoolId);
+    await this.requireAnySignedOffVersion(item.schoolId);
     const created: ContentMapping[] = [];
     for (const nodeId of nodeIds) {
-      const node = await this.graph.getNode(version.id, nodeId);
-      if (!node) throw new NotFoundError(`Node "${nodeId}" not in the signed-off graph.`);
+      // Each node resolves to its OWN graph — one content item can legitimately
+      // be mapped into more than one subject's curriculum.
+      const version = await graphOfNode(this.graph, item.schoolId, nodeId);
+      const node = version ? await this.graph.getNode(version.id, nodeId) : undefined;
+      if (!version || !node) throw new NotFoundError(`Node "${nodeId}" not in any signed-off graph.`);
       const mapping: ContentMapping = {
         id: newId(),
         graphVersionId: version.id,
@@ -220,17 +224,17 @@ export class MappingService {
     return "required";
   }
 
-  private async requireSignedOffVersion(schoolId: string) {
-    const config = await this.graph.getSchoolCurriculum(schoolId);
-    const curriculum = config?.curriculum ?? "NSW";
-    const version = await this.graph.latestSignedOffVersion(curriculum);
-    if (!version) {
+  /** The mapping gate: at least one graph must be signed off (Decision 4). */
+  private async requireAnySignedOffVersion(schoolId: string) {
+    const curriculum = await curriculumOf(this.graph, schoolId);
+    const versions = await this.graph.listSignedOffVersions(curriculum);
+    if (versions.length === 0) {
       throw new ConflictError(
         "SKILL_GRAPH_NOT_SIGNED_OFF",
         `No signed-off skill graph for curriculum "${curriculum}". Content cannot be mapped against an unsigned graph.`,
       );
     }
-    return version;
+    return versions;
   }
 
   /** Flag a skill with no defined prerequisite (and not foundational). */

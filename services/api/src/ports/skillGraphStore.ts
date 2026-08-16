@@ -1,5 +1,6 @@
 import type {
   ContentMapping,
+  GraphScope,
   PrerequisiteEdge,
   SkillGraphVersion,
   SkillNode,
@@ -23,7 +24,18 @@ export interface SkillGraphStore {
   getGraphVersion(id: string): Promise<SkillGraphVersion | undefined>;
   updateGraphVersion(version: SkillGraphVersion): Promise<void>;
   listGraphVersions(): Promise<SkillGraphVersion[]>;
-  latestSignedOffVersion(curriculum: string): Promise<SkillGraphVersion | undefined>;
+  /**
+   * The best signed-off graph for `scope` (subject/year), or the most recent
+   * signed-off graph when no scope is given. Returns undefined rather than a
+   * mismatched subject's graph — see scoreGraphMatch.
+   */
+  latestSignedOffVersion(curriculum: string, scope?: GraphScope): Promise<SkillGraphVersion | undefined>;
+  /**
+   * Every signed-off graph for a curriculum, newest first. Label and mapping
+   * lookups must span all of them: a node id belongs to exactly one graph, so
+   * resolving against a single version silently loses every other subject.
+   */
+  listSignedOffVersions(curriculum: string): Promise<SkillGraphVersion[]>;
 
   // Nodes & prerequisite edges (per version)
   insertNode(versionId: string, node: SkillNode): Promise<void>;

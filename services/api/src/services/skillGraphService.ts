@@ -3,6 +3,7 @@ import {
   ancestorChain,
   findPrerequisiteCycle,
   validateGraphSource,
+  type GraphScope,
   type PrerequisiteEdge,
   type SkillGraphSource,
   type SkillGraphVersion,
@@ -27,11 +28,23 @@ export class SkillGraphService {
     private readonly audit: AuditRecorder,
   ) {}
 
-  /** Import a graph source as a new DRAFT version (validated acyclic). */
-  async importGraph(source: SkillGraphSource, actorId: string | null = null): Promise<SkillGraphVersion> {
+  /**
+   * Import a graph source as a new DRAFT version (validated acyclic).
+   *
+   * `scope` states the subject × year the graph teaches; when omitted it falls
+   * back to the source's own metadata, then to the graph's single subject node.
+   */
+  async importGraph(
+    source: SkillGraphSource,
+    actorId: string | null = null,
+    scope: GraphScope = {},
+  ): Promise<SkillGraphVersion> {
     validateGraphSource(source); // throws on cycle / bad refs / difficulty-as-node
+    await this.assertNodeIdsUnused(source);
 
     const meta = source._meta ?? {};
+    const subjectNode = source.nodes.find((n) => n.type === "subject");
+    const yearLevel = scope.yearLevel ?? numberOrNull(meta.yearLevel);
     const version: SkillGraphVersion = {
       id: newId(),
       name: String(meta.name ?? "Skill Graph"),
@@ -41,6 +54,8 @@ export class SkillGraphService {
       signedOffBy: null,
       signedOffAt: null,
       createdAt: this.clock.isoNow(),
+      subject: scope.subject ?? (meta.subject ? String(meta.subject) : subjectNode?.label ?? null),
+      yearLevel,
     };
     await this.store.insertGraphVersion(version);
     for (const node of source.nodes) await this.store.insertNode(version.id, node);
@@ -51,9 +66,34 @@ export class SkillGraphService {
       actorId,
       subjectType: "skill_graph",
       subjectId: version.id,
-      metadata: { curriculum: version.curriculum, version: version.version, nodes: source.nodes.length, edges: source.prerequisites.length, status: "draft" },
+      metadata: {
+        curriculum: version.curriculum, version: version.version, nodes: source.nodes.length,
+        edges: source.prerequisites.length, status: "draft",
+        subject: version.subject, yearLevel: version.yearLevel,
+      },
     });
     return version;
+  }
+
+  /**
+   * Node ids must be unique across every graph in the school, not just within
+   * one. Mastery records and content mappings reference a bare node id, so two
+   * graphs sharing an id would silently merge two different skills' evidence —
+   * a Year 7 student's "fractions" mastery landing on the Year 8 skill.
+   */
+  private async assertNodeIdsUnused(source: SkillGraphSource): Promise<void> {
+    const incoming = new Set(source.nodes.map((n) => n.id));
+    for (const version of await this.store.listGraphVersions()) {
+      const clashes = (await this.store.listNodes(version.id))
+        .filter((n) => incoming.has(n.id))
+        .map((n) => n.id);
+      if (clashes.length > 0) {
+        throw new ValidationError(
+          `Node ids already used by "${version.name}": ${clashes.slice(0, 5).join(", ")}${clashes.length > 5 ? ` (+${clashes.length - 5} more)` : ""}. ` +
+            "Skill ids must be unique across every curriculum graph, because mastery and content mappings reference them directly.",
+        );
+      }
+    }
   }
 
   /**
@@ -120,4 +160,9 @@ export class SkillGraphService {
     if (!version) throw new NotFoundError("Skill graph version not found.");
     return version;
   }
+}
+
+function numberOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return value == null || Number.isNaN(n) ? null : n;
 }

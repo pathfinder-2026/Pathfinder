@@ -3,6 +3,7 @@ import {
   date,
   doublePrecision,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -61,6 +62,10 @@ export const classes = pgTable("classes", {
   campusId: text("campus_id").notNull().references(() => campuses.id),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  yearGroup: text("year_group"),
+  // Subject taught, alongside year_group — together they resolve which
+  // signed-off skill graph this class works against.
+  subject: text("subject"),
 });
 
 export const users = pgTable("users", {
@@ -327,6 +332,9 @@ export const skillGraphVersions = pgTable("skill_graph_versions", {
   signedOffBy: text("signed_off_by"),
   signedOffAt: timestamp("signed_off_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  // Scope: which subject × year this graph teaches (null = unscoped).
+  subject: text("subject"),
+  yearLevel: integer("year_level"),
 });
 
 export const skillNodes = pgTable(

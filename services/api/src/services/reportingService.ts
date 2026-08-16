@@ -21,6 +21,7 @@ import type { DataStore } from "../ports/dataStore";
 import type { ParentStore } from "../ports/parentStore";
 import type { ReportingStore } from "../ports/reportingStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
+import { nodeLabelIndex } from "./curriculumScope";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FULL_TERM_MIN_DAYS = 42; // < 6 weeks of data => flagged limited/early
@@ -151,13 +152,9 @@ export class ReportingService {
 
   // ---- helpers ----
 
+  /** Labels span every signed-off graph — a report covers all a student's subjects. */
   private async nodeLabels(schoolId: string): Promise<Map<string, string>> {
-    const config = await this.graph.getSchoolCurriculum(schoolId);
-    const version = await this.graph.latestSignedOffVersion(config?.curriculum ?? "NSW");
-    const map = new Map<string, string>();
-    if (!version) return map;
-    for (const n of await this.graph.listNodes(version.id)) map.set(n.id, n.label);
-    return map;
+    return nodeLabelIndex(this.graph, schoolId);
   }
 
   private async classStudentIds(schoolId: string, classId: string): Promise<Set<string>> {

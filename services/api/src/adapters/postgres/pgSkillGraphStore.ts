@@ -1,8 +1,10 @@
-import type {
-  ContentMapping,
-  PrerequisiteEdge,
-  SkillGraphVersion,
-  SkillNode,
+import {
+  scoreGraphMatch,
+  type ContentMapping,
+  type GraphScope,
+  type PrerequisiteEdge,
+  type SkillGraphVersion,
+  type SkillNode,
 } from "../../domain/skillGraph";
 import type { SchoolCurriculum, SkillGraphStore } from "../../ports/skillGraphStore";
 import { iso, isoOrNull, type Sql } from "./pgClient";
@@ -12,8 +14,8 @@ export class PgSkillGraphStore implements SkillGraphStore {
   constructor(private readonly sql: Sql) {}
 
   async insertGraphVersion(v: SkillGraphVersion): Promise<void> {
-    await this.sql`insert into skill_graph_versions (id,name,curriculum,version,status,signed_off_by,signed_off_at,created_at)
-      values (${v.id},${v.name},${v.curriculum},${v.version},${v.status},${v.signedOffBy},${v.signedOffAt},${v.createdAt})`;
+    await this.sql`insert into skill_graph_versions (id,name,curriculum,version,status,signed_off_by,signed_off_at,created_at,subject,year_level)
+      values (${v.id},${v.name},${v.curriculum},${v.version},${v.status},${v.signedOffBy},${v.signedOffAt},${v.createdAt},${v.subject},${v.yearLevel})`;
   }
   async getGraphVersion(id: string): Promise<SkillGraphVersion | undefined> {
     return mapVersion((await this.sql`select * from skill_graph_versions where id=${id}`)[0]);
@@ -25,11 +27,17 @@ export class PgSkillGraphStore implements SkillGraphStore {
   async listGraphVersions(): Promise<SkillGraphVersion[]> {
     return (await this.sql`select * from skill_graph_versions`).map(mapVersion) as SkillGraphVersion[];
   }
-  async latestSignedOffVersion(curriculum: string): Promise<SkillGraphVersion | undefined> {
-    return mapVersion(
-      (await this.sql`select * from skill_graph_versions where curriculum=${curriculum} and status='signed_off'
-        order by created_at desc limit 1`)[0],
-    );
+  async listSignedOffVersions(curriculum: string): Promise<SkillGraphVersion[]> {
+    return (await this.sql`select * from skill_graph_versions where curriculum=${curriculum} and status='signed_off'
+      order by created_at desc`).map(mapVersion) as SkillGraphVersion[];
+  }
+  async latestSignedOffVersion(curriculum: string, scope?: GraphScope): Promise<SkillGraphVersion | undefined> {
+    // Scope fitting lives in the domain (scoreGraphMatch) so both adapters — and
+    // the tests that run the whole suite against each — agree on the rule.
+    return (await this.listSignedOffVersions(curriculum))
+      .map((v) => ({ v, score: scoreGraphMatch(v, scope) }))
+      .filter((c) => c.score >= 0)
+      .sort((a, b) => b.score - a.score)[0]?.v;
   }
 
   async insertNode(versionId: string, n: SkillNode): Promise<void> {
@@ -104,6 +112,8 @@ function mapVersion(r: Row): SkillGraphVersion | undefined {
     signedOffBy: r.signed_off_by,
     signedOffAt: isoOrNull(r.signed_off_at),
     createdAt: iso(r.created_at),
+    subject: r.subject ?? null,
+    yearLevel: r.year_level == null ? null : Number(r.year_level),
   };
 }
 function mapNode(r: Row): SkillNode | undefined {

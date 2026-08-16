@@ -1,8 +1,10 @@
-import type {
-  ContentMapping,
-  PrerequisiteEdge,
-  SkillGraphVersion,
-  SkillNode,
+import {
+  scoreGraphMatch,
+  type ContentMapping,
+  type GraphScope,
+  type PrerequisiteEdge,
+  type SkillGraphVersion,
+  type SkillNode,
 } from "../../domain/skillGraph";
 import type { SchoolCurriculum, SkillGraphStore } from "../../ports/skillGraphStore";
 
@@ -30,11 +32,20 @@ export class InMemorySkillGraphStore implements SkillGraphStore {
   async listGraphVersions(): Promise<SkillGraphVersion[]> {
     return [...this.versions.values()].map(clone);
   }
-  async latestSignedOffVersion(curriculum: string): Promise<SkillGraphVersion | undefined> {
-    const signed = [...this.versions.values()]
+  async listSignedOffVersions(curriculum: string): Promise<SkillGraphVersion[]> {
+    return [...this.versions.values()]
       .filter((v) => v.curriculum === curriculum && v.status === "signed_off")
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    return signed[0] ? clone(signed[0]) : undefined;
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .map(clone);
+  }
+  async latestSignedOffVersion(curriculum: string, scope?: GraphScope): Promise<SkillGraphVersion | undefined> {
+    // Newest-first, then best scope fit — a stable sort keeps recency as the
+    // tie-breaker between equally-well-matching graphs.
+    const best = (await this.listSignedOffVersions(curriculum))
+      .map((v) => ({ v, score: scoreGraphMatch(v, scope) }))
+      .filter((c) => c.score >= 0)
+      .sort((a, b) => b.score - a.score)[0];
+    return best ? clone(best.v) : undefined;
   }
 
   async insertNode(versionId: string, node: SkillNode): Promise<void> {

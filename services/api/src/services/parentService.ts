@@ -17,6 +17,7 @@ import type { DataStore } from "../ports/dataStore";
 import type { ParentStore } from "../ports/parentStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { WorkspaceStore } from "../ports/workspaceStore";
+import { nodeLabelIndex } from "./curriculumScope";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REPORTING_DAYS = 30;
@@ -207,13 +208,9 @@ export class ParentService {
     return (await this.store.getClass(m.classId))?.yearGroup ?? null;
   }
 
+  /** Labels span every signed-off graph — a child studies more than one subject. */
   private async nodeLabels(schoolId: string): Promise<Map<string, string>> {
-    const config = await this.graph.getSchoolCurriculum(schoolId);
-    const version = await this.graph.latestSignedOffVersion(config?.curriculum ?? "NSW");
-    const map = new Map<string, string>();
-    if (!version) return map;
-    for (const n of await this.graph.listNodes(version.id)) map.set(n.id, n.label);
-    return map;
+    return nodeLabelIndex(this.graph, schoolId);
   }
 }
 

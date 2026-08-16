@@ -20,6 +20,7 @@ import type { DashboardStore, GroupAssignment } from "../ports/dashboardStore";
 import type { DataStore } from "../ports/dataStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
+import { signedOffGraphs } from "./curriculumScope";
 
 /**
  * Milestone 5a — FR-TDB-001 / FR-CAP-001 (mastery heatmap + flags) and FR-TDB-002
@@ -190,15 +191,16 @@ export class TeacherDashboardService {
 
   /** node → approved content item ids mapped to it (the reteach candidates). */
   private async approvedMaterialByNode(schoolId: string): Promise<Map<string, string[]>> {
-    const config = await this.graph.getSchoolCurriculum(schoolId);
-    const version = await this.graph.latestSignedOffVersion(config?.curriculum ?? "NSW");
     const out = new Map<string, string[]>();
-    if (!version) return out;
-    for (const mapping of await this.graph.listMappingsByVersion(version.id)) {
-      if (!(await this.content.isInApprovedPool(mapping.contentItemId))) continue;
-      if (!out.has(mapping.nodeId)) out.set(mapping.nodeId, []);
-      const list = out.get(mapping.nodeId)!;
-      if (!list.includes(mapping.contentItemId)) list.push(mapping.contentItemId);
+    // Spans every signed-off graph: a class's reteach material lives in its own
+    // subject's graph, so one version's mappings would miss all the others.
+    for (const version of await signedOffGraphs(this.graph, schoolId)) {
+      for (const mapping of await this.graph.listMappingsByVersion(version.id)) {
+        if (!(await this.content.isInApprovedPool(mapping.contentItemId))) continue;
+        if (!out.has(mapping.nodeId)) out.set(mapping.nodeId, []);
+        const list = out.get(mapping.nodeId)!;
+        if (!list.includes(mapping.contentItemId)) list.push(mapping.contentItemId);
+      }
     }
     return out;
   }

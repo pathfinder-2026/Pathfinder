@@ -4,6 +4,8 @@ import type { AppContext } from "../context";
 import type { ContentItem } from "../domain/content";
 import type { Assessment } from "../domain/assessment";
 import { anonymityRisk, PEER_THRESHOLDS, type PeerTest } from "../domain/peer";
+import { scopeLabel } from "../domain/skillGraph";
+import { graphForScope, scopeOfClass, signedOffGraphs } from "../services/curriculumScope";
 import type { AgentSuggestion } from "../domain/agent";
 
 /**
@@ -231,17 +233,38 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       const all = await ctx.skillGraphStore.listGraphVersions();
       return reply.send({ signedOff: false, hasDraft: all.some((v) => v.status !== "signed_off") });
     }
-    const nodes = await ctx.skillGraphStore.listNodes(version.id);
+    // Every signed-off graph the school has, not just one: a teacher of two
+    // subjects needs both, and node ids are unique across graphs so the picker
+    // can hold them together. `classId` narrows to what that class teaches.
+    // Narrowing only happens when the class states its subject — a class that
+    // only knows its year could belong to any subject, so it sees everything
+    // rather than a guess.
+    const { classId } = req.query as { classId?: string };
+    const scope = classId ? scopeOfClass(await requireClassIn(schoolId, classId)) : undefined;
+    const graphs = scope?.subject
+      ? [await graphForScope(ctx.skillGraphStore, schoolId, scope)].filter((v) => v != null)
+      : await signedOffGraphs(ctx.skillGraphStore, schoolId);
+
+    const nodes = [];
+    for (const graph of graphs) {
+      for (const n of await ctx.skillGraphStore.listNodes(graph.id)) {
+        // parentId carries the graph's real hierarchy (subject → strand → … →
+        // skill) so pickers can cascade instead of flattening every node into
+        // one list. Stripping it made "Mathematics" selectable as a skill.
+        nodes.push({
+          id: n.id, label: n.label, code: n.code ?? null, type: n.type, parentId: n.parentId ?? null,
+          versionId: graph.id, subject: graph.subject, yearLevel: graph.yearLevel,
+        });
+      }
+    }
     return reply.send({
       signedOff: true,
       versionId: version.id,
       versionName: version.name,
-      // parentId carries the graph's real hierarchy (subject → strand → … →
-      // skill) so pickers can cascade instead of flattening every node into one
-      // list. Stripping it here is what made "Mathematics" selectable as a skill.
-      nodes: nodes.map((n) => ({
-        id: n.id, label: n.label, code: n.code ?? null, type: n.type, parentId: n.parentId ?? null,
+      graphs: graphs.map((g) => ({
+        versionId: g.id, name: g.name, subject: g.subject, yearLevel: g.yearLevel, scopeLabel: scopeLabel(g),
       })),
+      nodes,
     });
   });
 
@@ -445,7 +468,9 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const { schoolId } = req.params as { schoolId: string };
     await requireTeacherOf(req, schoolId);
     const classes = await ctx.store.listClassesBySchool(schoolId);
-    return reply.send(classes.map((c) => ({ id: c.id, name: c.name, yearGroup: c.yearGroup ?? null })));
+    return reply.send(classes.map((c) => ({
+      id: c.id, name: c.name, yearGroup: c.yearGroup ?? null, subject: c.subject ?? null,
+    })));
   });
 
   app.get("/api/v1/schools/:schoolId/classes/:classId/heatmap", async (req, reply) => {

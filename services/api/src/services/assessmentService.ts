@@ -20,6 +20,7 @@ import type { AssessmentStore } from "../ports/assessmentStore";
 import type { ContentStore } from "../ports/contentStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
+import { graphOfNode } from "./curriculumScope";
 
 const VERSION_LABELS = ["A", "B", "C", "D", "E"];
 const RESUME_WINDOW_MS = 30 * 60 * 1000;
@@ -212,8 +213,9 @@ export class AssessmentService {
   /** For "extension" (and the related "progression"), the next skill along a prerequisite edge — falls back to the same node if the graph has no follow-on. */
   private async tailoredNodeId(schoolId: string, action: NextActionKind, nodeId: string): Promise<string> {
     if (action !== "extension" && action !== "progression") return nodeId;
-    const config = await this.graph.getSchoolCurriculum(schoolId);
-    const version = await this.graph.latestSignedOffVersion(config?.curriculum ?? "NSW");
+    // Follow the prerequisite edge inside the node's OWN graph — the next skill
+    // after a Year 7 Science node is never found in the Year 8 Maths graph.
+    const version = await graphOfNode(this.graph, schoolId, nodeId);
     if (!version) return nodeId;
     const edges = await this.graph.listEdges(version.id);
     return edges.find((e) => e.from === nodeId)?.to ?? nodeId;

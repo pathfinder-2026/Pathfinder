@@ -20,6 +20,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   const [detail, setDetail] = useState<AssessmentDetail | null>(null);
   const [attempts, setAttempts] = useState<AttemptRow[] | null>(null);
   const [openAttemptId, setOpenAttemptId] = useState<string | null>(null);
+  const [editingQ, setEditingQ] = useState<{ id: string; prompt: string; modelAnswer: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [declined, setDeclined] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -136,6 +137,10 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
         )}
       </Card>
 
+      <ManualAuthorCard skills={skills} session={session} busy={busy}
+        onCreated={async (id, n) => { setNotice(`Assessment created with ${n} question${n === 1 ? "" : "s"} — your own words, ready to publish after review.`); await refresh(); await openDetail(id); }}
+        onError={setError} />
+
       <Card>
         <div className="card__head"><h2 className="section">Your assessments {rows ? `— ${rows.length}` : ""}</h2></div>
         {!rows ? <div className="muted">Loading…</div>
@@ -179,11 +184,45 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
           <ol style={{ margin: "0 0 6px", paddingLeft: 22, display: "flex", flexDirection: "column", gap: 14 }}>
             {detail.questions.map((q) => (
               <li key={q.id} style={{ fontSize: 14 }}>
-                <div><strong>{q.prompt}</strong> <span className="person__meta">({q.type.replace(/_/g, " ")} · {q.difficulty})</span></div>
-                {q.options && <div className="muted" style={{ marginTop: 4 }}>Options: {q.options.join(" · ")}</div>}
-                {q.modelAnswer && <div className="muted" style={{ marginTop: 4 }}>Model answer: {q.modelAnswer}</div>}
-                {q.rubric && <div className="muted" style={{ marginTop: 4 }}>Rubric: {q.rubric}</div>}
-                <div className="person__meta" style={{ marginTop: 4 }}>Grounded in: {q.groundingSources.join(", ")}</div>
+                {editingQ?.id === q.id ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <Field label="Question" htmlFor={`eq-p-${q.id}`}>
+                      <textarea id={`eq-p-${q.id}`} className="input" rows={2} value={editingQ.prompt} onChange={(e) => setEditingQ({ ...editingQ, prompt: e.target.value })} />
+                    </Field>
+                    <Field label="Model answer" htmlFor={`eq-m-${q.id}`}>
+                      <input id={`eq-m-${q.id}`} className="input" value={editingQ.modelAnswer} onChange={(e) => setEditingQ({ ...editingQ, modelAnswer: e.target.value })} />
+                    </Field>
+                    <div className="btn-row" style={{ marginTop: 0 }}>
+                      <Button variant="primary" disabled={busy || !editingQ.prompt.trim()} onClick={() => act(async () => {
+                        await api.editQuestion(session, detail.id, q.id, { prompt: editingQ.prompt, modelAnswer: editingQ.modelAnswer || null });
+                        setEditingQ(null);
+                      }, "Question updated — recorded as edited by you.")}>Save</Button>
+                      <Button variant="ghost" onClick={() => setEditingQ(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <strong>{q.prompt}</strong> <span className="person__meta">({q.type.replace(/_/g, " ")} · {q.difficulty})</span>
+                      {q.teacherAuthored && <> <Chip state="approved">Written by you</Chip></>}
+                      {q.teacherEdited && !q.teacherAuthored && <> <Chip state="pending">Edited by you</Chip></>}
+                    </div>
+                    {q.options && <div className="muted" style={{ marginTop: 4 }}>Options: {q.options.join(" · ")}</div>}
+                    {q.modelAnswer && <div className="muted" style={{ marginTop: 4 }}>Model answer: {q.modelAnswer}</div>}
+                    {q.rubric && <div className="muted" style={{ marginTop: 4 }}>Rubric: {q.rubric}</div>}
+                    <div className="person__meta" style={{ marginTop: 4 }}>
+                      {q.teacherAuthored ? "Your own material" : `Grounded in: ${q.groundingSources.join(", ")}`}
+                      {detail.status === "draft" && (
+                        <>
+                          {" · "}
+                          <button className="linkish" onClick={() => setEditingQ({ id: q.id, prompt: q.prompt, modelAnswer: q.modelAnswer ?? "" })}>Edit</button>
+                          {" · "}
+                          <button className="linkish" onClick={() => act(() => api.deleteQuestion(session, detail.id, q.id), "Question removed.")}>Remove</button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ol>
@@ -281,6 +320,78 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   );
 }
 
+/**
+ * Write-your-own assessment (task #6): the teacher's own questions, no AI and no
+ * grounding requirement — their words ARE the provenance. Joins the same
+ * review-acknowledge + publish flow as generated drafts.
+ */
+function ManualAuthorCard({ skills, session, busy, onCreated, onError }: {
+  skills: SkillsResult | null; session: Session; busy: boolean;
+  onCreated: (assessmentId: string, questionCount: number) => Promise<void>; onError: (msg: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [nodeId, setNodeId] = useState("");
+  const [qs, setQs] = useState<{ prompt: string; modelAnswer: string }[]>([{ prompt: "", modelAnswer: "" }]);
+  const [creating, setCreating] = useState(false);
+
+  const create = async () => {
+    setCreating(true);
+    try {
+      const filled = qs.filter((q) => q.prompt.trim());
+      const r = await api.createManualAssessment(session, {
+        title, nodeId, questions: filled.map((q) => ({ prompt: q.prompt, modelAnswer: q.modelAnswer || null })),
+      });
+      setOpen(false); setTitle(""); setQs([{ prompt: "", modelAnswer: "" }]); setNodeId("");
+      await onCreated(r.assessmentId, r.questionCount);
+    } catch (e) { onError((e as Error).message); } finally { setCreating(false); }
+  };
+
+  return (
+    <Card>
+      <div className="card__head">
+        <h2 className="section">Write your own</h2>
+        <p className="muted">Already have the questions — last year's paper, your own drills? Type them in. No AI involved; your words are the source, and the same review-and-publish gate applies.</p>
+      </div>
+      {!open ? (
+        <Button onClick={() => setOpen(true)}>Write an assessment</Button>
+      ) : (
+        <>
+          <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+          <div className="row">
+            <SkillPicker skills={skills} value={nodeId} onChange={setNodeId} idPrefix="man"
+              hint="Which skill this assesses — results feed that skill's mastery picture." />
+          </div>
+          {qs.map((q, i) => (
+            <div key={i} style={{ border: "1px solid var(--pf-border)", borderRadius: 10, padding: 12, marginBottom: 10 }}>
+              <Field label={`Question ${i + 1}`} htmlFor={`mq-${i}`}>
+                <textarea id={`mq-${i}`} className="input" rows={2} value={q.prompt}
+                  onChange={(e) => setQs(qs.map((x, j) => j === i ? { ...x, prompt: e.target.value } : x))} />
+              </Field>
+              <Field label="Model answer (optional — used for AI grading)" htmlFor={`ma-${i}`}>
+                <input id={`ma-${i}`} className="input" value={q.modelAnswer}
+                  onChange={(e) => setQs(qs.map((x, j) => j === i ? { ...x, modelAnswer: e.target.value } : x))} />
+              </Field>
+              {qs.length > 1 && (
+                <button className="linkish" onClick={() => setQs(qs.filter((_, j) => j !== i))}>Remove this question</button>
+              )}
+            </div>
+          ))}
+          <div className="btn-row">
+            <Button onClick={() => setQs([...qs, { prompt: "", modelAnswer: "" }])}>Add another question</Button>
+            <Button variant="primary" onClick={create}
+              disabled={busy || creating || !title.trim() || !nodeId || !qs.some((q) => q.prompt.trim())}>
+              {creating ? "Creating…" : "Create draft"}
+            </Button>
+            <span className="spacer" />
+            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 type AssignMode = "class" | "pick" | "skill";
 
 /**
@@ -301,15 +412,24 @@ function AssignPanel({ session, assessmentId, title, nodeId, onAssigned, onError
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dueDate, setDueDate] = useState(() => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
   const [baseline, setBaseline] = useState(false);
+  const [approved, setApproved] = useState<{ id: string; title: string }[]>([]);
+  const [contentId, setContentId] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    api.teacherClasses(session).then((cs) => {
+    Promise.all([api.teacherClasses(session), api.listContent(session)]).then(([cs, content]) => {
       setClasses(cs);
       if (cs.length > 0) setClassId((c) => c || cs[0]!.id);
+      // Only approved items can be attached ("where is the worksheet?" fix) —
+      // material mapped to this assessment's skill floats to the top.
+      const pool = content.filter((c) => c.status === "approved" && !c.archived);
+      setApproved([
+        ...pool.filter((c) => c.mappedNodeIds.includes(nodeId)),
+        ...pool.filter((c) => !c.mappedNodeIds.includes(nodeId)),
+      ].map((c) => ({ id: c.id, title: c.title })));
     }).catch((e) => onError((e as Error).message));
-  }, [open, session, onError]);
+  }, [open, session, nodeId, onError]);
 
   // One load serves every mode: the same roster carries each student's standing
   // on this assessment's skill, so switching modes just changes the preselection.
@@ -340,7 +460,7 @@ function AssignPanel({ session, assessmentId, title, nodeId, onAssigned, onError
     try {
       const r = await api.assignWork(session, {
         studentIds: [...selected], classId, type: "assessment", title,
-        nodeId, assessmentId, dueDate, baseline,
+        nodeId, assessmentId, contentId: contentId || null, dueDate, baseline,
       });
       onAssigned(baseline
         ? `Baseline check assigned to ${r.assigned} student${r.assigned === 1 ? "" : "s"} — their results will set each student's starting line for this concept.`
@@ -376,6 +496,12 @@ function AssignPanel({ session, assessmentId, title, nodeId, onAssigned, onError
         </Field>
         <Field label="Due date" htmlFor="as-due">
           <input id="as-due" className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+        <Field label="Attach material" htmlFor="as-material" hint="Approved material renders inside the task, so students aren't left asking where the worksheet is.">
+          <select id="as-material" className="select" value={contentId} onChange={(e) => setContentId(e.target.value)}>
+            <option value="">None</option>
+            {approved.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+          </select>
         </Field>
       </div>
       {mode === "skill" && belowCount === 0 && (

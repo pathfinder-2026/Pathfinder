@@ -29,6 +29,7 @@ export class InMemoryAssessmentStore implements AssessmentStore {
   async insertQuestion(q: AssessmentQuestion): Promise<void> { this.questions.set(q.id, clone(q)); }
   async getQuestion(id: string): Promise<AssessmentQuestion | undefined> { const v = this.questions.get(id); return v ? clone(v) : undefined; }
   async updateQuestion(q: AssessmentQuestion): Promise<void> { this.questions.set(q.id, clone(q)); }
+  async deleteQuestion(id: string): Promise<void> { this.questions.delete(id); }
   async listQuestionsByVersion(versionId: string): Promise<AssessmentQuestion[]> {
     return [...this.questions.values()].filter((q) => q.versionId === versionId).sort((a, b) => a.order - b.order).map(clone);
   }

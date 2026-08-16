@@ -1,4 +1,4 @@
-import { AuthError, ConflictError, NotFoundError } from "../domain/errors";
+import { AuthError, ConflictError, NotFoundError, ValidationError } from "../domain/errors";
 import type {
   Assessment,
   AssessmentAttempt,
@@ -219,6 +219,132 @@ export class AssessmentService {
     if (!version) return nodeId;
     const edges = await this.graph.listEdges(version.id);
     return edges.find((e) => e.from === nodeId)?.to ?? nodeId;
+  }
+
+  // ---- teacher authorship: edit, delete, write-your-own (task #6) ----
+
+  /**
+   * Edit a question while the assessment is a DRAFT. The edit is the teacher's
+   * own wording, recorded as such (teacherEdited) — an edited question is no
+   * longer verbatim-grounded, and pretending otherwise would be dishonest.
+   * Published assessments are immutable: students never see a moving target.
+   */
+  async editQuestion(
+    assessmentId: string,
+    questionId: string,
+    teacherId: string,
+    changes: { prompt?: string; options?: string[] | null; modelAnswer?: string | null; rubric?: string | null },
+  ): Promise<AssessmentQuestion> {
+    const a = await this.requireOwnDraft(assessmentId, teacherId);
+    const question = await this.store.getQuestion(questionId);
+    if (!question || !(await this.belongsTo(question, assessmentId))) throw new NotFoundError("Question not found.");
+    if (changes.prompt !== undefined && !changes.prompt.trim()) {
+      throw new ValidationError("A question needs a prompt.");
+    }
+    const updated: AssessmentQuestion = {
+      ...question,
+      prompt: changes.prompt?.trim() ?? question.prompt,
+      options: changes.options !== undefined ? changes.options : question.options,
+      modelAnswer: changes.modelAnswer !== undefined ? changes.modelAnswer : question.modelAnswer,
+      rubric: changes.rubric !== undefined ? changes.rubric : question.rubric,
+      teacherEdited: true,
+      reviewed: true, // editing IS reviewing — the teacher has read every word
+    };
+    await this.store.updateQuestion(updated);
+    this.audit.append({
+      action: "assessment.question.edited",
+      actorId: teacherId,
+      subjectType: "assessment",
+      subjectId: a.id,
+      metadata: { questionId, fields: Object.keys(changes) },
+    });
+    return updated;
+  }
+
+  /** Remove a question from a DRAFT (e.g. the one weak question of three). */
+  async removeQuestion(assessmentId: string, questionId: string, teacherId: string): Promise<void> {
+    const a = await this.requireOwnDraft(assessmentId, teacherId);
+    const question = await this.store.getQuestion(questionId);
+    if (!question || !(await this.belongsTo(question, assessmentId))) throw new NotFoundError("Question not found.");
+    await this.store.deleteQuestion(questionId);
+    this.audit.append({
+      action: "assessment.question.removed",
+      actorId: teacherId,
+      subjectType: "assessment",
+      subjectId: a.id,
+      metadata: { questionId },
+    });
+  }
+
+  /**
+   * A teacher writes their own assessment from scratch — no AI, no grounding
+   * requirement (their own words are the provenance), same review-acknowledge
+   * and publish gates as generated drafts so the workflow stays uniform.
+   */
+  async createManual(
+    schoolId: string,
+    teacherId: string,
+    input: {
+      title: string;
+      nodeId: string;
+      questions: { prompt: string; options?: string[] | null; modelAnswer?: string | null; rubric?: string | null }[];
+    },
+  ): Promise<{ assessmentId: string; questionCount: number }> {
+    if (!input.title.trim()) throw new ValidationError("A title is required.");
+    if (!input.questions.length || input.questions.some((q) => !q.prompt.trim())) {
+      throw new ValidationError("Every question needs a prompt, and at least one question is required.");
+    }
+    const now = this.clock.isoNow();
+    const assessment: Assessment = {
+      id: newId(),
+      schoolId,
+      teacherId,
+      title: input.title.trim(),
+      request: { title: input.title.trim(), nodeId: input.nodeId, count: input.questions.length, difficulty: "mixed" },
+      status: "draft",
+      generationStatus: "generated",
+      publishedAt: null,
+      scheduledStart: null,
+      reviewAcknowledged: false,
+      shortfall: null,
+      flags: ["teacher_authored"],
+      createdAt: now,
+    };
+    await this.store.insertAssessment(assessment);
+    const version: AssessmentVersion = { id: newId(), assessmentId: assessment.id, label: "A", createdAt: now };
+    await this.store.insertVersion(version);
+    for (const [i, q] of input.questions.entries()) {
+      await this.store.insertQuestion({
+        id: newId(), versionId: version.id, order: i, type: "short_answer",
+        prompt: q.prompt.trim(), options: q.options ?? null,
+        modelAnswer: q.modelAnswer ?? null, rubric: q.rubric ?? null,
+        difficulty: "developing", groundingContentIds: [],
+        reviewed: true, // their own words — written IS reviewed
+        teacherAuthored: true,
+      });
+    }
+    this.audit.append({
+      action: "assessment.authored",
+      actorId: teacherId,
+      subjectType: "assessment",
+      subjectId: assessment.id,
+      metadata: { questions: input.questions.length, nodeId: input.nodeId },
+    });
+    return { assessmentId: assessment.id, questionCount: input.questions.length };
+  }
+
+  /** Draft-only, owned-by-this-teacher gate shared by the authorship actions. */
+  private async requireOwnDraft(assessmentId: string, teacherId: string): Promise<Assessment> {
+    const a = await this.require(assessmentId);
+    if (a.teacherId !== teacherId) throw new AuthError("Not your assessment.");
+    if (a.status !== "draft") {
+      throw new ConflictError("PUBLISHED_IMMUTABLE", "Unpublish first — a published assessment can't be edited while students may be sitting it.");
+    }
+    return a;
+  }
+
+  private async belongsTo(question: AssessmentQuestion, assessmentId: string): Promise<boolean> {
+    return (await this.store.listVersionsByAssessment(assessmentId)).some((v) => v.id === question.versionId);
   }
 
   // ---- review & publish (FR-ASM-004) ----

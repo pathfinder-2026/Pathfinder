@@ -21,6 +21,12 @@ export interface StudentTask {
   nodeId: string | null;
   /** Set when the task is (or mirrors) an assessment. */
   assessmentId: string | null;
+  /**
+   * Approved content attached as the task's readable material — the answer to
+   * "where is the worksheet?". Approved-pool only (Decision 7), re-checked at
+   * read time so an item unapproved later degrades honestly.
+   */
+  contentId: string | null;
   dueDate: string;
   status: TaskStatus;
   completedAt: string | null;

@@ -38,6 +38,10 @@ export interface AssessmentQuestion {
   /** The approved content items this question is grounded in. */
   groundingContentIds: string[];
   reviewed: boolean;
+  /** Reworded/adjusted by the teacher after generation (no longer verbatim-grounded). */
+  teacherEdited?: boolean;
+  /** Written by the teacher from scratch (manual authoring — their own words). */
+  teacherAuthored?: boolean;
 }
 
 export interface AssessmentVersion {

@@ -37,7 +37,9 @@ async function request<T>(method: string, path: string, body?: unknown, token?: 
   const res = await fetch(path, {
     method,
     headers: {
-      "content-type": "application/json",
+      // content-type only when a body is actually sent — Fastify rejects e.g. a
+      // DELETE that declares JSON but carries nothing (FST_ERR_CTP_EMPTY_JSON_BODY).
+      ...(body !== undefined ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -178,6 +180,7 @@ export interface AssessmentDetail {
     id: string; order: number; type: string; prompt: string; options: string[] | null;
     modelAnswer: string | null; rubric: string | null; difficulty: string;
     reviewed: boolean; groundingSources: string[];
+    teacherEdited: boolean; teacherAuthored: boolean;
   }[];
 }
 
@@ -318,13 +321,20 @@ export const api = {
     request<AttemptRow[]>("GET", `/api/v1/schools/${s.schoolId}/assessments/${assessmentId}/attempts`, undefined, s.token),
   assignWork: (s: Session, body: {
     studentIds: string[]; classId?: string | null; type: "homework" | "practice" | "assessment";
-    title: string; nodeId?: string | null; assessmentId?: string | null; dueDate: string; baseline?: boolean;
+    title: string; nodeId?: string | null; assessmentId?: string | null; contentId?: string | null;
+    dueDate: string; baseline?: boolean;
   }) => request<{ assigned: number }>("POST", `/api/v1/schools/${s.schoolId}/assignments`, body, s.token),
   skillStanding: (s: Session, classId: string, nodeId: string) =>
     request<{ studentId: string; label: string; score: number | null; belowMastery: boolean; noData: boolean }[]>(
       "GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/skill-standing?nodeId=${encodeURIComponent(nodeId)}`,
       undefined, s.token,
     ),
+  editQuestion: (s: Session, assessmentId: string, questionId: string, changes: { prompt?: string; options?: string[] | null; modelAnswer?: string | null; rubric?: string | null }) =>
+    request<{ id: string }>("PATCH", `/api/v1/schools/${s.schoolId}/assessments/${assessmentId}/questions/${questionId}`, changes, s.token),
+  deleteQuestion: (s: Session, assessmentId: string, questionId: string) =>
+    request<{ ok: boolean }>("DELETE", `/api/v1/schools/${s.schoolId}/assessments/${assessmentId}/questions/${questionId}`, undefined, s.token),
+  createManualAssessment: (s: Session, body: { title: string; nodeId: string; questions: { prompt: string; modelAnswer?: string | null }[] }) =>
+    request<{ assessmentId: string; questionCount: number }>("POST", `/api/v1/schools/${s.schoolId}/assessments/manual`, body, s.token),
   acknowledgeReview: (s: Session, id: string) => request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/assessments/${id}/acknowledge-review`, {}, s.token),
   publishAssessment: (s: Session, id: string) => request<{ status: string; publishedAt: string | null }>("POST", `/api/v1/schools/${s.schoolId}/assessments/${id}/publish`, {}, s.token),
   unpublishAssessment: (s: Session, id: string) => request<{ status: string }>("POST", `/api/v1/schools/${s.schoolId}/assessments/${id}/unpublish`, {}, s.token),
@@ -428,7 +438,12 @@ export const api = {
   // ---- Student (STU-1..4, safety-critical) ----
   studentWorkspace: (s: Session) => request<StudentWorkspaceView>("GET", `/api/v1/schools/${s.schoolId}/student/workspace`, undefined, s.token),
   studentTask: (s: Session, taskId: string) =>
-    request<{ id: string; type: string; title: string; dueDate: string; status: string; assessmentId: string | null }>("GET", `/api/v1/schools/${s.schoolId}/student/tasks/${taskId}`, undefined, s.token),
+    request<{
+      id: string; type: string; title: string; dueDate: string; status: string; assessmentId: string | null;
+      baseline: boolean;
+      material: { title: string; sections: { heading: string; text: string }[] } | null;
+      materialWithdrawn: boolean;
+    }>("GET", `/api/v1/schools/${s.schoolId}/student/tasks/${taskId}`, undefined, s.token),
   completeStudentTask: (s: Session, taskId: string) =>
     request<{ id: string; status: string }>("POST", `/api/v1/schools/${s.schoolId}/student/tasks/${taskId}/complete`, {}, s.token),
   askForHelp: (s: Session, taskId: string, message: string) =>

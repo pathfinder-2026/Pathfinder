@@ -24,6 +24,8 @@ export interface AssignTaskInput {
   title: string;
   nodeId?: string | null;
   assessmentId?: string | null;
+  /** Approved content to attach as the task's readable material. */
+  contentId?: string | null;
   dueDate: string;
   baseline?: boolean;
 }
@@ -58,6 +60,7 @@ export class StudentWorkspaceService {
     const task: StudentTask = {
       id: newId(), schoolId, studentId: input.studentId, classId: input.classId ?? null, teacherId,
       type: input.type, title: input.title, nodeId: input.nodeId ?? null, assessmentId: input.assessmentId ?? null,
+      contentId: input.contentId ?? null,
       dueDate: input.dueDate, status: "assigned", completedAt: null, overdueNotified: false,
       baseline: input.baseline ?? false,
       createdAt: this.clock.isoNow(),

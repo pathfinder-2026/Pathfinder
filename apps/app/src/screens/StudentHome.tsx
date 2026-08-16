@@ -164,8 +164,32 @@ function TaskDetail({ session, taskId, onBack }: { session: Session; taskId: str
     <>
       <button className="linkish" onClick={onBack}>← Back to your work</button>
       <h1 style={{ marginTop: 10 }}>{task?.title ?? "…"}</h1>
-      {task && <p className="lede">{task.type} · due {task.dueDate.slice(0, 10)}</p>}
+      {task && (
+        <p className="lede">
+          {task.baseline
+            ? "A check-in to help your teacher plan — it's not a graded test, so just show what you know."
+            : `${task.type} · due ${task.dueDate.slice(0, 10)}`}
+        </p>
+      )}
       {error && <Banner kind="error">{error}</Banner>}
+
+      {task?.material && (
+        <Card>
+          <div className="card__head">
+            <h2 className="section">Your material — {task.material.title}</h2>
+            <p className="muted">Everything you need for this task is right here.</p>
+          </div>
+          {task.material.sections.map((s, i) => (
+            <div key={i} style={{ marginBottom: 14 }}>
+              <h3 style={{ fontSize: 14, margin: "0 0 4px" }}>{s.heading}</h3>
+              <p style={{ fontSize: 14, margin: 0, whiteSpace: "pre-wrap" }}>{s.text}</p>
+            </div>
+          ))}
+        </Card>
+      )}
+      {task?.materialWithdrawn && (
+        <Banner kind="warn">The material for this task isn't available right now — your teacher has been through it and it's being updated. Ask them if you need it.</Banner>
+      )}
 
       <Card>
         <div className="card__head">

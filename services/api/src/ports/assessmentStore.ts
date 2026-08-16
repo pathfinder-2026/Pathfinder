@@ -18,6 +18,7 @@ export interface AssessmentStore {
   insertQuestion(q: AssessmentQuestion): Promise<void>;
   getQuestion(id: string): Promise<AssessmentQuestion | undefined>;
   updateQuestion(q: AssessmentQuestion): Promise<void>;
+  deleteQuestion(id: string): Promise<void>;
   listQuestionsByVersion(versionId: string): Promise<AssessmentQuestion[]>;
   listQuestionsByAssessment(assessmentId: string): Promise<AssessmentQuestion[]>;
 

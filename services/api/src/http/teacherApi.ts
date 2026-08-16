@@ -365,6 +365,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
           id: q.id, order: q.order, type: q.type, prompt: q.prompt, options: q.options,
           modelAnswer: q.modelAnswer, rubric: q.rubric, difficulty: q.difficulty,
           reviewed: q.reviewed, groundingSources: q.groundingContentIds.map((gid) => titles.get(gid) ?? gid),
+          teacherEdited: q.teacherEdited ?? false, teacherAuthored: q.teacherAuthored ?? false,
         })),
     });
   });
@@ -401,6 +402,36 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       gradedResults: a.gradedResults,
       gradedAt: a.gradedAt,
     })));
+  });
+
+  // ---- teacher authorship: edit/delete questions + write-your-own (task #6) ----
+
+  app.patch("/api/v1/schools/:schoolId/assessments/:id/questions/:questionId", async (req, reply) => {
+    const { schoolId, id, questionId } = req.params as { schoolId: string; id: string; questionId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireAssessmentIn(schoolId, id);
+    const changes = req.body as { prompt?: string; options?: string[] | null; modelAnswer?: string | null; rubric?: string | null };
+    const q = await ctx.assessment.editQuestion(id, questionId, auth.user.id, changes);
+    return reply.send({ id: q.id, prompt: q.prompt, options: q.options, modelAnswer: q.modelAnswer, rubric: q.rubric, teacherEdited: true });
+  });
+
+  app.delete("/api/v1/schools/:schoolId/assessments/:id/questions/:questionId", async (req, reply) => {
+    const { schoolId, id, questionId } = req.params as { schoolId: string; id: string; questionId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireAssessmentIn(schoolId, id);
+    await ctx.assessment.removeQuestion(id, questionId, auth.user.id);
+    return reply.send({ ok: true });
+  });
+
+  app.post("/api/v1/schools/:schoolId/assessments/manual", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const body = req.body as {
+      title: string; nodeId: string;
+      questions: { prompt: string; options?: string[] | null; modelAnswer?: string | null; rubric?: string | null }[];
+    };
+    const created = await ctx.assessment.createManual(schoolId, auth.user.id, body);
+    return reply.status(201).send(created);
   });
 
   app.post("/api/v1/schools/:schoolId/assessments/:id/acknowledge-review", async (req, reply) => {
@@ -991,7 +1022,8 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const auth = await requireTeacherOf(req, schoolId);
     const body = req.body as {
       studentIds: string[]; classId?: string | null; type: "homework" | "practice" | "assessment";
-      title: string; nodeId?: string | null; assessmentId?: string | null; dueDate: string; baseline?: boolean;
+      title: string; nodeId?: string | null; assessmentId?: string | null; contentId?: string | null;
+      dueDate: string; baseline?: boolean;
     };
     for (const studentId of body.studentIds ?? []) {
       const student = await ctx.store.getUser(studentId);
@@ -1002,6 +1034,14 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       const assessment = await requireAssessmentIn(schoolId, body.assessmentId);
       if (assessment.status !== "published") {
         throw new ConflictError("NOT_PUBLISHED", "Publish the assessment before assigning it to students.");
+      }
+    }
+    // Attached material must be in the approved pool (Decision 7).
+    if (body.contentId) {
+      const item = await ctx.contentStore.getContentItem(body.contentId);
+      if (!item || item.schoolId !== schoolId) throw new NotFoundError("Content not found in this school.");
+      if (!(await ctx.content.isInApprovedPool(body.contentId))) {
+        throw new ConflictError("CONTENT_NOT_APPROVED", "Only approved material can be attached to a task.");
       }
     }
     const tasks = await ctx.studentWorkspace.assignToStudents(auth.user.id, schoolId, body);

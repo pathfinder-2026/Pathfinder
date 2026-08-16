@@ -56,7 +56,7 @@ async function addMember(
 async function prepareGrounding(
   app: ReturnType<typeof buildApp>, schoolId: string, adminAuth: Record<string, string>, teacherAuth: Record<string, string>,
   sections = 3,
-) {
+): Promise<string> {
   const imported = await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/skill-graph/import-seed`, headers: adminAuth });
   await app.inject({ method: "POST", url: `/api/v1/schools/${schoolId}/skill-graph/${imported.json().versionId}/sign-off`, headers: adminAuth });
   const text = Array.from({ length: sections }, (_, i) => `# Topic ${i}\nExplain the idea clearly in prose.`).join("\n");
@@ -67,6 +67,7 @@ async function prepareGrounding(
     await app.inject({ method: "POST", url: `${base}/${itemId}/${step}`, headers: teacherAuth });
   }
   await app.inject({ method: "POST", url: `${base}/${itemId}/map`, headers: teacherAuth, payload: { nodeIds: [NODE] } });
+  return itemId;
 }
 
 describe("Production Student API — the safety-critical workspace over HTTP", () => {
@@ -202,6 +203,49 @@ describe("Production Student API — the safety-critical workspace over HTTP", (
     await app.inject({ method: "POST", url: `${calBase}/${open.json().id}/reschedule`, headers: teacher.auth, payload: { newDate: "2026-09-09" } });
     cal = (await app.inject({ method: "GET", url: calUrl, headers: student.auth })).json() as any[];
     expect(cal.find((e) => e.title === "Whole school day")).toMatchObject({ date: "2026-09-09", changed: true });
+    await app.close();
+  });
+
+  it("task material: approved content renders inside the task; unapproved is refused at assign (task #2)", async () => {
+    const { app } = makeApp();
+    const { schoolId, auth } = await startSchool(app);
+    const teacher = await addMember(app, schoolId, auth, "teacher");
+    const student = await addMember(app, schoolId, auth, "student");
+    const approvedId = await prepareGrounding(app, schoolId, auth, teacher.auth, 2);
+
+    // Assign homework with the approved pack attached.
+    const assigned = await app.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/assignments`, headers: teacher.auth,
+      payload: {
+        studentIds: [student.userId], type: "homework", title: "Fractions practice",
+        nodeId: NODE, contentId: approvedId, dueDate: "2026-09-01",
+      },
+    });
+    expect(assigned.statusCode).toBe(201);
+    const taskId = assigned.json().taskIds[0] as string;
+
+    // The student's task detail carries the material's sections inline.
+    const detail = (await app.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/student/tasks/${taskId}`, headers: student.auth,
+    })).json();
+    expect(detail.material).toMatchObject({ title: "Grounding pack" });
+    expect(detail.material.sections.length).toBe(2);
+    expect(detail.material.sections[0].heading).toContain("Topic");
+
+    // A never-approved upload cannot be attached (Decision 7 at assign time).
+    const up = await app.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/content`, headers: teacher.auth,
+      payload: { title: "Pending pack", fileType: "pdf", text: "# Draft\nUnreviewed." },
+    });
+    const refused = await app.inject({
+      method: "POST", url: `/api/v1/schools/${schoolId}/assignments`, headers: teacher.auth,
+      payload: {
+        studentIds: [student.userId], type: "homework", title: "Sneaky",
+        contentId: up.json().contentItemId, dueDate: "2026-09-01",
+      },
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().code).toBe("CONTENT_NOT_APPROVED");
     await app.close();
   });
 

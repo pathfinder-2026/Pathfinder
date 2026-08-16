@@ -55,10 +55,28 @@ export function registerStudentApi(app: FastifyInstance, ctx: AppContext): void 
     const { schoolId, taskId } = req.params as { schoolId: string; taskId: string };
     const auth = await requireStudentOf(req, schoolId);
     const task = await requireOwnTask(auth.user.id, taskId);
+    // Attached material renders inline IF it is still in the approved pool —
+    // an item unapproved/archived since assignment degrades to an honest note
+    // rather than leaking unapproved content (Decision 7, re-checked at read).
+    let material: { title: string; sections: { heading: string; text: string }[] } | null = null;
+    let materialWithdrawn = false;
+    if (task.contentId) {
+      const item = await ctx.contentStore.getContentItem(task.contentId);
+      if (item && (await ctx.content.isInApprovedPool(task.contentId))) {
+        const chunks = await ctx.contentStore.listChunksByVersion(item.currentVersionId);
+        material = {
+          title: item.title,
+          sections: [...chunks].sort((a, b) => a.order - b.order).map((c) => ({ heading: c.heading, text: c.text })),
+        };
+      } else {
+        materialWithdrawn = true;
+      }
+    }
     return reply.send({
       id: task.id, type: task.type, title: task.title, dueDate: task.dueDate,
       status: task.status, assessmentId: task.assessmentId,
       baseline: task.baseline ?? false,
+      material, materialWithdrawn,
     });
   });
 

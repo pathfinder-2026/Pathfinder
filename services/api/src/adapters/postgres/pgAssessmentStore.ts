@@ -42,9 +42,10 @@ export class PgAssessmentStore implements AssessmentStore {
 
   async insertQuestion(q: AssessmentQuestion): Promise<void> {
     await this.sql`insert into assessment_questions
-      (id,version_id,"order",type,prompt,options,model_answer,rubric,difficulty,grounding_content_ids,reviewed)
+      (id,version_id,"order",type,prompt,options,model_answer,rubric,difficulty,grounding_content_ids,reviewed,teacher_edited,teacher_authored)
       values (${q.id},${q.versionId},${q.order},${q.type},${q.prompt},${q.options ? this.sql.json(q.options) : null},
-        ${q.modelAnswer},${q.rubric},${q.difficulty},${this.sql.json(q.groundingContentIds)},${q.reviewed})`;
+        ${q.modelAnswer},${q.rubric},${q.difficulty},${this.sql.json(q.groundingContentIds)},${q.reviewed},
+        ${q.teacherEdited ?? false},${q.teacherAuthored ?? false})`;
   }
   async getQuestion(id: string): Promise<AssessmentQuestion | undefined> {
     return mapQuestion((await this.sql`select * from assessment_questions where id=${id}`)[0]);
@@ -52,8 +53,12 @@ export class PgAssessmentStore implements AssessmentStore {
   async updateQuestion(q: AssessmentQuestion): Promise<void> {
     await this.sql`update assessment_questions set prompt=${q.prompt},
       options=${q.options ? this.sql.json(q.options) : null}, model_answer=${q.modelAnswer}, rubric=${q.rubric},
-      difficulty=${q.difficulty}, grounding_content_ids=${this.sql.json(q.groundingContentIds)}, reviewed=${q.reviewed}
+      difficulty=${q.difficulty}, grounding_content_ids=${this.sql.json(q.groundingContentIds)}, reviewed=${q.reviewed},
+      teacher_edited=${q.teacherEdited ?? false}, teacher_authored=${q.teacherAuthored ?? false}
       where id=${q.id}`;
+  }
+  async deleteQuestion(id: string): Promise<void> {
+    await this.sql`delete from assessment_questions where id=${id}`;
   }
   async listQuestionsByVersion(versionId: string): Promise<AssessmentQuestion[]> {
     return (await this.sql`select * from assessment_questions where version_id=${versionId} order by "order"`).map(mapQuestion) as AssessmentQuestion[];
@@ -120,6 +125,8 @@ function mapQuestion(r: Row): AssessmentQuestion | undefined {
     difficulty: r.difficulty,
     groundingContentIds: r.grounding_content_ids,
     reviewed: r.reviewed,
+    teacherEdited: r.teacher_edited ?? false,
+    teacherAuthored: r.teacher_authored ?? false,
   };
 }
 function mapAttempt(r: Row): AssessmentAttempt | undefined {

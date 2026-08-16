@@ -268,6 +268,19 @@ describe("Production Student API — the safety-critical workspace over HTTP", (
       method: "POST", url: `${base}/tasks/${task.id}/help`, headers: student.auth, payload: { message: "How do I start adding fractions?" },
     })).json();
     expect(unlocked.available).toBe(true);
+
+    // The teacher's grades surface shows the student's answers + grading; a
+    // student token is refused on it (grades are teacher-only, TCH review rule).
+    const teacherView = (await app.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/assessments/${assessmentId}/attempts`, headers: teacher.auth,
+    })).json();
+    expect(teacherView).toHaveLength(1);
+    expect(teacherView[0]).toMatchObject({ status: "submitted", savedAnswers: { [q0]: "3/4" } });
+    expect(teacherView[0].gradedScore).not.toBeNull();
+    const denied = await app.inject({
+      method: "GET", url: `/api/v1/schools/${schoolId}/assessments/${assessmentId}/attempts`, headers: student.auth,
+    });
+    expect(denied.statusCode).toBe(401);
     await app.close();
   });
 

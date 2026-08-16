@@ -58,6 +58,7 @@ export function registerStudentApi(app: FastifyInstance, ctx: AppContext): void 
     return reply.send({
       id: task.id, type: task.type, title: task.title, dueDate: task.dueDate,
       status: task.status, assessmentId: task.assessmentId,
+      baseline: task.baseline ?? false,
     });
   });
 

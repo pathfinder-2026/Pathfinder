@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError } from "../domain/errors";
+import { ConflictError, NotFoundError, ValidationError } from "../domain/errors";
 import {
   daysBetween,
   isOverdue,
@@ -25,6 +25,7 @@ export interface AssignTaskInput {
   nodeId?: string | null;
   assessmentId?: string | null;
   dueDate: string;
+  baseline?: boolean;
 }
 
 export interface CreateEventInput {
@@ -58,10 +59,43 @@ export class StudentWorkspaceService {
       id: newId(), schoolId, studentId: input.studentId, classId: input.classId ?? null, teacherId,
       type: input.type, title: input.title, nodeId: input.nodeId ?? null, assessmentId: input.assessmentId ?? null,
       dueDate: input.dueDate, status: "assigned", completedAt: null, overdueNotified: false,
+      baseline: input.baseline ?? false,
       createdAt: this.clock.isoNow(),
     };
     await this.workspace.insertTask(task);
     return task;
+  }
+
+  /**
+   * Assign one piece of work to MANY students in one explicit teacher action —
+   * the workflow behind "assign to the class / this group / everyone below
+   * mastery". Selection happens in the UI (suggest-then-confirm, never
+   * auto-assigned); this only fans the confirmed list out and audits it once.
+   */
+  async assignToStudents(
+    teacherId: string,
+    schoolId: string,
+    input: Omit<AssignTaskInput, "studentId"> & { studentIds: string[] },
+  ): Promise<StudentTask[]> {
+    await this.requireTeacher(teacherId, schoolId);
+    if (input.studentIds.length === 0) {
+      throw new ValidationError("At least one student is required — nothing was assigned.");
+    }
+    const tasks: StudentTask[] = [];
+    for (const studentId of new Set(input.studentIds)) {
+      tasks.push(await this.assignTask(teacherId, schoolId, { ...input, studentId }));
+    }
+    this.audit.append({
+      action: "task.assigned.bulk",
+      actorId: teacherId,
+      subjectType: "class",
+      subjectId: input.classId ?? schoolId,
+      metadata: {
+        students: tasks.length, type: input.type, assessmentId: input.assessmentId ?? null,
+        nodeId: input.nodeId ?? null, baseline: input.baseline ?? false,
+      },
+    });
+    return tasks;
   }
 
   async completeTask(studentId: string, taskId: string): Promise<StudentTask> {
@@ -121,6 +155,7 @@ export class StudentWorkspaceService {
     const view = (t: StudentTask): WorkspaceTaskView => ({
       id: t.id, type: t.type, title: t.title, dueDate: t.dueDate, status: t.status,
       completed: t.status === "completed", overdue: isOverdue(t, nowIso),
+      baseline: t.baseline ?? false,
     });
     const today = tasks.filter((t) => sameDay(t.dueDate, nowIso)).map(view);
     const thisWeek = tasks.filter((t) => withinDays(t.dueDate, nowIso, 7)).map(view);

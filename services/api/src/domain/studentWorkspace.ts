@@ -24,6 +24,13 @@ export interface StudentTask {
   dueDate: string;
   status: TaskStatus;
   completedAt: string | null;
+  /**
+   * A baseline diagnostic assigned when starting a new concept: its graded
+   * results become the first mastery data points, so the growth report gets a
+   * real starting line and the heatmap escapes its cold start. Framed to the
+   * student as planning help, never a graded test.
+   */
+  baseline?: boolean;
   /** Dedupe: the assigning teacher is notified once when a task becomes overdue. */
   overdueNotified: boolean;
   createdAt: string;
@@ -55,6 +62,8 @@ export interface WorkspaceTaskView {
   status: TaskStatus;
   completed: boolean;
   overdue: boolean;
+  /** Baseline checks render with calm "helps your teacher plan" framing. */
+  baseline: boolean;
 }
 
 export interface WorkspaceView {

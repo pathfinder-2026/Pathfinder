@@ -181,6 +181,20 @@ export interface AssessmentDetail {
   }[];
 }
 
+/** A student's attempt at an assessment — the teacher-only grades surface. */
+export interface AttemptRow {
+  id: string;
+  studentId: string;
+  studentLabel: string;
+  status: string;
+  interrupted: boolean;
+  savedAnswers: Record<string, string>;
+  lastSavedAt: string;
+  gradedScore: number | null;
+  gradedResults: { questionId: string; score: number; correct: boolean }[] | null;
+  gradedAt: string | null;
+}
+
 export type GenerateResult =
   | { status: "generated"; assessmentId: string; questionCount: number; shortfall: AssessmentRow["shortfall"]; flags: string[] }
   | { status: "declined"; message: string; pendingContent: { id: string; title: string; status: string }[] }
@@ -300,6 +314,17 @@ export const api = {
   generateAssessment: (s: Session, body: { title: string; nodeId: string; count: number; difficulty: string }) =>
     request<GenerateResult>("POST", `/api/v1/schools/${s.schoolId}/assessments/generate`, body, s.token),
   getAssessment: (s: Session, id: string) => request<AssessmentDetail>("GET", `/api/v1/schools/${s.schoolId}/assessments/${id}`, undefined, s.token),
+  listAttempts: (s: Session, assessmentId: string) =>
+    request<AttemptRow[]>("GET", `/api/v1/schools/${s.schoolId}/assessments/${assessmentId}/attempts`, undefined, s.token),
+  assignWork: (s: Session, body: {
+    studentIds: string[]; classId?: string | null; type: "homework" | "practice" | "assessment";
+    title: string; nodeId?: string | null; assessmentId?: string | null; dueDate: string; baseline?: boolean;
+  }) => request<{ assigned: number }>("POST", `/api/v1/schools/${s.schoolId}/assignments`, body, s.token),
+  skillStanding: (s: Session, classId: string, nodeId: string) =>
+    request<{ studentId: string; label: string; score: number | null; belowMastery: boolean; noData: boolean }[]>(
+      "GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/skill-standing?nodeId=${encodeURIComponent(nodeId)}`,
+      undefined, s.token,
+    ),
   acknowledgeReview: (s: Session, id: string) => request<{ ok: boolean }>("POST", `/api/v1/schools/${s.schoolId}/assessments/${id}/acknowledge-review`, {}, s.token),
   publishAssessment: (s: Session, id: string) => request<{ status: string; publishedAt: string | null }>("POST", `/api/v1/schools/${s.schoolId}/assessments/${id}/publish`, {}, s.token),
   unpublishAssessment: (s: Session, id: string) => request<{ status: string }>("POST", `/api/v1/schools/${s.schoolId}/assessments/${id}/unpublish`, {}, s.token),
@@ -527,6 +552,8 @@ export interface StudentTaskView {
   status: string;
   completed: boolean;
   overdue: boolean;
+  /** A baseline check-in — rendered as planning help, never a graded test. */
+  baseline?: boolean;
 }
 
 export interface StudentWorkspaceView {

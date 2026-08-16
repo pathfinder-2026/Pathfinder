@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, type AssessmentDetail, type AssessmentRow, type Session, type SkillsResult } from "../api";
+import { api, ApiError, type AssessmentDetail, type AssessmentRow, type AttemptRow, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
 import { SkillPicker } from "../SkillPicker";
 
@@ -18,6 +18,8 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   const [skills, setSkills] = useState<SkillsResult | null>(null);
   const [capacity, setCapacity] = useState<Record<string, number>>({});
   const [detail, setDetail] = useState<AssessmentDetail | null>(null);
+  const [attempts, setAttempts] = useState<AttemptRow[] | null>(null);
+  const [openAttemptId, setOpenAttemptId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [declined, setDeclined] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -42,8 +44,11 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   useEffect(() => { void refresh(); }, [refresh]);
 
   const openDetail = async (id: string) => {
-    setError(null);
-    try { setDetail(await api.getAssessment(session, id)); } catch (e) { setError((e as Error).message); }
+    setError(null); setAttempts(null); setOpenAttemptId(null);
+    try {
+      const [d, at] = await Promise.all([api.getAssessment(session, id), api.listAttempts(session, id)]);
+      setDetail(d); setAttempts(at);
+    } catch (e) { setError((e as Error).message); }
   };
 
   const generate = async () => {
@@ -182,6 +187,71 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
               </li>
             ))}
           </ol>
+          {detail.status === "published" && (
+            <AssignPanel session={session} assessmentId={detail.id} title={detail.title} nodeId={detail.nodeId}
+              onAssigned={(msg) => { setNotice(msg); void openDetail(detail.id); }} onError={setError} />
+          )}
+
+          {attempts && detail.status === "published" && attempts.length === 0 && (
+            <p className="muted" style={{ marginTop: 14 }}>No attempts yet — students haven't started this assessment.</p>
+          )}
+          {attempts && attempts.length > 0 && (
+            <>
+              <h3 style={{ fontSize: 14, margin: "18px 0 4px" }}>
+                Attempts & grades <span className="person__meta">({attempts.filter((a) => a.status === "submitted").length} of {attempts.length} submitted · grades are teacher-only, never shown to students)</span>
+              </h3>
+              <ul className="people">
+                {attempts.map((a) => {
+                  const pct = a.gradedScore != null ? `${Math.round(a.gradedScore * 100)}%` : null;
+                  return (
+                    <li key={a.id} style={{ display: "block", padding: "8px 0", borderBottom: "1px solid var(--pf-border)" }}>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <strong>{a.studentLabel}</strong>
+                        <Chip state={a.status === "submitted" ? "approved" : "pending"}>{a.status === "submitted" ? "Submitted" : "In progress"}</Chip>
+                        {a.interrupted && <Chip state="draft">Connection lost mid-attempt</Chip>}
+                        <span className="spacer" />
+                        {pct
+                          ? <span><strong>{pct}</strong> <span className="person__meta">graded {a.gradedAt ? new Date(a.gradedAt).toLocaleString() : ""}</span></span>
+                          : a.status === "submitted"
+                            ? <Chip state="pending">Not graded — AI grading unavailable at submit</Chip>
+                            : <span className="person__meta">answers saved {new Date(a.lastSavedAt).toLocaleString()}</span>}
+                        <Button variant="ghost" onClick={() => setOpenAttemptId(openAttemptId === a.id ? null : a.id)}>
+                          {openAttemptId === a.id ? "Hide answers" : "View answers"}
+                        </Button>
+                      </div>
+                      {openAttemptId === a.id && (
+                        <ol style={{ margin: "10px 0 4px", paddingLeft: 22, display: "flex", flexDirection: "column", gap: 10 }}>
+                          {detail.questions.map((q) => {
+                            const result = a.gradedResults?.find((r) => r.questionId === q.id);
+                            const answer = a.savedAnswers[q.id];
+                            return (
+                              <li key={q.id} style={{ fontSize: 13 }}>
+                                <div><strong>{q.prompt}</strong></div>
+                                <div style={{ marginTop: 2 }}>
+                                  {answer != null && answer !== ""
+                                    ? <>Student answered: “{answer}”</>
+                                    : <span className="muted">Not answered</span>}
+                                </div>
+                                {q.modelAnswer && <div className="muted" style={{ marginTop: 2 }}>Model answer: {q.modelAnswer}</div>}
+                                {result && (
+                                  <div style={{ marginTop: 2 }}>
+                                    <Chip state={result.correct ? "approved" : "draft"}>
+                                      {result.correct ? "Correct" : "Needs work"} · {Math.round(result.score * 100)}%
+                                    </Chip>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+
           <div className="btn-row">
             {detail.status === "draft" && !detail.reviewAcknowledged && (
               <Button variant="primary" onClick={() => act(() => api.acknowledgeReview(session, detail.id), "Review acknowledged — you can publish now.")} disabled={busy}>
@@ -208,5 +278,135 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
         </Card>
       )}
     </PageShell>
+  );
+}
+
+type AssignMode = "class" | "pick" | "skill";
+
+/**
+ * Assign a published assessment to students (task #9). Three targeting modes —
+ * whole class, hand-picked, or everyone below mastery on this skill — and every
+ * mode is suggest-then-confirm: the checkboxes are the final word, and nothing
+ * is assigned until the teacher explicitly clicks Assign.
+ */
+function AssignPanel({ session, assessmentId, title, nodeId, onAssigned, onError }: {
+  session: Session; assessmentId: string; title: string; nodeId: string;
+  onAssigned: (msg: string) => void; onError: (msg: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [classId, setClassId] = useState("");
+  const [standing, setStanding] = useState<{ studentId: string; label: string; score: number | null; belowMastery: boolean; noData: boolean }[]>([]);
+  const [mode, setMode] = useState<AssignMode>("class");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dueDate, setDueDate] = useState(() => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+  const [baseline, setBaseline] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.teacherClasses(session).then((cs) => {
+      setClasses(cs);
+      if (cs.length > 0) setClassId((c) => c || cs[0]!.id);
+    }).catch((e) => onError((e as Error).message));
+  }, [open, session, onError]);
+
+  // One load serves every mode: the same roster carries each student's standing
+  // on this assessment's skill, so switching modes just changes the preselection.
+  useEffect(() => {
+    if (!open || !classId) return;
+    api.skillStanding(session, classId, nodeId).then((rows) => {
+      setStanding(rows);
+      setSelected(new Set(rows.map((r) => r.studentId))); // default: whole class
+      setMode("class");
+    }).catch((e) => onError((e as Error).message));
+  }, [open, classId, session, nodeId, onError]);
+
+  const applyMode = (m: AssignMode) => {
+    setMode(m);
+    if (m === "class") setSelected(new Set(standing.map((r) => r.studentId)));
+    if (m === "skill") setSelected(new Set(standing.filter((r) => r.belowMastery).map((r) => r.studentId)));
+    if (m === "pick") setSelected(new Set());
+  };
+
+  const toggle = (id: string) => setSelected((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const assign = async () => {
+    setBusy(true);
+    try {
+      const r = await api.assignWork(session, {
+        studentIds: [...selected], classId, type: "assessment", title,
+        nodeId, assessmentId, dueDate, baseline,
+      });
+      onAssigned(baseline
+        ? `Baseline check assigned to ${r.assigned} student${r.assigned === 1 ? "" : "s"} — their results will set each student's starting line for this concept.`
+        : `Assigned to ${r.assigned} student${r.assigned === 1 ? "" : "s"} — it now appears in their workspace with the due date.`);
+      setOpen(false);
+    } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <div style={{ margin: "14px 0" }}>
+        <Button variant="primary" onClick={() => setOpen(true)}>Assign to students…</Button>
+      </div>
+    );
+  }
+
+  const belowCount = standing.filter((r) => r.belowMastery).length;
+  return (
+    <div style={{ border: "1px solid var(--pf-border)", borderRadius: 10, padding: 14, margin: "14px 0" }}>
+      <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Assign “{title}”</h3>
+      <div className="row">
+        <Field label="Class" htmlFor="as-class">
+          <select id="as-class" className="select" value={classId} onChange={(e) => setClassId(e.target.value)}>
+            {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Who" htmlFor="as-mode">
+          <select id="as-mode" className="select" value={mode} onChange={(e) => applyMode(e.target.value as AssignMode)}>
+            <option value="class">Whole class</option>
+            <option value="pick">Pick students</option>
+            <option value="skill">Below mastery on this skill{belowCount ? ` (${belowCount})` : ""}</option>
+          </select>
+        </Field>
+        <Field label="Due date" htmlFor="as-due">
+          <input id="as-due" className="input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+      </div>
+      {mode === "skill" && belowCount === 0 && (
+        <Banner kind="brand">No one is below mastery on this skill yet{standing.some((r) => r.noData) ? " — most students have no data. A baseline check (below) is how you get a starting line." : "."}</Banner>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+        {standing.map((r) => (
+          <label key={r.studentId} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid var(--pf-border)", borderRadius: 999, padding: "4px 10px" }}>
+            <input type="checkbox" checked={selected.has(r.studentId)} onChange={() => toggle(r.studentId)} aria-label={`Include ${r.label}`} />
+            {r.label}
+            {r.noData
+              ? <span className="person__meta">no data</span>
+              : <span className="person__meta">{Math.round((r.score ?? 0) * 100)}%</span>}
+          </label>
+        ))}
+        {standing.length === 0 && <span className="muted">No students in this class yet.</span>}
+      </div>
+      <label className="field" style={{ display: "flex", gap: 8, alignItems: "center", margin: "6px 0 10px" }}>
+        <input type="checkbox" checked={baseline} onChange={(e) => setBaseline(e.target.checked)} />
+        <span className="field__label" style={{ margin: 0 }}>
+          Baseline check (starting a new concept) — <span className="person__meta">results set each student's starting line; students see it as planning help, not a graded test</span>
+        </span>
+      </label>
+      <div className="btn-row" style={{ marginTop: 0 }}>
+        <Button variant="primary" onClick={assign} disabled={busy || selected.size === 0}>
+          {busy ? "Assigning…" : `Assign to ${selected.size} student${selected.size === 1 ? "" : "s"}`}
+        </Button>
+        {selected.size === 0 && <span className="muted">Tick at least one student.</span>}
+        <span className="spacer" />
+        <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      </div>
+    </div>
   );
 }

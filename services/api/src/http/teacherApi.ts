@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AuthError, NotFoundError } from "../domain/errors";
+import { AuthError, ConflictError, NotFoundError } from "../domain/errors";
 import type { AppContext } from "../context";
 import type { ContentItem } from "../domain/content";
 import type { Assessment } from "../domain/assessment";
@@ -393,6 +393,10 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       studentLabel: labels.get(a.studentId) ?? a.studentId,
       status: a.status,
       interrupted: a.interrupted,
+      // The student's answers are teacher-readable here alongside the grading —
+      // this is the teacher-only review surface (never student-serialised).
+      savedAnswers: a.savedAnswers,
+      lastSavedAt: a.lastSavedAt,
       gradedScore: a.gradedScore,
       gradedResults: a.gradedResults,
       gradedAt: a.gradedAt,
@@ -974,6 +978,66 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     if (!student || student.schoolId !== schoolId) throw new NotFoundError("Student not found in this school.");
     const task = await ctx.studentWorkspace.assignTask(auth.user.id, schoolId, body);
     return reply.status(201).send({ id: task.id, title: task.title, type: task.type, dueDate: task.dueDate });
+  });
+
+  /**
+   * Assign one piece of work to many students at once (TCH review task #9) —
+   * whole class, hand-picked, or a skill-targeted selection the teacher has
+   * already confirmed in the UI. `baseline: true` marks a diagnostic for a new
+   * concept, whose graded results seed the first mastery data points.
+   */
+  app.post("/api/v1/schools/:schoolId/assignments", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const body = req.body as {
+      studentIds: string[]; classId?: string | null; type: "homework" | "practice" | "assessment";
+      title: string; nodeId?: string | null; assessmentId?: string | null; dueDate: string; baseline?: boolean;
+    };
+    for (const studentId of body.studentIds ?? []) {
+      const student = await ctx.store.getUser(studentId);
+      if (!student || student.schoolId !== schoolId) throw new NotFoundError("Student not found in this school.");
+    }
+    // An assessment must be PUBLISHED before it can reach students.
+    if (body.assessmentId) {
+      const assessment = await requireAssessmentIn(schoolId, body.assessmentId);
+      if (assessment.status !== "published") {
+        throw new ConflictError("NOT_PUBLISHED", "Publish the assessment before assigning it to students.");
+      }
+    }
+    const tasks = await ctx.studentWorkspace.assignToStudents(auth.user.id, schoolId, body);
+    return reply.status(201).send({ assigned: tasks.length, taskIds: tasks.map((t) => t.id) });
+  });
+
+  /**
+   * Where each student in a class stands on ONE skill — the suggest-side of
+   * skill-targeted assignment. The teacher sees below/at/no-data and confirms
+   * the final list; nothing here assigns anything.
+   */
+  app.get("/api/v1/schools/:schoolId/classes/:classId/skill-standing", async (req, reply) => {
+    const { schoolId, classId } = req.params as { schoolId: string; classId: string };
+    const { nodeId } = req.query as { nodeId?: string };
+    await requireTeacherOf(req, schoolId);
+    await requireClassIn(schoolId, classId);
+    if (!nodeId) throw new NotFoundError("nodeId query parameter is required.");
+
+    const studentIds = await classStudentIds(schoolId, classId);
+    const labels = await studentLabelMap(schoolId, classId);
+    const mastery = (await ctx.activityStore.listMasteryBySchool(schoolId))
+      .filter((m) => !m.synthetic && m.nodeId === nodeId && studentIds.includes(m.studentId));
+    const latest = new Map<string, number>();
+    for (const m of [...mastery].sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? -1 : 1))) {
+      latest.set(m.studentId, m.score);
+    }
+    return reply.send(studentIds.map((id) => {
+      const score = latest.get(id);
+      return {
+        studentId: id,
+        label: labels[id] ?? id,
+        score: score ?? null,
+        belowMastery: score != null && score < 0.67,
+        noData: score == null,
+      };
+    }));
   });
 
   // ---- Teacher calendar (TCH-18) ----

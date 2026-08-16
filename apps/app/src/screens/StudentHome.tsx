@@ -68,7 +68,11 @@ function TaskRow({ t, onOpen }: { t: StudentTaskView; onOpen: (t: StudentTaskVie
   return (
     <li className="person">
       <button className="linkish" onClick={() => onOpen(t)}><strong>{t.title}</strong></button>
-      <span className="person__meta">{t.type} · due {t.dueDate.slice(0, 10)}</span>
+      <span className="person__meta">
+        {t.baseline
+          ? "check-in · helps your teacher plan — it's not a graded test"
+          : `${t.type} · due ${t.dueDate.slice(0, 10)}`}
+      </span>
       <span className="spacer" />
       {t.completed ? <Chip state="approved">Done</Chip>
         : t.overdue ? <Chip state="pending">Still to do</Chip>

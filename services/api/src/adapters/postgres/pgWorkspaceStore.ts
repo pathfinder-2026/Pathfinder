@@ -9,9 +9,9 @@ export class PgWorkspaceStore implements WorkspaceStore {
 
   async insertTask(t: StudentTask): Promise<void> {
     await this.sql`insert into student_tasks
-      (id,school_id,student_id,class_id,teacher_id,type,title,node_id,assessment_id,due_date,status,completed_at,overdue_notified,created_at)
+      (id,school_id,student_id,class_id,teacher_id,type,title,node_id,assessment_id,due_date,status,completed_at,overdue_notified,baseline,created_at)
       values (${t.id},${t.schoolId},${t.studentId},${t.classId},${t.teacherId},${t.type},${t.title},${t.nodeId},
-        ${t.assessmentId},${t.dueDate},${t.status},${t.completedAt},${t.overdueNotified},${t.createdAt})`;
+        ${t.assessmentId},${t.dueDate},${t.status},${t.completedAt},${t.overdueNotified},${t.baseline ?? false},${t.createdAt})`;
   }
   async updateTask(t: StudentTask): Promise<void> {
     await this.sql`update student_tasks set title=${t.title},due_date=${t.dueDate},status=${t.status},
@@ -77,7 +77,7 @@ function mapTask(r: Row): StudentTask {
     id: r.id, schoolId: r.school_id, studentId: r.student_id, classId: r.class_id, teacherId: r.teacher_id,
     type: r.type as TaskType, title: r.title, nodeId: r.node_id, assessmentId: r.assessment_id,
     dueDate: iso(r.due_date), status: r.status as TaskStatus, completedAt: isoOrNull(r.completed_at),
-    overdueNotified: r.overdue_notified, createdAt: iso(r.created_at),
+    overdueNotified: r.overdue_notified, baseline: r.baseline ?? false, createdAt: iso(r.created_at),
   };
 }
 function mapEvent(r: Row): CalendarEvent {

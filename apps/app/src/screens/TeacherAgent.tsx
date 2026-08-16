@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AgentSuggestionRow, type Session, type SkillsResult, type SyllabusLookup } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { SkillPicker } from "../SkillPicker";
 
 /** NESA's real curriculum site (verified) — the generic fallback when no
  * syllabus is on file yet. Never a guessed subject/year-specific deep link;
@@ -176,29 +177,14 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
               {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </Field>
-          <Field
-            label="Skill"
-            htmlFor="ag-skill"
+          <SkillPicker
+            skills={skills} value={form.nodeId} idPrefix="ag"
+            // Same ready/not-ready rule as before, now over the real hierarchy:
+            // a skill with no approved mapped content would only ever decline.
+            capacity={Object.fromEntries([...groundedNodeIds].map((id) => [id, 1]))}
+            onChange={(nodeId) => setForm((f) => ({ ...f, nodeId }))}
             hint="Only skills with approved Content Studio material can ground a draft — approve and map more content to unlock the rest."
-          >
-            <select id="ag-skill" className="select" value={form.nodeId} onChange={(e) => setForm({ ...form, nodeId: e.target.value })}>
-              <option value="">Choose…</option>
-              {skills?.signedOff && (
-                <>
-                  <optgroup label="Ready to draft (approved content mapped)">
-                    {skills.nodes.filter((n) => groundedNodeIds.has(n.id)).map((n) => (
-                      <option key={n.id} value={n.id}>{n.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="No approved content yet — drafting would decline">
-                    {skills.nodes.filter((n) => !groundedNodeIds.has(n.id)).map((n) => (
-                      <option key={n.id} value={n.id} disabled>{n.label}</option>
-                    ))}
-                  </optgroup>
-                </>
-              )}
-            </select>
-          </Field>
+          />
         </div>
         <div className="row">
           <Field label="Topic (optional)" htmlFor="ag-topic"><input id="ag-topic" className="input" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></Field>

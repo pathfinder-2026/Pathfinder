@@ -177,7 +177,16 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     await signOffGraph(app, schoolId, auth);
     const skills = await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/skills`, headers: teacher.auth });
     expect(skills.json().signedOff).toBe(true);
-    expect((skills.json().nodes as any[]).some((n) => n.id === NODE)).toBe(true);
+    const nodes = skills.json().nodes as { id: string; type: string; parentId: string | null }[];
+    expect(nodes.some((n) => n.id === NODE)).toBe(true);
+    // The hierarchy must survive serialisation — the cascading picker builds
+    // Subject → Strand → Skill purely from parentId.
+    expect(nodes.find((n) => n.type === "subject")?.parentId).toBeNull();
+    const skillNode = nodes.find((n) => n.id === NODE)!;
+    expect(skillNode.parentId).toBeTruthy();
+    // Every non-root node's parent resolves within the same payload.
+    const ids = new Set(nodes.map((n) => n.id));
+    expect(nodes.every((n) => n.parentId === null || ids.has(n.parentId))).toBe(true);
 
     const mapped = await app.inject({
       method: "POST", url: `/api/v1/schools/${schoolId}/content/${itemId}/map`, headers: teacher.auth,

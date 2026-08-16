@@ -115,9 +115,18 @@ export type UploadResult =
   | { status: "accepted"; contentItemId: string; versionId: string; flags: string[]; duplicateOfId?: string }
   | { status: "rejected"; reason: string; message: string };
 
+export interface SkillNodeRow {
+  id: string;
+  label: string;
+  code: string | null;
+  type: string;
+  /** Parent in the curriculum hierarchy — drives the cascading skill picker. */
+  parentId: string | null;
+}
+
 export type SkillsResult =
   | { signedOff: false; hasDraft: boolean }
-  | { signedOff: true; versionId: string; versionName: string; nodes: { id: string; label: string; code: string | null; type: string }[] };
+  | { signedOff: true; versionId: string; versionName: string; nodes: SkillNodeRow[] };
 
 export interface AssessmentRow {
   id: string;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AdaptivePanel, type CohortGroup, type FocusAreaRow, type NextActionResult, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { SkillPicker } from "../SkillPicker";
 
 /** Actions the adaptive engine hands to a human/other flow rather than an assessment. */
 const NOT_ASSESSABLE = new Set(["hint", "escalate"]);
@@ -228,12 +229,13 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
                 {adaptive.students.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </Field>
-            <Field label="Skill" htmlFor="na-skill">
-              <select id="na-skill" className="select" value={lookup.nodeId} onChange={(e) => setLookup({ ...lookup, nodeId: e.target.value })}>
-                <option value="">Choose…</option>
-                {skills?.signedOff && skills.nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
-              </select>
-            </Field>
+            {/* No capacity filter here: asking "what next?" for a skill with no
+                approved material is a legitimate question — the answer may be
+                what tells the teacher to go add material. */}
+            <SkillPicker
+              skills={skills} value={lookup.nodeId} idPrefix="na"
+              onChange={(nodeId) => setLookup((l) => ({ ...l, nodeId }))}
+            />
           </div>
           <Button onClick={runLookup} disabled={!lookup.studentId || !lookup.nodeId}>Recommend next action</Button>
           {nextAction && (

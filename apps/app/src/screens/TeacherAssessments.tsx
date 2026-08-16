@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AssessmentDetail, type AssessmentRow, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
+import { SkillPicker } from "../SkillPicker";
 
 /**
  * TCH-4/5 — Assessment Builder + review/publish. Generation is grounded ONLY in
@@ -81,9 +82,6 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
     } finally { setBusy(false); }
   };
 
-  const nodeOptions = skills?.signedOff ? skills.nodes.filter((n) => n.type === "subskill" || n.type === "skill") : [];
-  const readyNodes = nodeOptions.filter((n) => (capacity[n.id] ?? 0) > 0);
-  const emptyNodes = nodeOptions.filter((n) => (capacity[n.id] ?? 0) === 0);
   const selectedCapacity = nodeId ? capacity[nodeId] ?? 0 : null;
   const nodeLabel = (id: string) => (skills?.signedOff ? skills.nodes.find((n) => n.id === id)?.label : null) ?? id;
 
@@ -106,23 +104,13 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
           <Banner kind="warn">Assessment generation needs a signed-off skill graph and approved, mapped content. Ask your administrator to sign off the curriculum graph.</Banner>
         ) : (
           <>
+            <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
             <div className="row">
-              <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-              <Field label="Skill" hint="Only skills with approved, mapped material can ground questions — approve and map more in Content Studio to unlock the rest.">
-                <select className="select" value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
-                  <option value="">Choose a skill…</option>
-                  <optgroup label="Ready to generate">
-                    {readyNodes.map((n) => (
-                      <option key={n.id} value={n.id}>{n.label}{n.code ? ` (${n.code})` : ""} — up to {capacity[n.id]} questions</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="No approved material yet">
-                    {emptyNodes.map((n) => (
-                      <option key={n.id} value={n.id} disabled>{n.label}{n.code ? ` (${n.code})` : ""}</option>
-                    ))}
-                  </optgroup>
-                </select>
-              </Field>
+              <SkillPicker
+                skills={skills} value={nodeId} onChange={setNodeId} capacity={capacity} countNoun="questions"
+                idPrefix="asm"
+                hint="Only skills with approved, mapped material can ground questions — approve and map more in Content Studio to unlock the rest."
+              />
             </div>
             <div className="row">
               <Field label="Questions" hint={selectedCapacity !== null

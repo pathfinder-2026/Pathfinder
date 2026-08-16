@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type PeerResults, type PeerTestRow, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
 import type { GovState } from "../components";
+import { SkillPicker } from "../SkillPicker";
 
 const STATUS_CHIP: Record<PeerTestRow["status"], GovState> = {
   draft: "draft", scheduled: "pending", launched: "approved", closed: "locked", cancelled: "pending",
@@ -18,6 +19,7 @@ export function TeacherPeer({ session, displayName, onBack, onSignOut }: {
 }) {
   const [tests, setTests] = useState<PeerTestRow[] | null>(null);
   const [skills, setSkills] = useState<SkillsResult | null>(null);
+  const [capacity, setCapacity] = useState<Record<string, number>>({});
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [students, setStudents] = useState<{ id: string; label: string }[]>([]);
   const [form, setForm] = useState({ title: "", nodeId: "", questionCount: 5, classId: "", anonymity: "named" as "named" | "anonymous", accommodateId: "" });
@@ -31,8 +33,12 @@ export function TeacherPeer({ session, displayName, onBack, onSignOut }: {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [t, sk, cs] = await Promise.all([api.listPeerTests(session), api.skills(session), api.teacherClasses(session)]);
-    setTests(t); setSkills(sk); setClasses(cs);
+    // Peer tests ground on the same approved+mapped pool as assessments, so the
+    // same capacity map keeps un-groundable skills out of the builder.
+    const [t, sk, cs, cap] = await Promise.all([
+      api.listPeerTests(session), api.skills(session), api.teacherClasses(session), api.assessmentCapacity(session),
+    ]);
+    setTests(t); setSkills(sk); setClasses(cs); setCapacity(cap);
     if (cs.length > 0 && !form.classId) setForm((f) => ({ ...f, classId: cs[0].id }));
   }, [session, form.classId]);
   useEffect(() => { void load().catch((e) => setError((e as Error).message)); }, [load]);
@@ -89,17 +95,20 @@ export function TeacherPeer({ session, displayName, onBack, onSignOut }: {
       <Card>
         <div className="card__head"><h2 className="section">New peer test</h2></div>
         {skills && !skills.signedOff && <Banner kind="warn">The skill graph isn't signed off yet — peer tests need a signed-off skill to ground on.</Banner>}
+        <Field label="Title" htmlFor="pt-title"><input id="pt-title" className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
         <div className="row">
-          <Field label="Title" htmlFor="pt-title"><input id="pt-title" className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-          <Field label="Skill" htmlFor="pt-skill">
-            <select id="pt-skill" className="select" value={form.nodeId} onChange={(e) => setForm({ ...form, nodeId: e.target.value })}>
-              <option value="">Choose…</option>
-              {skills?.signedOff && skills.nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
-            </select>
-          </Field>
+          <SkillPicker
+            skills={skills} value={form.nodeId} capacity={capacity} countNoun="questions" idPrefix="pt"
+            onChange={(nodeId) => setForm((f) => ({ ...f, nodeId }))}
+            hint="Only skills with approved, mapped material can ground a peer test."
+          />
         </div>
         <div className="row">
-          <Field label="Questions" htmlFor="pt-count"><input id="pt-count" className="input" type="number" min={1} value={form.questionCount} onChange={(e) => setForm({ ...form, questionCount: Number(e.target.value) })} /></Field>
+          <Field label="Questions" htmlFor="pt-count" hint={form.nodeId
+            ? `Your approved material can ground up to ${capacity[form.nodeId] ?? 0} question${(capacity[form.nodeId] ?? 0) === 1 ? "" : "s"} for this skill.`
+            : undefined}>
+            <input id="pt-count" className="input" type="number" min={1} value={form.questionCount} onChange={(e) => setForm({ ...form, questionCount: Number(e.target.value) })} />
+          </Field>
           <Field label="Anonymity" htmlFor="pt-anon" hint="In a small anonymous cohort, an accommodation can risk identifying a student — you'll be warned, never silently overridden.">
             <select id="pt-anon" className="select" value={form.anonymity} onChange={(e) => setForm({ ...form, anonymity: e.target.value as "named" | "anonymous" })}>
               <option value="named">Named</option>

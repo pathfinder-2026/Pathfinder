@@ -236,7 +236,12 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       signedOff: true,
       versionId: version.id,
       versionName: version.name,
-      nodes: nodes.map((n) => ({ id: n.id, label: n.label, code: n.code ?? null, type: n.type })),
+      // parentId carries the graph's real hierarchy (subject → strand → … →
+      // skill) so pickers can cascade instead of flattening every node into one
+      // list. Stripping it here is what made "Mathematics" selectable as a skill.
+      nodes: nodes.map((n) => ({
+        id: n.id, label: n.label, code: n.code ?? null, type: n.type, parentId: n.parentId ?? null,
+      })),
     });
   });
 

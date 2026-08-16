@@ -116,9 +116,22 @@ export function TeacherRecords({ session, displayName, onBack, onSignOut }: {
                 {growth.growth.map((g) => (
                   <tr key={g.nodeId}>
                     <th scope="row">{g.nodeLabel}</th>
-                    <td>{pct(g.baseline)}</td>
-                    <td>{pct(g.current)}</td>
-                    <td>{g.change >= 0 ? "+" : ""}{pct(g.change)}</td>
+                    {/* Without a recorded starting point there is no growth to
+                        show — printing 0% → 0% (+0%) read as "learned nothing".
+                        A baseline check when starting a concept creates one. */}
+                    {g.hasBaseline ? (
+                      <>
+                        <td>{pct(g.baseline)}</td>
+                        <td>{pct(g.current)}</td>
+                        <td>{g.change >= 0 ? "+" : ""}{pct(g.change)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="muted">no starting point yet</td>
+                        <td>{pct(g.current)}</td>
+                        <td className="muted" title="Assign a baseline check when you start a concept to record a starting line.">not enough data yet</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

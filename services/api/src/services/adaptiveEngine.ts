@@ -1,6 +1,8 @@
 import {
   DASHBOARD_THRESHOLDS,
   belowMastery,
+  evidenceNote,
+  evidenceStrength,
   isStale,
   latestPerPair,
   type NextAction,
@@ -43,8 +45,29 @@ export class AdaptiveEngine {
     private readonly notifications: NotificationService,
   ) {}
 
-  /** FR-ADP-001 — the recommended next action for one (student, skill). */
+  /**
+   * FR-ADP-001 — the recommended next action for one (student, skill), stamped
+   * with the evidence behind it.
+   *
+   * The engine used to state recommendations with equal confidence whether they
+   * rested on one data point or twenty, while the heatmap called that same
+   * single point "no data" — so the two surfaces contradicted each other in
+   * front of the teacher. The recommendation still stands (one point is a real
+   * signal), but it now carries the same caveat the heatmap shows.
+   */
   async nextAction(schoolId: string, studentId: string, nodeId: string): Promise<NextAction> {
+    const action = await this.recommend(schoolId, studentId, nodeId);
+    const record = latestPerPair(await this.activity.listMasteryByNode(schoolId, nodeId)).find(
+      (r) => r.studentId === studentId,
+    );
+    const evidence = evidenceStrength(record?.dataPoints ?? 0, this.t);
+    const note = evidenceNote(record?.dataPoints ?? 0, this.t);
+    return { ...action, evidence, reason: note ? `${action.reason} (${note}.)` : action.reason };
+  }
+
+  private async recommend(
+    schoolId: string, studentId: string, nodeId: string,
+  ): Promise<Omit<NextAction, "evidence">> {
     // Edge — persistent misconception: escalate rather than auto-remediate again.
     const misc = (await this.activity.listMisconceptionsBySchool(schoolId)).find(
       (m) => m.studentId === studentId && m.nodeId === nodeId,

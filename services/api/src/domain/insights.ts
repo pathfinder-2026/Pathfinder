@@ -53,6 +53,30 @@ export const DASHBOARD_THRESHOLDS: DashboardThresholds = {
 
 export type TrendDirection = "up" | "down" | "flat";
 
+/**
+ * How much evidence sits behind a mastery estimate. ONE rule, shared by every
+ * surface, because they used to disagree: the heatmap rendered a single-point
+ * estimate as "no data" while the adaptive engine confidently recommended
+ * remediation from that very record, and the growth report showed it as
+ * 0% → 0%. A dashboard must not argue with itself.
+ *
+ *  - "none"        no record at all — genuinely nothing to say
+ *  - "early"       a real signal, but below the trust threshold: show it, caveat it
+ *  - "established" enough data points to stand on
+ */
+export type EvidenceStrength = "none" | "early" | "established";
+
+export function evidenceStrength(dataPoints: number, t = DASHBOARD_THRESHOLDS): EvidenceStrength {
+  if (dataPoints <= 0) return "none";
+  return dataPoints < t.insufficientDataMin ? "early" : "established";
+}
+
+/** The one phrase for thin evidence; null when there is nothing to caveat. */
+export function evidenceNote(dataPoints: number, t = DASHBOARD_THRESHOLDS): string | null {
+  if (evidenceStrength(dataPoints, t) !== "early") return null;
+  return `Early signal — ${dataPoints} data point${dataPoints === 1 ? "" : "s"} so far`;
+}
+
 /** One cell of the mastery heatmap: a (student, skill) mastery estimate. */
 export interface MasteryCell {
   studentId: string;
@@ -63,6 +87,8 @@ export interface MasteryCell {
   dataPoints: number;
   /** Too few data points behind the estimate to trust it (FR-TDB-001 edge). */
   insufficientData: boolean;
+  /** Shared thin-data rule — "early" still shows the score, caveated. */
+  evidence: EvidenceStrength;
   /** The signal is older than the staleness window. */
   stale: boolean;
 }
@@ -134,6 +160,8 @@ export interface NextAction {
   reason: string;
   /** True when the engine handed the decision to the Teacher rather than looping. */
   escalated: boolean;
+  /** Evidence behind the recommendation — same rule the heatmap renders. */
+  evidence: EvidenceStrength;
 }
 
 /** A spaced-revision reminder — deferred while a student is mid-assessment. */

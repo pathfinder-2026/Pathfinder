@@ -2,6 +2,7 @@ import { ConflictError } from "../domain/errors";
 import {
   DASHBOARD_THRESHOLDS,
   belowMastery,
+  evidenceStrength,
   isStale,
   latestPerPair,
   masteryLevel,
@@ -61,6 +62,7 @@ export class TeacherDashboardService {
       trend: trendOf(r, this.t), // trend, not just the latest point (FR-TDB-001 edge)
       dataPoints: r.dataPoints,
       insufficientData: r.dataPoints < this.t.insufficientDataMin,
+      evidence: evidenceStrength(r.dataPoints, this.t),
       stale: isStale(r, nowIso, this.t),
     }));
 

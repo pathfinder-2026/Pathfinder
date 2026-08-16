@@ -67,17 +67,26 @@ export class ReportingService {
     const studentIds = await this.classStudentIds(schoolId, classId);
     const records = latestPerPair((await this.activity.listMasteryBySchool(schoolId)).filter((m) => !m.synthetic && studentIds.has(m.studentId)));
 
-    const byNode = new Map<string, { baselines: number[]; currents: number[] }>();
+    const byNode = new Map<string, { baselines: number[]; currents: number[]; withHistory: number; dataPoints: number }>();
     for (const r of records) {
-      const g = byNode.get(r.nodeId) ?? { baselines: [], currents: [] };
-      g.baselines.push(r.history && r.history.length ? r.history[0]! : r.score);
+      const g = byNode.get(r.nodeId) ?? { baselines: [], currents: [], withHistory: 0, dataPoints: 0 };
+      const hasHistory = !!(r.history && r.history.length);
+      g.baselines.push(hasHistory ? r.history![0]! : r.score);
       g.currents.push(r.score);
+      if (hasHistory) g.withHistory += 1;
+      g.dataPoints += r.dataPoints;
       byNode.set(r.nodeId, g);
     }
     const growth = [...byNode.entries()].map(([nodeId, g]) => {
       const baseline = round2(mean(g.baselines));
       const current = round2(mean(g.currents));
-      return { nodeId, baseline, current, change: round2(current - baseline) };
+      // Without a prior signal, "baseline" is just today's score echoed back —
+      // reporting that as +0% growth is worse than saying there's no baseline.
+      // A baseline check (assigned when starting a concept) creates one.
+      return {
+        nodeId, baseline, current, change: round2(current - baseline),
+        hasBaseline: g.withHistory > 0, dataPoints: g.dataPoints,
+      };
     });
 
     // Limited/early when the data window is shorter than a full term.

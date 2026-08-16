@@ -84,8 +84,18 @@ export interface Licence {
 export interface TeacherGrowthReport {
   classId: string;
   className: string;
-  /** Per-skill mastery change across the reporting window. */
-  growth: { nodeId: string; baseline: number; current: number; change: number }[];
+  /**
+   * Per-skill mastery change across the reporting window.
+   *
+   * `hasBaseline` false means no starting point was ever recorded for the skill,
+   * so there is no growth to report — the row renders as "not enough data yet"
+   * rather than a meaningless 0% → 0% (+0%), which is what it used to show and
+   * which read as "the class learned nothing".
+   */
+  growth: {
+    nodeId: string; baseline: number; current: number; change: number;
+    hasBaseline: boolean; dataPoints: number;
+  }[];
   /** True when the data window is too short to be full-term (stated on the report). */
   limited: boolean;
   note: string | null;

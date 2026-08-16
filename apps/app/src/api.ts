@@ -211,7 +211,12 @@ export interface HeatmapData {
   enoughData: boolean;
   students: { id: string; label: string }[];
   skills: { id: string; label: string }[];
-  cells: { studentId: string; nodeId: string; level: string; score: number; trend: string; insufficientData: boolean; stale: boolean }[];
+  cells: {
+    studentId: string; nodeId: string; level: string; score: number; trend: string;
+    insufficientData: boolean; stale: boolean; dataPoints: number;
+    /** Shared thin-data rule: "none" | "early" | "established". */
+    evidence: string;
+  }[];
   flags: { studentId: string; nodeId: string; kind: string }[];
 }
 
@@ -411,7 +416,14 @@ export const api = {
 
   // ---- Teacher: reports, records, calendar (TCH-15/16/18) ----
   growthReport: (s: Session, classId: string) =>
-    request<{ classId: string; className: string; limited: boolean; note: string | null; growth: { nodeId: string; nodeLabel: string; baseline: number; current: number; change: number }[] }>(
+    request<{
+      classId: string; className: string; limited: boolean; note: string | null;
+      growth: {
+        nodeId: string; nodeLabel: string; baseline: number; current: number; change: number;
+        /** False → no starting point recorded, so no growth to report. */
+        hasBaseline: boolean; dataPoints: number;
+      }[];
+    }>(
       "GET", `/api/v1/schools/${s.schoolId}/classes/${classId}/growth-report`, undefined, s.token,
     ),
   studentRecords: (s: Session, studentId: string) =>
@@ -674,4 +686,6 @@ export interface NextActionResult {
   action: string;
   escalated: boolean;
   reason: string;
+  /** Evidence behind it — same rule the heatmap renders ("early" = thin). */
+  evidence: "none" | "early" | "established";
 }

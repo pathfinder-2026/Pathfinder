@@ -524,6 +524,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       cells: heatmap.cells.map((c) => ({
         studentId: c.studentId, nodeId: c.nodeId, level: c.level, score: c.score,
         trend: c.trend, insufficientData: c.insufficientData, stale: c.stale,
+        dataPoints: c.dataPoints, evidence: c.evidence,
       })),
       flags: heatmap.flags.map((f) => ({ studentId: f.studentId, nodeId: f.nodeId, kind: f.kind })),
     });

@@ -28,6 +28,11 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tailoredBusy, setTailoredBusy] = useState(false);
+  // Slicing the suggestion lists — narrowing only; a hidden row is never
+  // treated as dismissed, and severity never changes what the data says.
+  const [focusSkill, setFocusSkill] = useState("");
+  const [minSeverity, setMinSeverity] = useState(0);
+  const [groupStudent, setGroupStudent] = useState("");
 
   useEffect(() => {
     Promise.all([api.teacherClasses(session), api.skills(session)]).then(([cs, sk]) => {
@@ -85,6 +90,15 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
 
   const pct = (f: number) => `${Math.round(f * 100)}%`;
 
+  const focusShown = (focus ?? []).filter(
+    (a) => (!focusSkill || a.nodeId === focusSkill) && a.belowFraction >= minSeverity,
+  );
+  const groupsShown = (groups ?? []).filter(
+    (g) => !groupStudent || g.students.some((s) => s.id === groupStudent),
+  );
+  /** Students who appear in at least one suggested group — the filter's options. */
+  const groupStudents = [...new Map((groups ?? []).flatMap((g) => g.students).map((s) => [s.id, s])).values()];
+
   return (
     <PageShell displayName={displayName} title="Class insights" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
@@ -109,11 +123,30 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
             <h2 className="section">Focus areas</h2>
             <p className="muted">Skills a meaningful share of the class is below mastery on. Dismissed suggestions stay hidden unless the data worsens.</p>
           </div>
+          {focus.length > 0 && (
+            <div className="row">
+              <Field label="Skill" htmlFor="fa-skill">
+                <select id="fa-skill" className="select" value={focusSkill} onChange={(e) => setFocusSkill(e.target.value)}>
+                  <option value="">All skills</option>
+                  {focus.map((a) => <option key={a.nodeId} value={a.nodeId}>{a.nodeLabel}</option>)}
+                </select>
+              </Field>
+              <Field label="Severity" htmlFor="fa-sev" hint="How much of the class is below mastery.">
+                <select id="fa-sev" className="select" value={String(minSeverity)} onChange={(e) => setMinSeverity(Number(e.target.value))}>
+                  <option value="0">Any</option>
+                  <option value="0.5">At least half the class</option>
+                  <option value="0.75">Three quarters or more</option>
+                </select>
+              </Field>
+            </div>
+          )}
           {focus.length === 0 ? (
             <Banner kind="brand">No class-wide focus areas right now — no skill has enough students below mastery to suggest reteaching.</Banner>
+          ) : focusShown.length === 0 ? (
+            <Banner kind="brand">No focus areas match these filters — {focus.length} exist{focus.length === 1 ? "s" : ""} outside the slice you asked for.</Banner>
           ) : (
             <ul className="people">
-              {focus.map((a) => (
+              {focusShown.map((a) => (
                 <li className="person" key={a.nodeId} style={{ flexWrap: "wrap", gap: 10 }}>
                   <span style={{ minWidth: 220 }}><strong>{a.nodeLabel}</strong></span>
                   <span className="person__meta">{a.belowCount} of {a.total} below mastery ({pct(a.belowFraction)})</span>
@@ -147,9 +180,19 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
             <h2 className="section">Suggested groups</h2>
             <p className="muted">Edit membership before assigning — only the students still ticked receive the work. A student can appear in more than one group.</p>
           </div>
+          {groups.length > 0 && (
+            <Field label="Show groups containing" htmlFor="gr-student">
+              <select id="gr-student" className="select" style={{ maxWidth: 340 }} value={groupStudent} onChange={(e) => setGroupStudent(e.target.value)}>
+                <option value="">Any student</option>
+                {groupStudents.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </Field>
+          )}
           {groups.length === 0 ? (
             <Banner kind="brand">No group suggestions yet — they appear once the class has enough activity data.</Banner>
-          ) : groups.map((g) => {
+          ) : groupsShown.length === 0 ? (
+            <Banner kind="brand">No suggested group contains that student.</Banner>
+          ) : groupsShown.map((g) => {
             const selected = membership[g.id] ?? [];
             return (
               <div key={g.id} style={{ border: "1px solid var(--pf-border)", borderRadius: 10, padding: 14, marginBottom: 12 }}>
@@ -242,6 +285,12 @@ export function TeacherInsights({ session, displayName, onBack, onSignOut, onOpe
             <div style={{ marginTop: 12 }}>
               <Banner kind={nextAction.escalated ? "warn" : "brand"}>
                 <strong style={{ textTransform: "capitalize" }}>{nextAction.action}</strong> — {nextAction.reason}
+                {nextAction.evidence === "early" && (
+                  <> <Chip state="pending">Early signal</Chip></>
+                )}
+                {nextAction.evidence === "none" && (
+                  <> <Chip state="draft">No data yet</Chip></>
+                )}
               </Banner>
               {NOT_ASSESSABLE.has(nextAction.action) ? (
                 <p className="muted" style={{ marginTop: 8 }}>

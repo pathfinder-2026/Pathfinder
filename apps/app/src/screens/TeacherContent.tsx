@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillsResult, type UploadResult } from "../api";
+import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillNodeRow, type SkillsResult, type UploadResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
 import { NotificationBell } from "../NotificationBell";
+import { SkillPicker } from "../SkillPicker";
 import { extractTextFromFile } from "../fileText";
 
 const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md", "link"] as const;
@@ -42,6 +43,25 @@ function checklist(r: ContentRow): { label: string; why: string; done: boolean }
     { label: "Approved", why: "Nothing reaches students until you approve it.", done: r.status === "approved" || r.status === "published" },
     { label: "Mapped to skills", why: "Links it to the curriculum so it can ground assessments.", done: r.mappedNodeIds.length > 0 },
   ];
+}
+
+/**
+ * The subject this item appears to be about when NO signed-off curriculum
+ * covers it — otherwise null. Prefers an explicit official-syllabus tag, then
+ * the confirmed classification. Without this the mapping picker just lists
+ * whatever curriculum does exist, so a Technology syllabus was offered Year 8
+ * maths skills with nothing saying why.
+ */
+function missingCurriculumFor(r: ContentRow, skills: SkillsResult): string | null {
+  if (!skills.signedOff) return null;
+  const subject = r.officialSyllabus?.subject ?? r.classification?.subject ?? null;
+  if (!subject) return null;
+  const norm = (s: string) => s.trim().toLowerCase();
+  // "Unknown"/"Unclassified" is the classifier admitting it doesn't know — not a
+  // subject. Claiming "no Unknown curriculum is signed off" would be nonsense.
+  if (["unknown", "unclassified", "other", "general"].includes(norm(subject))) return null;
+  const covered = skills.graphs.some((g) => g.subject && norm(g.subject) === norm(subject));
+  return covered ? null : subject;
 }
 
 /**
@@ -208,7 +228,22 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     return { step: "approve", label: "Approve content", governance: true };
   };
 
-  const nodeOptions = skills?.signedOff ? skills.nodes.filter((n) => n.type === "subskill" || n.type === "skill") : [];
+  /**
+   * Teachable nodes grouped under "Subject · Year" for the override dropdown,
+   * so a Technology item can never be re-pointed into the maths curriculum
+   * without the teacher seeing which subject they picked.
+   */
+  const overrideGroups = (() => {
+    if (!skills?.signedOff) return [] as { label: string; nodes: SkillNodeRow[] }[];
+    const teachable: SkillNodeRow[] = skills.nodes.filter((n) => n.type === "subskill" || n.type === "skill");
+    const groups = new Map<string, SkillNodeRow[]>();
+    for (const n of teachable) {
+      const label = n.subject ? `${n.subject}${n.yearLevel != null ? ` · Year ${n.yearLevel}` : ""}` : "Skills";
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label)!.push(n);
+    }
+    return [...groups.entries()].map(([label, nodes]) => ({ label, nodes }));
+  })();
 
   return (
     <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Content Studio" roleTag="Teacher" backLabel="Back to teacher home"
@@ -333,16 +368,28 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                           <Button variant="ghost" onClick={() => void togglePreview(r.id)} disabled={busy === r.id}>
                             {preview?.itemId === r.id ? "Hide material" : "Read material"}
                           </Button>
-                          {(r.status === "approved" || r.status === "published") && skills?.signedOff && (
-                            <>
-                              <select className="select" style={{ maxWidth: 320 }} value={mapNode} onChange={(e) => setMapNode(e.target.value)} aria-label="Skill to map">
-                                <option value="">Map to a skill…</option>
-                                {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label}{n.code ? ` (${n.code})` : ""}</option>)}
-                              </select>
-                              <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Map skill</Button>
-                            </>
-                          )}
                         </div>
+
+                        {(r.status === "approved" || r.status === "published") && skills?.signedOff && (
+                          <div style={{ marginTop: 10 }}>
+                            {/* An item's own subject may have no signed-off curriculum yet
+                                (e.g. a Technology syllabus in a maths-only school). Say so
+                                instead of quietly offering another subject's skills. */}
+                            {missingCurriculumFor(r, skills) && (
+                              <Banner kind="warn">
+                                This looks like {missingCurriculumFor(r, skills)} material, but no {missingCurriculumFor(r, skills)} curriculum
+                                is signed off yet — so there's nothing of that subject to map it to. Your administrator can import and sign off
+                                the {missingCurriculumFor(r, skills)} curriculum; until then you can still map it to a subject below if it genuinely fits.
+                              </Banner>
+                            )}
+                            <div className="row">
+                              <SkillPicker skills={skills} value={mapNode} onChange={setMapNode} idPrefix={`map-${r.id}`}
+                                label="Map to a concept"
+                                hint="Pick the subject, then narrow to the skill this material teaches." />
+                            </div>
+                            <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Map skill</Button>
+                          </div>
+                        )}
 
                         {preview?.itemId === r.id && (
                           <div style={{ marginTop: 12, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
@@ -414,9 +461,15 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                       {m.overriddenFromNodeId && <Chip state="pending">overridden</Chip>}
                                       {m.flags.map((f) => <Chip key={f} state="draft">{f.replace(/_/g, " ")}</Chip>)}
                                       <span className="spacer" />
-                                      <select className="select" style={{ width: "auto", maxWidth: 220 }} value={overrideNode} onChange={(e) => setOverrideNode(e.target.value)} aria-label="Override to skill">
+                                      {/* Grouped by subject → where it sits, so an override
+                                          can't silently land in another subject's curriculum. */}
+                                      <select className="select" style={{ width: "auto", maxWidth: 260 }} value={overrideNode} onChange={(e) => setOverrideNode(e.target.value)} aria-label="Override to skill">
                                         <option value="">Override to…</option>
-                                        {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                                        {overrideGroups.map((g) => (
+                                          <optgroup key={g.label} label={g.label}>
+                                            {g.nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                                          </optgroup>
+                                        ))}
                                       </select>
                                       <Button onClick={() => override(m.mappingId, overrideNode)} disabled={!overrideNode}>Override</Button>
                                     </li>

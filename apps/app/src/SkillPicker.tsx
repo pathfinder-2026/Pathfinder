@@ -13,24 +13,26 @@ interface TeachableNode {
   path: string[];
 }
 
-/** "Mathematics · Year 8" — two graphs can share a subject across year levels. */
-function subjectLabel(node: SkillNodeRow): string {
-  return node.yearLevel != null ? `${node.label} · Year ${node.yearLevel}` : node.label;
-}
 
 /**
- * Subject → Strand → Skill picker over the signed-off graph's real hierarchy.
+ * Year → Subject → Concept, the way a teacher describes their own timetable.
  *
  * The graph has always been hierarchical (subject/strand/outcome/topic/concept/
- * skill/subskill, linked by parentId), but every screen flattened it into one
- * undifferentiated dropdown — so "Mathematics" itself was selectable as a skill
- * and every strand's skills sat in one list regardless of what was being taught.
+ * skill/subskill, linked by parentId) but every screen flattened it into one
+ * dropdown, so "Mathematics" itself was selectable as a skill and every strand's
+ * skills sat in one list. A first pass then led with "Strand" — curriculum
+ * filing jargon, with no year or subject above it to anchor the choice.
  *
- * When `capacity` is supplied, skills the approved pool can't ground are
+ * Now: Year, then Subject, then the concepts within it (grouped by their topic
+ * area rather than gated behind another dropdown). Each level pre-selects and
+ * locks when the school offers only one option, so a single-curriculum school
+ * still sees the same hierarchy without extra clicks.
+ *
+ * When `capacity` is supplied, concepts the approved pool can't ground are
  * disabled rather than merely offered-then-refused (the empty-generate trap).
  */
 export function SkillPicker({
-  skills, value, onChange, capacity, countNoun, label = "Skill", hint, idPrefix, disabled,
+  skills, value, onChange, capacity, countNoun, label = "Concept", hint, idPrefix, disabled,
 }: {
   skills: SkillsResult | null;
   value: string;
@@ -39,15 +41,17 @@ export function SkillPicker({
   capacity?: Record<string, number>;
   /** e.g. "questions" — renders "up to N questions" beside each ready skill. */
   countNoun?: string;
+  /** Field label for the final level — "Concept" in the teacher's language. */
   label?: string;
   hint?: string;
   idPrefix: string;
   disabled?: boolean;
 }) {
+  const [year, setYear] = useState<string>("");
   const [subjectId, setSubjectId] = useState("");
   const [strandId, setStrandId] = useState("");
 
-  const { subjects, strands, teachable } = useMemo(() => {
+  const { subjects, teachable } = useMemo(() => {
     const nodes: SkillNodeRow[] = skills?.signedOff ? skills.nodes : [];
     const byId = new Map(nodes.map((n) => [n.id, n]));
     /** Walk parentId to the root; `seen` guards a malformed graph from looping. */
@@ -64,7 +68,6 @@ export function SkillPicker({
     };
     return {
       subjects: nodes.filter((n) => n.type === "subject"),
-      strands: nodes.filter((n) => n.type === "strand"),
       teachable: nodes.filter((n) => TEACHABLE.has(n.type)).map((n): TeachableNode => {
         const chain = chainOf(n.id);
         return {
@@ -77,10 +80,15 @@ export function SkillPicker({
     };
   }, [skills]);
 
-  // A single-subject graph shouldn't make teachers choose "Mathematics" every
-  // time — it's pre-scoped and stated instead. (Per subject × year scoping
-  // needs more than one signed-off graph to exist; see the multi-graph task.)
-  const activeSubject = subjectId || (subjects.length === 1 ? subjects[0]!.id : "");
+  // Year → Subject → Concept: how a teacher thinks about their timetable.
+  // Each level pre-selects (and locks) when the school offers only one option,
+  // so a single-curriculum school still sees the hierarchy without busywork.
+  const years = [...new Set(subjects.map((s) => s.yearLevel).filter((y): y is number => y != null))].sort((a, b) => a - b);
+  const activeYear = year || (years.length === 1 ? String(years[0]) : "");
+  const subjectsForYear = subjects.filter(
+    (s) => !activeYear || s.yearLevel == null || String(s.yearLevel) === activeYear,
+  );
+  const activeSubject = subjectId || (subjectsForYear.length === 1 ? subjectsForYear[0]!.id : "");
   const visible = teachable.filter(
     (t) => (!activeSubject || t.subjectId === activeSubject) && (!strandId || t.strandId === strandId),
   );
@@ -121,11 +129,6 @@ export function SkillPicker({
       ).map(([groupLabel, items]) => ({ label: groupLabel, items }));
 
   const selected = teachable.find((t) => t.node.id === value);
-  // With one subject in scope the picker states it rather than asking; with
-  // several, the Subject dropdown above is the scope and this stays quiet.
-  const scopeNote = subjects.length === 1 && skills?.signedOff
-    ? `${subjectLabel(subjects[0]!)} · ${skills.versionName}`
-    : null;
 
   if (skills && !skills.signedOff) {
     return (
@@ -139,42 +142,42 @@ export function SkillPicker({
 
   return (
     <>
-      {subjects.length > 1 && (
-        <Field label="Subject" htmlFor={`${idPrefix}-subject`}>
+      {/* 1 — Year. Shown whenever any curriculum records one; a school with a
+          single year sees it locked rather than hidden, so the hierarchy the
+          teacher navigates is the same everywhere. */}
+      {years.length > 0 && (
+        <Field label="Year" htmlFor={`${idPrefix}-year`}>
           <select
-            id={`${idPrefix}-subject`} className="select" value={activeSubject} disabled={disabled}
-            onChange={(e) => { setSubjectId(e.target.value); setStrandId(""); onChange(""); }}
+            id={`${idPrefix}-year`} className="select" value={activeYear} disabled={disabled || years.length <= 1}
+            onChange={(e) => { setYear(e.target.value); setSubjectId(""); setStrandId(""); onChange(""); }}
           >
-            <option value="">All subjects</option>
-            {subjects.map((s) => <option key={s.id} value={s.id}>{subjectLabel(s)}</option>)}
+            {years.length > 1 && <option value="">All years</option>}
+            {years.map((y) => <option key={y} value={String(y)}>Year {y}</option>)}
           </select>
         </Field>
       )}
 
-      {strands.length > 0 && (
-        <Field label="Strand" htmlFor={`${idPrefix}-strand`} hint={scopeNote ?? undefined}>
-          <select
-            id={`${idPrefix}-strand`} className="select" value={strandId} disabled={disabled}
-            onChange={(e) => {
-              setStrandId(e.target.value);
-              // Keep the form honest: a selection outside the new strand is cleared.
-              if (selected && e.target.value && selected.strandId !== e.target.value) onChange("");
-            }}
-          >
-            <option value="">All strands</option>
-            {strands
-              .filter((s) => !activeSubject || s.parentId === activeSubject)
-              .map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-        </Field>
-      )}
+      {/* 2 — Subject. */}
+      <Field label="Subject" htmlFor={`${idPrefix}-subject`}>
+        <select
+          id={`${idPrefix}-subject`} className="select" value={activeSubject}
+          disabled={disabled || subjectsForYear.length <= 1}
+          onChange={(e) => { setSubjectId(e.target.value); setStrandId(""); onChange(""); }}
+        >
+          {subjectsForYear.length > 1 && <option value="">All subjects</option>}
+          {subjectsForYear.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          {subjectsForYear.length === 0 && <option value="">No curriculum signed off yet</option>}
+        </select>
+      </Field>
 
+      {/* 3 — Concept. Topic areas group the list rather than adding a control:
+          the teacher picks what they teach, not how the syllabus is filed. */}
       <Field label={label} htmlFor={`${idPrefix}-skill`} hint={selected ? selected.path.join(" → ") : hint}>
         <select
           id={`${idPrefix}-skill`} className="select" value={value} disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">Choose a skill…</option>
+          <option value="">Choose a concept…</option>
           {groups.filter((g) => g.items.length > 0).map((g) => (
             <optgroup key={g.label} label={g.label}>
               {g.items.map((t) => (

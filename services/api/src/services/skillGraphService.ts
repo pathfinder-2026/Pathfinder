@@ -44,7 +44,13 @@ export class SkillGraphService {
 
     const meta = source._meta ?? {};
     const subjectNode = source.nodes.find((n) => n.type === "subject");
-    const yearLevel = scope.yearLevel ?? numberOrNull(meta.yearLevel);
+    // Year comes from the caller, then explicit metadata, then whatever the
+    // graph calls itself ("… Stage 4 (Year 8)" / "NSW Year 8 Mathematics") —
+    // curriculum sources state the year in prose far more often than in a field.
+    const yearLevel = scope.yearLevel
+      ?? numberOrNull(meta.yearLevel)
+      ?? yearFromText(String(meta.stage ?? ""))
+      ?? yearFromText(String(meta.name ?? ""));
     const subject = scope.subject ?? (meta.subject ? String(meta.subject) : subjectNode?.label ?? null);
     await this.assertNodeIdsUnused(source, { subject, yearLevel });
 
@@ -178,3 +184,10 @@ function numberOrNull(value: unknown): number | null {
 }
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+/** "Stage 4 (Year 8)" / "NSW Year 8 Mathematics" → 8. */
+function yearFromText(text: string): number | null {
+  const match = /year\s*(\d{1,2})/i.exec(text);
+  const year = match ? Number(match[1]) : NaN;
+  return Number.isNaN(year) || year < 1 || year > 13 ? null : year;
+}

@@ -40,6 +40,29 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     return item;
   };
 
+  /**
+   * Owner-only gate for MANAGING an item (#18). The shared library lets a
+   * colleague read and reuse material; it must never let them drive its
+   * governance, archive it, re-share it, or re-tag it — approving is putting
+   * YOUR name to the material, and the audit trail says who certified what.
+   */
+  const requireOwn = (item: ContentItem, viewerId: string): void => {
+    if (item.ownerTeacherId !== viewerId) {
+      throw new ConflictError("NOT_OWNER", "Only the teacher who uploaded this material can manage it.");
+    }
+  };
+
+  /**
+   * Read gate: the owner, or anyone its share scope reaches. Without this, a
+   * PRIVATE item's full text was readable by any teacher in the school who
+   * knew its id — the list hid it, the detail routes served it.
+   */
+  const requireVisible = async (item: ContentItem, viewerId: string): Promise<void> => {
+    if (!(await ctx.content.canView(item, viewerId))) {
+      throw new NotFoundError("Content item not found."); // invisible, not forbidden
+    }
+  };
+
   /** Fetch an assessment and assert it belongs to `schoolId`. */
   const requireAssessmentIn = async (schoolId: string, id: string): Promise<Assessment> => {
     const a = await ctx.assessmentStore.getAssessment(id);
@@ -63,20 +86,46 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     return ctx.skillGraphStore.latestSignedOffVersion(config?.curriculum ?? "NSW");
   };
 
-  /** Enriched library row: item + version pipeline state + classification + mappings. */
-  const contentRow = async (item: ContentItem) => {
+  /**
+   * The share scope in displayable form — a class id means nothing to a reader,
+   * so a class scope carries the class name.
+   */
+  const shareView = async (item: ContentItem) => {
+    if (item.share.type === "class") {
+      const klass = await ctx.store.getClass(item.share.classId);
+      return { type: "class" as const, label: klass?.name ?? "a class" };
+    }
+    if (item.share.type === "department") {
+      return { type: "department" as const, label: item.share.department };
+    }
+    return { type: "private" as const, label: null };
+  };
+
+  /**
+   * Enriched library row: item + version pipeline state + classification +
+   * mappings. `viewerId` decides `mine` — the shared library shows colleagues'
+   * material, and the UI must be able to tell whose is whose: a colleague's row
+   * is something to read and reuse, never a pipeline to drive.
+   */
+  const contentRow = async (item: ContentItem, viewerId: string) => {
     const version = await ctx.contentStore.getContentVersion(item.currentVersionId);
     const classification = await ctx.classification.getClassification(item.id);
     const mappings = await ctx.skillGraphStore.listMappingsByContent(item.id);
     const blockReason = item.governance.status === "approved" || item.governance.status === "published"
       ? null
       : await ctx.content.prerequisiteBlockReason(item);
+    const mine = item.ownerTeacherId === viewerId;
+    const ownerPii = mine ? null : await ctx.store.getPersonalData(item.ownerTeacherId);
     return {
       id: item.id,
       title: item.title,
       status: item.governance.status,
       rightsAttested: item.rightsAttested,
       archived: item.archived,
+      mine,
+      /** Who shared it — only set on colleagues' items (never echo the viewer's own name back). */
+      ownerLabel: mine ? null : ownerPii ? `${ownerPii.firstName} ${ownerPii.lastName}` : "A colleague",
+      share: await shareView(item),
       fileType: version?.fileType ?? null,
       ingestionStatus: version?.ingestionStatus ?? null,
       scanStatus: version?.scanStatus ?? null,
@@ -103,7 +152,11 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const { schoolId } = req.params as { schoolId: string };
     const auth = await requireTeacherOf(req, schoolId);
     const items = await ctx.content.browseSharedLibrary(auth.user.id, schoolId);
-    return reply.send(await Promise.all(items.map(contentRow)));
+    // Sequential, not a Promise.all fan-out — each row does several store reads
+    // and a parallel burst blew through the Supabase pooler's client cap before.
+    const rows = [];
+    for (const item of items) rows.push(await contentRow(item, auth.user.id));
+    return reply.send(rows);
   });
 
   app.post("/api/v1/schools/:schoolId/content", async (req, reply) => {
@@ -123,20 +176,22 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
 
   app.get("/api/v1/schools/:schoolId/content/:itemId", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
-    await requireTeacherOf(req, schoolId);
+    const auth = await requireTeacherOf(req, schoolId);
     const item = await requireItemIn(schoolId, itemId);
-    return reply.send(await contentRow(item));
+    await requireVisible(item, auth.user.id);
+    return reply.send(await contentRow(item, auth.user.id));
   });
 
   /**
    * The extracted text of an item, section by section — so a teacher can READ
-   * what they are approving instead of approving a filename. Any item in the
-   * school (approval state is what the teacher is deciding about here).
+   * what they are approving (or what a colleague shared) instead of trusting a
+   * filename. Visible-scope only: a private item's text is the owner's.
    */
   app.get("/api/v1/schools/:schoolId/content/:itemId/sections", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
-    await requireTeacherOf(req, schoolId);
+    const auth = await requireTeacherOf(req, schoolId);
     const item = await requireItemIn(schoolId, itemId);
+    await requireVisible(item, auth.user.id);
     const chunks = await ctx.contentStore.listChunksByVersion(item.currentVersionId);
     return reply.send({
       title: item.title,
@@ -208,7 +263,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/archive", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const { confirm } = (req.body ?? {}) as { confirm?: boolean };
     const result = await ctx.content.archive(itemId, auth.user.id, { confirm });
     return reply.status(result.archived ? 200 : 409).send(result);
@@ -273,10 +328,13 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     return reply.send({ removed: true });
   });
 
+  // Pipeline steps are owner-only (#18): a shared item is a colleague's to
+  // read, not to walk through governance under someone else's name.
   app.post("/api/v1/schools/:schoolId/content/:itemId/ingest", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
     const item = await requireItemIn(schoolId, itemId);
+    requireOwn(item, auth.user.id);
     const outcome = await ctx.ingestion.ingest(item.currentVersionId, auth.user.id);
     return reply.send({ status: outcome.status, chunks: outcome.chunks.length, concepts: outcome.concepts.length });
   });
@@ -284,7 +342,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/classify", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const c = await ctx.classification.classify(itemId, auth.user.id);
     return reply.send({
       status: c.status, subject: c.subject, topic: c.topic, year: c.year,
@@ -295,7 +353,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/classification/approve", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const c = await ctx.classification.approveClassification(itemId, auth.user.id);
     return reply.send({ status: c.status });
   });
@@ -303,7 +361,9 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/attest", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    // Rights attestation especially: "it's mine to use with students" is a claim
+    // only the owner can make.
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const item = await ctx.content.attestRights(itemId, auth.user.id);
     return reply.send({ rightsAttested: item.rightsAttested });
   });
@@ -311,7 +371,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/approve", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const item = await ctx.content.approveContent(itemId, auth.user.id);
     return reply.send({ status: item.governance.status });
   });
@@ -324,7 +384,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/mark-official-syllabus", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const { subject, yearLevel, sourceUrl } = req.body as { subject: string; yearLevel: number; sourceUrl: string };
     const item = await ctx.content.markOfficialSyllabus(itemId, auth.user.id, { subject, yearLevel, sourceUrl });
     return reply.send({ officialSyllabus: item.officialSyllabus });
@@ -340,7 +400,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
    */
   app.get("/api/v1/schools/:schoolId/syllabus", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };
-    await requireTeacherOf(req, schoolId);
+    const auth = await requireTeacherOf(req, schoolId);
     const { subject, yearLevel } = req.query as { subject?: string; yearLevel?: string };
     if (!subject || !yearLevel) {
       return reply.status(400).send({ code: "BAD_REQUEST", message: "subject and yearLevel are required." });
@@ -350,7 +410,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const views = await ctx.mapping.mappingViews(item.id);
     return reply.send({
       found: true,
-      item: await contentRow(item),
+      item: await contentRow(item, auth.user.id),
       topics: views.map((v) => ({ nodeId: v.mapping.nodeId, label: v.chain[v.chain.length - 1]?.label ?? v.mapping.nodeId, chain: v.chain.map((n) => n.label) })),
     });
   });
@@ -1043,8 +1103,9 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
 
   app.get("/api/v1/schools/:schoolId/content/:itemId/versions", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
-    await requireTeacherOf(req, schoolId);
+    const auth = await requireTeacherOf(req, schoolId);
     const item = await requireItemIn(schoolId, itemId);
+    await requireVisible(item, auth.user.id);
     const versions = await ctx.contentStore.listVersionsByItem(itemId);
     return reply.send(versions.map((v) => ({
       id: v.id, versionNumber: v.versionNumber, fileType: v.fileType, sizeBytes: v.sizeBytes,
@@ -1055,7 +1116,9 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/content/:itemId/share", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    // Sharing is the owner's decision alone — otherwise any colleague a scope
+    // reaches could widen (or yank) that scope for everyone else.
+    requireOwn(await requireItemIn(schoolId, itemId), auth.user.id);
     const share = req.body as { type: "private" } | { type: "class"; classId: string } | { type: "department"; department: string };
     const item = await ctx.content.setShare(itemId, auth.user.id, share);
     return reply.send({ share: item.share });
@@ -1073,8 +1136,8 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
 
   app.get("/api/v1/schools/:schoolId/content/:itemId/mappings", async (req, reply) => {
     const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
-    await requireTeacherOf(req, schoolId);
-    await requireItemIn(schoolId, itemId);
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireVisible(await requireItemIn(schoolId, itemId), auth.user.id);
     const views = await ctx.mapping.mappingViews(itemId);
     return reply.send(views.map((v) => ({
       mappingId: v.mapping.id,

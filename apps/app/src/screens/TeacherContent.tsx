@@ -75,6 +75,7 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   session: Session; displayName: string; onBack: () => void; onSignOut: () => void;
 }) {
   const [rows, setRows] = useState<ContentRow[] | null>(null);
+  const [myDepartment, setMyDepartment] = useState<string | null>(null);
   const [skills, setSkills] = useState<SkillsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -123,6 +124,13 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   }, [session]);
 
   useEffect(() => { void refresh(); void refreshCurricula(); }, [refresh, refreshCurricula]);
+
+  // The teacher's own department, so the share control offers it by name — it
+  // was hardcoded to "Mathematics", which made department sharing unusable for
+  // every other department (#18).
+  useEffect(() => {
+    api.me(session).then((me) => setMyDepartment(me.department)).catch(() => setMyDepartment(null));
+  }, [session]);
 
   // Load the expanded item's detail (versions, mappings, share targets).
   useEffect(() => {
@@ -389,12 +397,12 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
       </Card>
 
       <Card>
-        <div className="card__head"><h2 className="section">Library {rows ? `— ${rows.length}` : ""}</h2></div>
+        <div className="card__head"><h2 className="section">Your library {rows ? `— ${rows.filter((x) => x.mine).length}` : ""}</h2></div>
         {!rows ? <div className="muted">Loading…</div>
-          : rows.length === 0 ? <div className="muted">No material yet — upload something above to get started.</div>
+          : rows.filter((x) => x.mine).length === 0 ? <div className="muted">No material yet — upload something above to get started.</div>
           : (
             <ul className="people">
-              {rows.map((r) => {
+              {rows.filter((x) => x.mine).map((r) => {
                 const state = itemState(r);
                 const chip = STATE_CHIP[state];
                 const action = nextAction(r);
@@ -592,7 +600,7 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                   <option value="" disabled>Change…</option>
                                   <option value="private">Private (only me)</option>
                                   {detail.classes.map((c) => <option key={c.id} value={`class:${c.id}`}>Class: {c.name}</option>)}
-                                  <option value="department:Mathematics">Department: Mathematics</option>
+                                  {myDepartment && <option value={`department:${myDepartment}`}>Department: {myDepartment}</option>}
                                 </select>
                               </label>
                             </div>
@@ -642,6 +650,78 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
             </ul>
           )}
       </Card>
+
+      {/* #18 — the shared library. Colleagues' material that reaches you through
+          its share scope (your class, your department, or an official syllabus).
+          Read-only by design: you can read it and it already works for you —
+          approved shared material grounds your assessments and drafts and shows
+          up when you attach material to work — but its governance, sharing and
+          filing belong to its owner. */}
+      {rows && rows.some((x) => !x.mine) && (
+        <Card>
+          <div className="card__head">
+            <h2 className="section">Shared with you — {rows.filter((x) => !x.mine).length}</h2>
+            <p className="muted">Material colleagues have shared with your class or department. Once approved by its owner, it grounds your assessments and drafts just like your own.</p>
+          </div>
+          <ul className="people">
+            {rows.filter((x) => !x.mine).map((r) => {
+              const ready = itemState(r) === "ready";
+              const expanded = open === r.id;
+              const provenance = r.officialSyllabus
+                ? `Official ${r.officialSyllabus.subject} syllabus`
+                : r.share.type === "class" ? `with class ${r.share.label}`
+                : r.share.type === "department" ? `with ${r.share.label}`
+                : "";
+              return (
+                <li key={r.id} style={{ display: "block", padding: 0, border: "1px solid var(--pf-border)", borderRadius: "var(--pf-radius-sm)" }}>
+                  <button className="person" style={{ width: "100%", background: "none", border: "none", font: "inherit", cursor: "pointer", textAlign: "left" }}
+                    onClick={() => setOpen(expanded ? null : r.id)} aria-expanded={expanded}>
+                    <span className="person__avatar" aria-hidden="true">{(r.fileType ?? "?").slice(0, 3).toUpperCase()}</span>
+                    <span><strong>{r.title}</strong></span>
+                    <span className="person__meta">{r.ownerLabel}{provenance ? ` · ${provenance}` : ""}</span>
+                    <span className="spacer" />
+                    {/* One honest status. A shared item that isn't ready has
+                        nothing for YOU to do — the pipeline is the owner's. */}
+                    {ready ? <Chip state="approved">Ready to use</Chip> : <Chip state="draft">Not yet approved by owner</Chip>}
+                  </button>
+                  {expanded && (
+                    <div style={{ padding: "0 14px 14px" }}>
+                      {ready ? (
+                        <p className="person__meta" style={{ margin: "0 0 10px" }}>
+                          Approved by {r.ownerLabel}
+                          {detail && detail.mappings.length > 0 && <> · filed under {[...new Set(detail.mappings.map((m) => m.chain.at(-1) ?? m.nodeId))].join(", ")}</>}
+                          . It already grounds your assessments and lesson drafts, and you can attach it when assigning work — no copy needed.
+                        </p>
+                      ) : (
+                        <p className="person__meta" style={{ margin: "0 0 10px" }}>
+                          {r.ownerLabel} hasn't finished the approval steps yet, so it can't ground anything for anyone. You can read it below.
+                        </p>
+                      )}
+                      <div className="btn-row" style={{ marginTop: 0 }}>
+                        <Button variant="ghost" onClick={() => void togglePreview(r.id)}>
+                          {preview?.itemId === r.id ? "Hide material" : "Read material"}
+                        </Button>
+                      </div>
+                      {preview?.itemId === r.id && (
+                        <div style={{ marginTop: 12, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
+                          {preview.sections.length === 0 ? (
+                            <p className="muted">No text has been extracted from this file yet.</p>
+                          ) : preview.sections.map((s, i) => (
+                            <div key={i} style={{ marginBottom: 12 }}>
+                              <h4 style={{ fontSize: 13, margin: "0 0 3px" }}>{s.heading}</h4>
+                              <p style={{ fontSize: 13, margin: 0, whiteSpace: "pre-wrap" }}>{s.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
     </PageShell>
   );
 }

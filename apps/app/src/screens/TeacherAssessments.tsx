@@ -450,7 +450,7 @@ function AssignPanel({ session, assessmentId, title, nodeId, onAssigned, onError
       setApproved([
         ...pool.filter((c) => c.mappedNodeIds.includes(nodeId)),
         ...pool.filter((c) => !c.mappedNodeIds.includes(nodeId)),
-      ].map((c) => ({ id: c.id, title: c.title })));
+      ].map((c) => ({ id: c.id, title: c.mine ? c.title : `${c.title} — shared by ${c.ownerLabel}` })));
     }).catch((e) => onError((e as Error).message));
   }, [open, session, nodeId, onError]);
 

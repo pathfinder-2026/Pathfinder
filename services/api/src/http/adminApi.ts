@@ -140,12 +140,18 @@ export function registerAdminApi(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/v1/me", async (req, reply) => {
     const auth = await requireUser(req);
     const pii = await ctx.store.getPersonalData(auth.user.id);
+    // The caller's department (from their membership) — what the share control
+    // offers as "your department". It was hardcoded to Mathematics before,
+    // which made department sharing unusable for anyone else (#18).
+    const memberships = await ctx.store.listMembershipsByUser(auth.user.id);
+    const department = memberships.find((m) => m.schoolId === auth.user.schoolId && m.department)?.department ?? null;
     return reply.send({
       userId: auth.user.id,
       schoolId: auth.user.schoolId,
       roles: auth.roles,
       firstName: pii?.firstName ?? null,
       lastName: pii?.lastName ?? null,
+      department,
     });
   });
 

@@ -365,6 +365,10 @@ export class ContentService {
   /** Whether a viewer may see a content item under its current sharing scope. */
   async canView(item: ContentItem, viewerId: string): Promise<boolean> {
     if (item.ownerTeacherId === viewerId) return true;
+    // Marking a document as THE official syllabus for a subject/year is an
+    // explicit school-wide share (ADR-0035: "every teacher of this subject/year
+    // will see it") — it overrides the item's narrower scope.
+    if (item.officialSyllabus) return true;
     switch (item.share.type) {
       case "private":
         return false;

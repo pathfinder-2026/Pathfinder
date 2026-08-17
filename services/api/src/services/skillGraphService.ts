@@ -190,6 +190,73 @@ export class SkillGraphService {
     return signed;
   }
 
+  /**
+   * Every node of a version, for review before sign-off. An AI-drafted
+   * curriculum is unusable as a governance artefact if nobody can read it.
+   */
+  async listNodes(versionId: string): Promise<SkillNode[]> {
+    await this.requireVersion(versionId);
+    return this.store.listNodes(versionId);
+  }
+
+  /**
+   * Reword a drafted concept. Only while the graph is a DRAFT: once signed off,
+   * mastery records and content mappings reference its nodes, so renaming
+   * silently would change the meaning of evidence already collected.
+   */
+  async renameNode(versionId: string, nodeId: string, label: string, actorId: string): Promise<SkillNode> {
+    const version = await this.requireDraft(versionId, "reworded");
+    const node = await this.store.getNode(versionId, nodeId);
+    if (!node) throw new NotFoundError("Concept not found in this curriculum.");
+    if (!label.trim()) throw new ValidationError("A concept needs a name.");
+
+    const updated = { ...node, label: label.trim() };
+    await this.store.insertNode(versionId, updated); // upsert by (versionId, id)
+    this.audit.append({
+      action: "skillgraph.node.renamed",
+      actorId, subjectType: "skill_graph", subjectId: version.id,
+      metadata: { nodeId, from: node.label, to: updated.label },
+    });
+    return updated;
+  }
+
+  /**
+   * Drop a drafted concept the syllabus didn't really contain. Draft-only, for
+   * the same reason as renaming. Removing a parent removes its children, since
+   * an orphaned child would dangle.
+   */
+  async removeNode(versionId: string, nodeId: string, actorId: string): Promise<{ removed: number }> {
+    const version = await this.requireDraft(versionId, "removed");
+    const all = await this.store.listNodes(versionId);
+    if (!all.some((n) => n.id === nodeId)) throw new NotFoundError("Concept not found in this curriculum.");
+
+    const doomed = new Set<string>([nodeId]);
+    for (;;) {
+      const before = doomed.size;
+      for (const n of all) if (n.parentId && doomed.has(n.parentId)) doomed.add(n.id);
+      if (doomed.size === before) break;
+    }
+    for (const id of doomed) await this.store.deleteNode(versionId, id);
+    this.audit.append({
+      action: "skillgraph.node.removed",
+      actorId, subjectType: "skill_graph", subjectId: version.id,
+      metadata: { nodeId, removed: doomed.size },
+    });
+    return { removed: doomed.size };
+  }
+
+  /** A version that may still be edited — signed-off curricula are immutable here. */
+  private async requireDraft(versionId: string, verb: string): Promise<SkillGraphVersion> {
+    const version = await this.requireVersion(versionId);
+    if (version.status === "signed_off") {
+      throw new ConflictError(
+        "GRAPH_SIGNED_OFF",
+        `This curriculum is signed off, so its concepts can't be ${verb} — mastery and content mappings already reference them. Import a new version instead.`,
+      );
+    }
+    return version;
+  }
+
   /** Add a prerequisite edge; re-validates acyclicity (structural edit, Decision 4). */
   async addPrerequisite(versionId: string, edge: PrerequisiteEdge, actorId: string | null = null): Promise<void> {
     await this.requireVersion(versionId);

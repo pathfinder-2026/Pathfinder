@@ -300,6 +300,25 @@ export const api = {
     request<{ versionId: string; name: string; status: string; subject: string | null; yearLevel: number | null; skills: number; strands: number }>(
       "POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/draft-curriculum`, body ?? {}, s.token,
     ),
+  curricula: (s: Session) =>
+    request<{
+      versionId: string; name: string; status: string; subject: string | null;
+      yearLevel: number | null; scopeLabel: string; signedOffAt: string | null; concepts: number;
+    }[]>("GET", `/api/v1/schools/${s.schoolId}/curricula`, undefined, s.token),
+  curriculumDetail: (s: Session, versionId: string) =>
+    request<{
+      versionId: string;
+      strands: { id: string; label: string; concepts: { id: string; label: string }[] }[];
+      orphans: { id: string; label: string }[];
+    }>("GET", `/api/v1/schools/${s.schoolId}/curricula/${versionId}`, undefined, s.token),
+  renameConcept: (s: Session, versionId: string, nodeId: string, label: string) =>
+    request<{ id: string; label: string }>(
+      "PATCH", `/api/v1/schools/${s.schoolId}/curricula/${versionId}/concepts/${nodeId}`, { label }, s.token,
+    ),
+  removeConcept: (s: Session, versionId: string, nodeId: string) =>
+    request<{ removed: number }>(
+      "DELETE", `/api/v1/schools/${s.schoolId}/curricula/${versionId}/concepts/${nodeId}`, undefined, s.token,
+    ),
   /** Teachers may sign off a curriculum for their school (2026-08-16 decision). */
   signOffCurriculum: (s: Session, versionId: string) =>
     request<{ versionId: string; status: string; subject: string | null; yearLevel: number | null }>(

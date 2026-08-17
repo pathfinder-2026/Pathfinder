@@ -41,6 +41,8 @@ export interface SkillGraphStore {
   insertNode(versionId: string, node: SkillNode): Promise<void>;
   getNode(versionId: string, nodeId: string): Promise<SkillNode | undefined>;
   listNodes(versionId: string): Promise<SkillNode[]>;
+  /** Remove a node from a DRAFT version (reviewing an AI-drafted curriculum). */
+  deleteNode(versionId: string, nodeId: string): Promise<void>;
   insertEdge(versionId: string, edge: PrerequisiteEdge): Promise<void>;
   listEdges(versionId: string): Promise<PrerequisiteEdge[]>;
 

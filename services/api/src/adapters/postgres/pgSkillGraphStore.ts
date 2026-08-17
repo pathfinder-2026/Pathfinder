@@ -41,8 +41,16 @@ export class PgSkillGraphStore implements SkillGraphStore {
   }
 
   async insertNode(versionId: string, n: SkillNode): Promise<void> {
+    // Upsert, matching the in-memory adapter's Map semantics — reviewing a
+    // drafted curriculum rewrites a node in place.
     await this.sql`insert into skill_nodes (graph_version_id,id,type,label,code,parent_id,curriculum,foundational)
-      values (${versionId},${n.id},${n.type},${n.label},${n.code ?? null},${n.parentId},${n.curriculum},${n.foundational ?? false})`;
+      values (${versionId},${n.id},${n.type},${n.label},${n.code ?? null},${n.parentId},${n.curriculum},${n.foundational ?? false})
+      on conflict (graph_version_id,id) do update set
+        type=${n.type}, label=${n.label}, code=${n.code ?? null},
+        parent_id=${n.parentId}, curriculum=${n.curriculum}, foundational=${n.foundational ?? false}`;
+  }
+  async deleteNode(versionId: string, nodeId: string): Promise<void> {
+    await this.sql`delete from skill_nodes where graph_version_id=${versionId} and id=${nodeId}`;
   }
   async getNode(versionId: string, nodeId: string): Promise<SkillNode | undefined> {
     return mapNode((await this.sql`select * from skill_nodes where graph_version_id=${versionId} and id=${nodeId}`)[0]);

@@ -20,6 +20,7 @@ import { TeacherPeer } from "./screens/TeacherPeer";
 import { TeacherAgent } from "./screens/TeacherAgent";
 import { TeacherTranscripts } from "./screens/TeacherTranscripts";
 import { TeacherRecords } from "./screens/TeacherRecords";
+import { TeacherCurriculum } from "./screens/TeacherCurriculum";
 import { StudentHome } from "./screens/StudentHome";
 import { ParentHome } from "./screens/ParentHome";
 import { PrincipalHome } from "./screens/PrincipalHome";
@@ -29,7 +30,7 @@ export type View =
   | "start" | "onboarding" | "workspace" | "people" | "csv-import" | "sso" | "branding" | "structure"
   | "accept-invite" | "role-home" | "loading"
   | "teacher-home" | "teacher-content" | "teacher-assessments" | "teacher-dashboard" | "teacher-insights" | "teacher-peer"
-  | "teacher-agent" | "teacher-transcripts" | "teacher-records"
+  | "teacher-agent" | "teacher-transcripts" | "teacher-records" | "teacher-curriculum"
   | "student-home" | "parent-home" | "principal-home"
   | "safeguarding" | "reports" | "audit" | "data-subject";
 
@@ -121,6 +122,7 @@ export function App() {
   if (view === "teacher-agent") return <TeacherAgent session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-transcripts") return <TeacherTranscripts session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
   if (view === "teacher-records") return <TeacherRecords session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
+  if (view === "teacher-curriculum") return <TeacherCurriculum session={session} displayName={displayName} onBack={backToTeacher} onSignOut={onSignOut} />;
 
   // ---- Student persona (safety-critical; guarded server-side) ----
   if (view === "student-home") return <StudentHome session={session} displayName={displayName} onSignOut={onSignOut} />;

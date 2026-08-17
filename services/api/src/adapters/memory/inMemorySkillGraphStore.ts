@@ -55,6 +55,9 @@ export class InMemorySkillGraphStore implements SkillGraphStore {
   async getNode(versionId: string, nodeId: string): Promise<SkillNode | undefined> {
     const n = this.nodes.get(versionId)?.get(nodeId); return n ? clone(n) : undefined;
   }
+  async deleteNode(versionId: string, nodeId: string): Promise<void> {
+    this.nodes.get(versionId)?.delete(nodeId);
+  }
   async listNodes(versionId: string): Promise<SkillNode[]> {
     return [...(this.nodes.get(versionId)?.values() ?? [])].map(clone);
   }

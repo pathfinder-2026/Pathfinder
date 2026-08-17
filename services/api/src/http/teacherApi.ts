@@ -199,6 +199,57 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     });
   });
 
+  /** Every curriculum the school has, with its scope and sign-off state. */
+  app.get("/api/v1/schools/:schoolId/curricula", async (req, reply) => {
+    const { schoolId } = req.params as { schoolId: string };
+    await requireTeacherOf(req, schoolId);
+    const versions = await ctx.skillGraphStore.listGraphVersions();
+    return reply.send(await Promise.all(versions.map(async (v) => ({
+      versionId: v.id, name: v.name, status: v.status,
+      subject: v.subject, yearLevel: v.yearLevel, scopeLabel: scopeLabel(v),
+      signedOffAt: v.signedOffAt,
+      concepts: (await ctx.skillGraphStore.listNodes(v.id)).filter((n) => n.type === "skill" || n.type === "subskill").length,
+    }))));
+  });
+
+  /** A curriculum's concepts, grouped by topic area — the review surface. */
+  app.get("/api/v1/schools/:schoolId/curricula/:versionId", async (req, reply) => {
+    const { schoolId, versionId } = req.params as { schoolId: string; versionId: string };
+    await requireTeacherOf(req, schoolId);
+    const nodes = await ctx.skillGraph.listNodes(versionId);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const strands = nodes.filter((n) => n.type === "strand");
+    return reply.send({
+      versionId,
+      strands: strands.map((s) => ({
+        id: s.id, label: s.label,
+        concepts: nodes
+          .filter((n) => (n.type === "skill" || n.type === "subskill") && byId.get(n.parentId ?? "")?.id === s.id)
+          .map((n) => ({ id: n.id, label: n.label })),
+      })),
+      // Concepts nested deeper than strand level still need to be reviewable.
+      orphans: nodes
+        .filter((n) => (n.type === "skill" || n.type === "subskill") && !strands.some((s) => s.id === n.parentId))
+        .map((n) => ({ id: n.id, label: n.label })),
+    });
+  });
+
+  /** Reword a drafted concept (draft only). */
+  app.patch("/api/v1/schools/:schoolId/curricula/:versionId/concepts/:nodeId", async (req, reply) => {
+    const { schoolId, versionId, nodeId } = req.params as { schoolId: string; versionId: string; nodeId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const { label } = req.body as { label: string };
+    const node = await ctx.skillGraph.renameNode(versionId, nodeId, label, auth.user.id);
+    return reply.send({ id: node.id, label: node.label });
+  });
+
+  /** Drop a drafted concept the syllabus didn't really contain (draft only). */
+  app.delete("/api/v1/schools/:schoolId/curricula/:versionId/concepts/:nodeId", async (req, reply) => {
+    const { schoolId, versionId, nodeId } = req.params as { schoolId: string; versionId: string; nodeId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    return reply.send(await ctx.skillGraph.removeNode(versionId, nodeId, auth.user.id));
+  });
+
   /** Remove a mapping — how a wrong link (e.g. wrong subject) is undone. */
   app.delete("/api/v1/schools/:schoolId/mappings/:mappingId", async (req, reply) => {
     const { schoolId, mappingId } = req.params as { schoolId: string; mappingId: string };

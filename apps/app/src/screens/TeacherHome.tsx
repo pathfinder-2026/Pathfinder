@@ -13,6 +13,7 @@ const TOOLS: { view: View; title: string; desc: string }[] = [
   { view: "teacher-agent", title: "Teacher Agent", desc: "Grounded drafts — plans, comms, feedback" },
   { view: "teacher-transcripts", title: "Help transcripts", desc: "Ask-for-Help sessions you assigned" },
   { view: "teacher-records", title: "Records & reports", desc: "Growth, behavioural, co-curricular, calendar" },
+  { view: "teacher-curriculum", title: "Curriculum", desc: "Review, edit and sign off what you teach against" },
 ];
 
 /** The Teacher persona home — hub for the content -> assessment -> dashboard thread. */

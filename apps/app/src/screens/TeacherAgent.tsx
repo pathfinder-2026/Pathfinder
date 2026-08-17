@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type AgentSuggestionRow, type Session, type SkillsResult, type SyllabusLookup } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
 import { NotificationBell } from "../NotificationBell";
-import { SkillPicker } from "../SkillPicker";
+import { SkillMultiPicker } from "../SkillPicker";
 
 /** NESA's real curriculum site (verified) — the generic fallback when no
  * syllabus is on file yet. Never a guessed subject/year-specific deep link;
@@ -31,10 +31,12 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
 }) {
   const [suggestions, setSuggestions] = useState<AgentSuggestionRow[] | null>(null);
   const [skills, setSkills] = useState<SkillsResult | null>(null);
-  const [groundedNodeIds, setGroundedNodeIds] = useState<Set<string>>(new Set());
+  const [capacity, setCapacity] = useState<Record<string, number>>({});
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [students, setStudents] = useState<{ id: string; label: string }[]>([]);
-  const [form, setForm] = useState({ kind: "lesson_plan" as Kind, nodeId: "", topic: "", term: "Term 1", classId: "", studentId: "", obsAcademic: "", obsBehavioural: "" });
+  // Concepts are multi-select (#19): a lesson plan or a unit sequence normally
+  // spans several, and one-at-a-time forced the teacher to stitch drafts together.
+  const [form, setForm] = useState({ kind: "lesson_plan" as Kind, nodeIds: [] as string[], topic: "", term: "Term 1", classId: "", studentId: "", obsAcademic: "", obsBehavioural: "" });
   const [busy, setBusy] = useState(false);
   const [declined, setDeclined] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; content: string } | null>(null);
@@ -49,14 +51,17 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
   const [syllabusBusy, setSyllabusBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [sug, sk, cs, content] = await Promise.all([
-      api.listAgentSuggestions(session), api.skills(session), api.teacherClasses(session), api.listContent(session),
+    const [sug, sk, cs, cap] = await Promise.all([
+      api.listAgentSuggestions(session), api.skills(session), api.teacherClasses(session), api.assessmentCapacity(session),
     ]);
     setSuggestions(sug); setSkills(sk); setClasses(cs);
-    // The skills a draft can actually ground on: nodes with APPROVED mapped
-    // content (Content Studio state drives this — an unmapped skill would only
-    // ever produce an honest decline).
-    setGroundedNodeIds(new Set(content.filter((c) => c.status === "approved" && !c.archived).flatMap((c) => c.mappedNodeIds)));
+    // The concepts a draft can actually ground on. This used to be derived here
+    // from each item's own mappedNodeIds, which since #19 answers the wrong
+    // question: material filed against the subject grounds every concept beneath
+    // it, and none of those concepts appear in any item's mapping list. The
+    // capacity endpoint applies the same nearest-ancestor rule the generator
+    // does, so the picker greys out exactly what would decline.
+    setCapacity(cap);
     if (cs.length > 0 && !form.classId) {
       setForm((f) => ({ ...f, classId: cs[0].id }));
       const st = await api.classStudents(session, cs[0].id);
@@ -74,7 +79,7 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
         ...(form.obsBehavioural.trim() ? [{ category: "behavioural", text: form.obsBehavioural.trim() }] : []),
       ];
       const result = await api.agentGenerate(session, {
-        kind: form.kind, nodeId: form.nodeId, topic: form.topic || undefined, term: form.term,
+        kind: form.kind, nodeIds: form.nodeIds, topic: form.topic || undefined, term: form.term,
         classId: form.classId || undefined, studentId: form.studentId || undefined,
         observations: needsStudent ? observations : undefined,
       });
@@ -96,10 +101,10 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
   /** Draft straight from the chosen syllabus topic — reuses the same generate() flow below. */
   const draftFromSyllabus = async () => {
     if (!syllabusTopic) return;
-    setForm((f) => ({ ...f, kind: "lesson_plan", nodeId: syllabusTopic }));
+    setForm((f) => ({ ...f, kind: "lesson_plan", nodeIds: [syllabusTopic] }));
     setBusy(true); setError(null); setDeclined(null); setNotice(null);
     try {
-      const result = await api.agentGenerate(session, { kind: "lesson_plan", nodeId: syllabusTopic });
+      const result = await api.agentGenerate(session, { kind: "lesson_plan", nodeIds: [syllabusTopic] });
       if (result.status === "declined") setDeclined(result.message);
       else { setNotice("Initial lesson drafted from the official syllabus — review it below before using it."); await load(); }
     } catch (e) { setError((e as Error).message); }
@@ -178,13 +183,13 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
               {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </Field>
-          <SkillPicker
-            skills={skills} value={form.nodeId} idPrefix="ag"
+          <SkillMultiPicker
+            skills={skills} values={form.nodeIds} idPrefix="ag"
             // Same ready/not-ready rule as before, now over the real hierarchy:
-            // a skill with no approved mapped content would only ever decline.
-            capacity={Object.fromEntries([...groundedNodeIds].map((id) => [id, 1]))}
-            onChange={(nodeId) => setForm((f) => ({ ...f, nodeId }))}
-            hint="Only skills with approved Content Studio material can ground a draft — approve and map more content to unlock the rest."
+            // a concept with nothing grounding it would only ever decline.
+            capacity={capacity}
+            onChange={(nodeIds) => setForm((f) => ({ ...f, nodeIds }))}
+            hint="Tick every concept the draft should cover. Only concepts with approved Content Studio material behind them can ground one — file more content to unlock the rest."
           />
         </div>
         <div className="row">
@@ -216,7 +221,7 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
             </Field>
           </>
         )}
-        <Button variant="primary" onClick={generate} disabled={busy || !form.nodeId || (needsStudent && !form.studentId)}>
+        <Button variant="primary" onClick={generate} disabled={busy || form.nodeIds.length === 0 || (needsStudent && !form.studentId)}>
           {busy ? "Drafting…" : "Draft it"}
         </Button>
       </Card>

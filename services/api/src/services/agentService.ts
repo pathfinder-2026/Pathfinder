@@ -18,9 +18,26 @@ import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { AgentStore } from "../ports/agentStore";
 import type { ContentService } from "./contentService";
 import { graphOfNode } from "./curriculumScope";
+import { GroundingIndex } from "./grounding";
 
 const DECLINE_MESSAGE =
   "No approved content grounds this request, so I won't invent an ungrounded plan. Upload and approve relevant content first.";
+
+/**
+ * The concept(s) a draft is about. Multi-select is the point of #19 — a lesson
+ * plan usually spans several concepts — but `nodeId` stays accepted so every
+ * existing caller keeps working without a coordinated deploy.
+ */
+export interface AgentTarget {
+  nodeId?: string;
+  nodeIds?: string[];
+}
+
+/** The concepts an agent request targets, deduped, in the teacher's order. */
+function targetNodes(target: AgentTarget): string[] {
+  const ids = target.nodeIds?.length ? target.nodeIds : target.nodeId ? [target.nodeId] : [];
+  return [...new Set(ids.filter((id) => !!id))];
+}
 
 /**
  * Milestone 6 — Teacher Agent (FR-TAG-001–004). Grounds every suggestion in the
@@ -41,15 +58,15 @@ export class AgentService {
   ) {}
 
   /** FR-TAG-001/002 — draft a unit sequence for a term, grounded in approved content. */
-  async draftUnitSequence(teacherId: string, schoolId: string, input: { nodeId: string; term: string; topic?: string }): Promise<AgentResult> {
-    return this.generateGrounded(teacherId, schoolId, "unit_sequence", input.nodeId, {
+  async draftUnitSequence(teacherId: string, schoolId: string, input: AgentTarget & { term: string; topic?: string }): Promise<AgentResult> {
+    return this.generateGrounded(teacherId, schoolId, "unit_sequence", targetNodes(input), {
       title: `Unit sequence — ${input.term}`, term: input.term, topic: input.topic,
     });
   }
 
   /** FR-TAG-001/002 — draft a lesson plan; decline honestly with no grounding content. */
-  async draftLessonPlan(teacherId: string, schoolId: string, input: { nodeId: string; topic?: string }): Promise<AgentResult> {
-    return this.generateGrounded(teacherId, schoolId, "lesson_plan", input.nodeId, {
+  async draftLessonPlan(teacherId: string, schoolId: string, input: AgentTarget & { topic?: string }): Promise<AgentResult> {
+    return this.generateGrounded(teacherId, schoolId, "lesson_plan", targetNodes(input), {
       title: `Lesson plan — ${input.topic ?? "topic"}`, topic: input.topic,
     });
   }
@@ -58,9 +75,9 @@ export class AgentService {
    * FR-TAG-001/002 — differentiated plan. When the class has no capability data
    * yet, produce a general plan and note it isn't personalised to real data.
    */
-  async draftDifferentiation(teacherId: string, schoolId: string, input: { nodeId: string; classId: string; topic?: string }): Promise<AgentResult> {
+  async draftDifferentiation(teacherId: string, schoolId: string, input: AgentTarget & { classId: string; topic?: string }): Promise<AgentResult> {
     const hasCapabilityData = await this.classHasMastery(schoolId, input.classId);
-    return this.generateGrounded(teacherId, schoolId, "differentiation", input.nodeId, {
+    return this.generateGrounded(teacherId, schoolId, "differentiation", targetNodes(input), {
       title: `Differentiation — ${input.topic ?? "topic"}`, topic: input.topic,
       personalised: hasCapabilityData,
       personalisationNote: hasCapabilityData ? null : "Not yet personalised to real student data — this class has no capability data yet.",
@@ -72,16 +89,16 @@ export class AgentService {
    * are separated from the academic body and flagged for extra teacher review; the
    * draft persists unsent and is never auto-sent.
    */
-  async draftParentSummary(teacherId: string, schoolId: string, input: { studentId: string; nodeId: string; topic?: string; observations?: Observation[] }): Promise<AgentResult> {
-    return this.generateGrounded(teacherId, schoolId, "parent_summary", input.nodeId, {
+  async draftParentSummary(teacherId: string, schoolId: string, input: AgentTarget & { studentId: string; topic?: string; observations?: Observation[] }): Promise<AgentResult> {
+    return this.generateGrounded(teacherId, schoolId, "parent_summary", targetNodes(input), {
       title: "Parent progress summary", topic: input.topic, containsStudentData: true,
       observations: input.observations,
     });
   }
 
   /** FR-TAG-003 — draft student feedback (drafts only; never auto-sent). */
-  async draftFeedback(teacherId: string, schoolId: string, input: { studentId: string; nodeId: string; topic?: string; observations?: Observation[] }): Promise<AgentResult> {
-    return this.generateGrounded(teacherId, schoolId, "feedback", input.nodeId, {
+  async draftFeedback(teacherId: string, schoolId: string, input: AgentTarget & { studentId: string; topic?: string; observations?: Observation[] }): Promise<AgentResult> {
+    return this.generateGrounded(teacherId, schoolId, "feedback", targetNodes(input), {
       title: "Student feedback", topic: input.topic, containsStudentData: true,
       observations: input.observations,
     });
@@ -121,7 +138,7 @@ export class AgentService {
     teacherId: string,
     schoolId: string,
     kind: AgentSuggestionKind,
-    nodeId: string,
+    nodeIds: string[],
     opts: {
       title: string; term?: string; topic?: string; containsStudentData?: boolean;
       personalised?: boolean; personalisationNote?: string | null; observations?: Observation[];
@@ -131,9 +148,9 @@ export class AgentService {
 
     // Grounding is mandatory. No approved source content → decline honestly
     // rather than inventing an ungrounded plan (FR-TAG-004 / DoD).
-    const { refs, sources } = await this.grounding(schoolId, nodeId);
+    const { refs, sources } = await this.grounding(schoolId, nodeIds);
     if (refs.length === 0) {
-      this.audit.append({ action: "agent.declined", actorId: teacherId, subjectType: "agent", subjectId: kind, metadata: { reason: "no_grounding_content", nodeId } });
+      this.audit.append({ action: "agent.declined", actorId: teacherId, subjectType: "agent", subjectId: kind, metadata: { reason: "no_grounding_content", nodeIds } });
       return { status: "declined", reason: "no_grounding_content", message: DECLINE_MESSAGE };
     }
 
@@ -146,7 +163,7 @@ export class AgentService {
       {
         purpose: "agent.generate",
         prompt: `Draft ${kind} grounded strictly in the approved sources.`,
-        input: { kind, term: opts.term, topic: opts.topic ?? (await this.nodeTopic(schoolId, nodeId)), sources, personalised: opts.personalised ?? true },
+        input: { kind, term: opts.term, topic: opts.topic ?? (await this.nodeTopic(schoolId, nodeIds)), sources, personalised: opts.personalised ?? true },
         containsStudentData: opts.containsStudentData ?? false,
       },
       teacherId,
@@ -167,14 +184,17 @@ export class AgentService {
     return { status: "suggested", suggestion };
   }
 
-  /** Approved content mapped to a node → grounding refs (snapshot) + source texts. */
-  private async grounding(schoolId: string, nodeId: string): Promise<{ refs: GroundingRef[]; sources: string[] }> {
-    const pool = await this.content.approvedPool(schoolId);
+  /**
+   * Approved content grounding the chosen concepts → grounding refs (snapshot) +
+   * source texts. Reaches material filed against an ancestor (subject/strand) at
+   * the nearest mapped level, the same rule assessment generation uses — see
+   * GroundingIndex.
+   */
+  private async grounding(schoolId: string, nodeIds: string[]): Promise<{ refs: GroundingRef[]; sources: string[] }> {
+    const index = await GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
     const refs: GroundingRef[] = [];
     const sources: string[] = [];
-    for (const item of pool) {
-      const mapped = (await this.graph.listMappingsByContent(item.id)).some((m) => m.nodeId === nodeId);
-      if (!mapped) continue;
+    for (const { item } of index.sourcesForAny(nodeIds)) {
       refs.push({ contentItemId: item.id, title: item.title, archived: false });
       sources.push(item.title);
     }
@@ -203,15 +223,19 @@ export class AgentService {
   }
 
   /**
-   * The skill's human label for draft text. This used to return the raw node id,
-   * which the UI never resolved — so teachers read drafts saying
-   * 'a lesson plan on "skill-add-fractions"'. Falls back to the id only if the
+   * The chosen skills' human labels for draft text. This used to return the raw
+   * node id, which the UI never resolved — so teachers read drafts saying
+   * 'a lesson plan on "skill-add-fractions"'. Falls back to the id only if a
    * node genuinely isn't in a signed-off graph.
    */
-  private async nodeTopic(schoolId: string, nodeId: string): Promise<string> {
-    const version = await graphOfNode(this.graph, schoolId, nodeId);
-    if (!version) return nodeId;
-    return (await this.graph.getNode(version.id, nodeId))?.label ?? nodeId;
+  private async nodeTopic(schoolId: string, nodeIds: string[]): Promise<string> {
+    const labels: string[] = [];
+    for (const nodeId of nodeIds) {
+      const version = await graphOfNode(this.graph, schoolId, nodeId);
+      const node = version ? await this.graph.getNode(version.id, nodeId) : undefined;
+      labels.push(node?.label ?? nodeId);
+    }
+    return labels.join(", ");
   }
 
   private async owned(teacherId: string, suggestionId: string): Promise<AgentSuggestion> {

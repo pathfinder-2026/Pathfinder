@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AssessmentDetail, type AssessmentRow, type AttemptRow, type Session, type SkillsResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
 import { NotificationBell } from "../NotificationBell";
-import { SkillPicker } from "../SkillPicker";
+import { SkillMultiPicker, SkillPicker } from "../SkillPicker";
 
 /**
  * TCH-4/5 — Assessment Builder + review/publish. Generation is grounded ONLY in
@@ -27,9 +27,10 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Generate form
+  // Generate form. Concepts are multi-select (#19): a term's assessment normally
+  // covers several, and forcing one meant generating three separate drafts.
   const [title, setTitle] = useState("");
-  const [nodeId, setNodeId] = useState("");
+  const [nodeIds, setNodeIds] = useState<string[]>([]);
   const [count, setCount] = useState(3);
   const [difficulty, setDifficulty] = useState("mixed");
 
@@ -56,7 +57,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
   const generate = async () => {
     setError(null); setNotice(null); setDeclined(null); setBusy(true);
     try {
-      const result = await api.generateAssessment(session, { title, nodeId, count, difficulty });
+      const result = await api.generateAssessment(session, { title, nodeIds, count, difficulty });
       if (result.status === "failed") {
         // Honest failed state: no partial draft was saved.
         setError(result.reason);
@@ -89,8 +90,19 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
     } finally { setBusy(false); }
   };
 
-  const selectedCapacity = nodeId ? capacity[nodeId] ?? 0 : null;
   const nodeLabel = (id: string) => (skills?.signedOff ? skills.nodes.find((n) => n.id === id)?.label : null) ?? id;
+  const nodeLabels = (ids: string[]) => (ids.length ? ids : []).map(nodeLabel).join(" · ");
+
+  /**
+   * The guaranteed floor for the selection. Summing would double-count concepts
+   * that share a source — the common case now that material is filed at subject
+   * level — so this is the largest single concept's capacity and is worded as a
+   * floor, not a ceiling. Zero still means zero: every chosen concept is
+   * ungrounded, so generation would certainly decline.
+   */
+  const selectedCapacity = nodeIds.length === 0
+    ? null
+    : Math.max(...nodeIds.map((id) => capacity[id] ?? 0));
 
   return (
     <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Assessments" roleTag="Teacher" backLabel="Back to teacher home"
@@ -113,15 +125,15 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
           <>
             <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
             <div className="row">
-              <SkillPicker
-                skills={skills} value={nodeId} onChange={setNodeId} capacity={capacity} countNoun="questions"
+              <SkillMultiPicker
+                skills={skills} values={nodeIds} onChange={setNodeIds} capacity={capacity} countNoun="questions"
                 idPrefix="asm"
-                hint="Only skills with approved, mapped material can ground questions — approve and map more in Content Studio to unlock the rest."
+                hint="Tick every concept this assessment should cover. Only concepts with approved material behind them can ground questions — file more in Content Studio to unlock the rest."
               />
             </div>
             <div className="row">
               <Field label="Questions" hint={selectedCapacity !== null
-                ? `Your approved material can ground up to ${selectedCapacity} question${selectedCapacity === 1 ? "" : "s"} for this skill.`
+                ? `Your approved material can ground at least ${selectedCapacity} question${selectedCapacity === 1 ? "" : "s"} here — more where the concepts draw on different material.`
                 : "Limited by how many sections your approved material can ground."}>
                 <input className="input" type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} />
               </Field>
@@ -131,7 +143,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
                 </select>
               </Field>
             </div>
-            <Button variant="primary" onClick={generate} disabled={busy || !title.trim() || !nodeId || selectedCapacity === 0}>
+            <Button variant="primary" onClick={generate} disabled={busy || !title.trim() || nodeIds.length === 0 || selectedCapacity === 0}>
               {busy ? "Generating…" : "Generate draft"}
             </Button>
           </>
@@ -151,7 +163,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
               {rows.map((r) => (
                 <li className="person" key={r.id}>
                   <span><strong>{r.title}</strong></span>
-                  <span className="person__meta">{nodeLabel(r.nodeId)} · {r.questionCount} questions</span>
+                  <span className="person__meta">{nodeLabels(r.nodeIds)} · {r.questionCount} questions</span>
                   {r.targetStudentId && <Chip state="pending">Tailored — one student</Chip>}
                   {r.shortfall && <Chip state="pending">Shortfall</Chip>}
                   <span className="spacer" />
@@ -167,7 +179,7 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
         <Card>
           <div className="card__head">
             <h2 className="section">{detail.title} <Chip state={detail.status === "published" ? "approved" : "draft"}>{detail.status === "published" ? "Published" : "Draft"}</Chip></h2>
-            <p className="muted">{nodeLabel(detail.nodeId)}</p>
+            <p className="muted">{nodeLabels(detail.nodeIds)}</p>
           </div>
           {detail.tailoringRationale && (
             <Banner kind="brand">
@@ -181,6 +193,16 @@ export function TeacherAssessments({ session, displayName, onBack, onSignOut, on
           )}
           {detail.flags.includes("difficulty_balance_unmet") && (
             <Banner kind="warn">The requested difficulty balance couldn't be fully met from the available material.</Banner>
+          )}
+          {/* #19 — nothing is mapped to these concepts specifically, so the
+              questions come from whatever is filed above them. Worth saying
+              plainly: it's what the teacher is about to put their name to. */}
+          {detail.flags.includes("grounded_at_broader_level") && (
+            <Banner kind="warn">
+              No material is mapped to these concepts specifically, so the questions were drawn from material filed
+              higher up the curriculum. Map material straight to a concept in Content Studio (under More options) to
+              narrow what it draws on.
+            </Banner>
           )}
           <ol style={{ margin: "0 0 6px", paddingLeft: 22, display: "flex", flexDirection: "column", gap: 14 }}>
             {detail.questions.map((q) => (

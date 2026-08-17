@@ -261,9 +261,11 @@ describe("Production Teacher API — content -> approve -> assessment -> publish
     expect(cap[NODE]).toBe(2);
 
     // A skill with no grounded material declines upfront — no empty draft saved.
+    // It has to be a skill in ANOTHER strand: since #19, anything under the
+    // mapped node inherits its material.
     const declined = await app.inject({
       method: "POST", url: `/api/v1/schools/${schoolId}/assessments/generate`, headers: teacher.auth,
-      payload: { title: "Nothing here", nodeId: "sub-common-denominator", count: 3, difficulty: "mixed" },
+      payload: { title: "Nothing here", nodeId: "skill-interpret-data", count: 3, difficulty: "mixed" },
     });
     expect(declined.json()).toMatchObject({ status: "declined" });
     const list = (await app.inject({ method: "GET", url: `/api/v1/schools/${schoolId}/assessments`, headers: teacher.auth })).json();

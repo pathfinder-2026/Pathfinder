@@ -21,7 +21,7 @@ import type { DashboardStore, GroupAssignment } from "../ports/dashboardStore";
 import type { DataStore } from "../ports/dataStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
-import { signedOffGraphs } from "./curriculumScope";
+import { GroundingIndex } from "./grounding";
 
 /**
  * Milestone 5a — FR-TDB-001 / FR-CAP-001 (mastery heatmap + flags) and FR-TDB-002
@@ -191,18 +191,21 @@ export class TeacherDashboardService {
     return (await this.activity.listMasteryBySchool(schoolId)).filter((r) => inClass.has(r.studentId));
   }
 
-  /** node → approved content item ids mapped to it (the reteach candidates). */
+  /**
+   * node → approved content item ids that could reteach it (the candidates the
+   * teacher chooses from — nothing is ever auto-assigned).
+   *
+   * Reaches material filed against an ancestor at the nearest mapped level, the
+   * same rule assessment generation uses (see GroundingIndex): since #19 most
+   * material is filed at subject level, and a focus area with no suggestion is
+   * the dashboard's least useful state.
+   */
   private async approvedMaterialByNode(schoolId: string): Promise<Map<string, string[]>> {
+    const index = await GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
     const out = new Map<string, string[]>();
-    // Spans every signed-off graph: a class's reteach material lives in its own
-    // subject's graph, so one version's mappings would miss all the others.
-    for (const version of await signedOffGraphs(this.graph, schoolId)) {
-      for (const mapping of await this.graph.listMappingsByVersion(version.id)) {
-        if (!(await this.content.isInApprovedPool(mapping.contentItemId))) continue;
-        if (!out.has(mapping.nodeId)) out.set(mapping.nodeId, []);
-        const list = out.get(mapping.nodeId)!;
-        if (!list.includes(mapping.contentItemId)) list.push(mapping.contentItemId);
-      }
+    for (const nodeId of index.nodeIds()) {
+      const ids = index.sourcesFor(nodeId).map((s) => s.item.id);
+      if (ids.length > 0) out.set(nodeId, ids);
     }
     return out;
   }

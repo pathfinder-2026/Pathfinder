@@ -102,7 +102,63 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     await makeMappedContent(ctx, schoolId, teacherId, NODE, { sections: 3 });
     const capacity = await ctx.assessment.groundingCapacity(schoolId);
     expect(capacity[NODE]).toBe(3);
-    expect(capacity["sub-common-denominator"]).toBeUndefined();
+    // #19 — a subskill inherits the material mapped to the skill above it, which
+    // is what lets a school file everything at subject level and still generate.
+    expect(capacity["sub-common-denominator"]).toBe(3);
+    // Inheritance only ever runs DOWN the tree: a skill in another strand is
+    // untouched by material mapped to fractions.
+    expect(capacity["skill-interpret-data"]).toBeUndefined();
+  });
+
+  it("#19 — material mapped at SUBJECT level grounds every concept beneath it", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    await makeMappedContent(ctx, schoolId, teacherId, "subj-maths", { sections: 4 });
+
+    const capacity = await ctx.assessment.groundingCapacity(schoolId);
+    expect(capacity["skill-interpret-data"]).toBe(4);
+    expect(capacity[NODE]).toBe(4);
+
+    const res = await ctx.assessment.generate(schoolId, teacherId, {
+      title: "Data displays", nodeId: "skill-interpret-data", count: 2, difficulty: "mixed",
+    });
+    expect(res.status).toBe("generated");
+    if (res.status !== "generated") throw new Error("unreachable");
+    // The teacher is told the questions came from material filed more broadly
+    // than the concept they asked about — that's theirs to know before publishing.
+    expect(res.flags).toContain("grounded_at_broader_level");
+  });
+
+  it("#19 — a concept-level mapping wins over the subject-level one, and isn't flagged", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    await makeMappedContent(ctx, schoolId, teacherId, "subj-maths", { sections: 4 });
+    await makeMappedContent(ctx, schoolId, teacherId, NODE, { sections: 1 });
+
+    // Refining one item down to the concept is what narrows it: capacity drops
+    // to that item alone rather than everything filed under Mathematics.
+    const capacity = await ctx.assessment.groundingCapacity(schoolId);
+    expect(capacity[NODE]).toBe(1);
+    expect(capacity["skill-interpret-data"]).toBe(4); // untouched by the refinement
+
+    const res = await ctx.assessment.generate(schoolId, teacherId, {
+      title: "Adding fractions", nodeId: NODE, count: 1, difficulty: "mixed",
+    });
+    expect(res.status).toBe("generated");
+    if (res.status !== "generated") throw new Error("unreachable");
+    expect(res.flags).not.toContain("grounded_at_broader_level");
+  });
+
+  it("#19 — a multi-concept request grounds in the union, counting shared material once", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    await makeMappedContent(ctx, schoolId, teacherId, NODE, { sections: 2 });
+    await makeMappedContent(ctx, schoolId, teacherId, "skill-interpret-data", { sections: 3 });
+
+    const res = await ctx.assessment.generate(schoolId, teacherId, {
+      title: "Term review", nodeId: NODE, nodeIds: [NODE, "skill-interpret-data"],
+      count: 10, difficulty: "mixed",
+    });
+    expect(res.status).toBe("generated");
+    if (res.status !== "generated") throw new Error("unreachable");
+    expect(res.questionCount).toBe(5); // 2 + 3, neither item double-counted
   });
 
   it("edge (NEW v1.4) — generation fails mid-run: clear failed state, no partial draft, audit-logged", async () => {

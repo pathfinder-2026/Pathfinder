@@ -147,8 +147,10 @@ describe("AssessmentService.generateTailored", () => {
 
   it("no approved content mapped to the node -> the same honest shortfall as regular generate(), never a crash", async () => {
     const { ctx, clock, schoolId, teacherId, studentId } = await setup();
-    // A real node in the signed-off graph, but nothing was mapped to it in setup().
-    const unmappedNode = "sub-common-denominator";
+    // A real node in the signed-off graph, but nothing was mapped to it — nor to
+    // anything above it. Since #19 a descendant of the mapped node inherits its
+    // material, so this has to be a skill in a different strand entirely.
+    const unmappedNode = "skill-interpret-data";
     await ctx.activityStore.insertMastery({
       id: newId(), studentId, schoolId, nodeId: unmappedNode, level: "low",
       score: 0.1, dataPoints: 1, lastActivityAt: clock.isoNow(), synthetic: false,

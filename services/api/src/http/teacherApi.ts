@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthError, ConflictError, NotFoundError, ValidationError } from "../domain/errors";
 import type { AppContext } from "../context";
 import type { ContentItem } from "../domain/content";
-import type { Assessment } from "../domain/assessment";
+import { coveredNodeIds, type Assessment } from "../domain/assessment";
 import { anonymityRisk, PEER_THRESHOLDS, type PeerTest } from "../domain/peer";
 import { scopeLabel } from "../domain/skillGraph";
 import { graphForScope, scopeOfClass, signedOffGraphs } from "../services/curriculumScope";
@@ -435,6 +435,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       title: a.title,
       status: a.status,
       nodeId: a.request.nodeId,
+      nodeIds: coveredNodeIds(a.request),
       questionCount: (await ctx.assessmentStore.listQuestionsByAssessment(a.id)).length,
       shortfall: a.shortfall,
       reviewAcknowledged: a.reviewAcknowledged,
@@ -450,11 +451,17 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/v1/schools/:schoolId/assessments/generate", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };
     const auth = await requireTeacherOf(req, schoolId);
-    const { title, nodeId, count, difficulty } = req.body as {
-      title: string; nodeId: string; count: number; difficulty?: "easy" | "mixed" | "hard";
+    // `nodeIds` is the multi-select form (#19); `nodeId` is still accepted so an
+    // older client keeps working. Whichever arrives, the first is the primary.
+    const { title, nodeId, nodeIds, count, difficulty } = req.body as {
+      title: string; nodeId?: string; nodeIds?: string[]; count: number; difficulty?: "easy" | "mixed" | "hard";
     };
+    const nodes = (nodeIds?.length ? nodeIds : nodeId ? [nodeId] : []).filter(Boolean);
+    if (nodes.length === 0) {
+      return reply.status(400).send({ code: "BAD_REQUEST", message: "Choose at least one concept to generate against." });
+    }
     const result = await ctx.assessment.generate(schoolId, auth.user.id, {
-      title, nodeId, count, difficulty: difficulty ?? "mixed",
+      title, nodeId: nodes[0]!, nodeIds: nodes, count, difficulty: difficulty ?? "mixed",
     });
     // "failed" is a clean, honest state (no partial draft saved) — still HTTP 200.
     return reply.status(result.status === "generated" ? 201 : 200).send(result);
@@ -497,6 +504,7 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       title: a.title,
       status: a.status,
       nodeId: a.request.nodeId,
+      nodeIds: coveredNodeIds(a.request),
       shortfall: a.shortfall,
       flags: a.flags,
       reviewAcknowledged: a.reviewAcknowledged,
@@ -955,18 +963,23 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     const auth = await requireTeacherOf(req, schoolId);
     const body = req.body as {
       kind: "unit_sequence" | "lesson_plan" | "differentiation" | "parent_summary" | "feedback";
-      nodeId: string; term?: string; topic?: string; classId?: string; studentId?: string;
+      nodeId?: string; nodeIds?: string[]; term?: string; topic?: string; classId?: string; studentId?: string;
       observations?: { category: string; text: string }[];
     };
     const observations = (body.observations ?? []).map((o) => ({ category: o.category as never, text: o.text }));
+    // Multi-select concepts (#19); a single `nodeId` is still accepted.
+    const nodeIds = (body.nodeIds?.length ? body.nodeIds : body.nodeId ? [body.nodeId] : []).filter(Boolean);
     const run = {
-      unit_sequence: () => ctx.agent.draftUnitSequence(auth.user.id, schoolId, { nodeId: body.nodeId, term: body.term ?? "this term", topic: body.topic }),
-      lesson_plan: () => ctx.agent.draftLessonPlan(auth.user.id, schoolId, { nodeId: body.nodeId, topic: body.topic }),
-      differentiation: () => ctx.agent.draftDifferentiation(auth.user.id, schoolId, { nodeId: body.nodeId, classId: body.classId ?? "", topic: body.topic }),
-      parent_summary: () => ctx.agent.draftParentSummary(auth.user.id, schoolId, { studentId: body.studentId ?? "", nodeId: body.nodeId, topic: body.topic, observations }),
-      feedback: () => ctx.agent.draftFeedback(auth.user.id, schoolId, { studentId: body.studentId ?? "", nodeId: body.nodeId, topic: body.topic, observations }),
+      unit_sequence: () => ctx.agent.draftUnitSequence(auth.user.id, schoolId, { nodeIds, term: body.term ?? "this term", topic: body.topic }),
+      lesson_plan: () => ctx.agent.draftLessonPlan(auth.user.id, schoolId, { nodeIds, topic: body.topic }),
+      differentiation: () => ctx.agent.draftDifferentiation(auth.user.id, schoolId, { nodeIds, classId: body.classId ?? "", topic: body.topic }),
+      parent_summary: () => ctx.agent.draftParentSummary(auth.user.id, schoolId, { studentId: body.studentId ?? "", nodeIds, topic: body.topic, observations }),
+      feedback: () => ctx.agent.draftFeedback(auth.user.id, schoolId, { studentId: body.studentId ?? "", nodeIds, topic: body.topic, observations }),
     }[body.kind];
     if (!run) return reply.status(400).send({ code: "BAD_REQUEST", message: "Unknown agent draft kind." });
+    if (nodeIds.length === 0) {
+      return reply.status(400).send({ code: "BAD_REQUEST", message: "Choose at least one concept to draft against." });
+    }
     const result = await run();
     // A decline is an HONEST outcome, not an error — HTTP 200 with the reason.
     if (result.status === "declined") return reply.send({ status: "declined", reason: result.reason, message: result.message });

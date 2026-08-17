@@ -82,8 +82,17 @@ export interface TypeRequest {
 
 export interface AssessmentRequest {
   title: string;
-  /** The skill-graph node to ground generation on. */
+  /** The primary skill-graph node — the first of `nodeIds`. */
   nodeId: string;
+  /**
+   * Every concept this assessment covers. Concept selection is multi-select on
+   * the drafting surfaces (#19): one test legitimately spans several concepts of
+   * a unit. `nodeId` stays populated as the first of these so drafts written
+   * before this field — and every reader that only knows about one node — keep
+   * working. Persisted inside the existing `request` jsonb column, so no schema
+   * change, same as `targetStudentId`.
+   */
+  nodeIds?: string[];
   count: number;
   difficulty: "easy" | "mixed" | "hard";
   typeMix?: TypeRequest[];
@@ -106,6 +115,16 @@ export interface AssessmentRequest {
    */
   tailoringRationale?: string | null;
   scheduledStart?: string;
+}
+
+/**
+ * The concepts an assessment covers, deduped and in the teacher's chosen order.
+ * The one place that reconciles `nodeIds` with the older single `nodeId`, so no
+ * caller has to remember which drafts predate multi-select.
+ */
+export function coveredNodeIds(request: AssessmentRequest): string[] {
+  const ids = request.nodeIds?.length ? request.nodeIds : [request.nodeId];
+  return [...new Set(ids.filter((id) => !!id))];
 }
 
 export type AttemptStatus = "in_progress" | "submitted";

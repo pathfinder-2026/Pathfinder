@@ -18,6 +18,7 @@ import type { DataStore } from "../ports/dataStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { WorkspaceStore } from "../ports/workspaceStore";
 import type { ContentService } from "./contentService";
+import { GroundingIndex } from "./grounding";
 
 /**
  * Milestone 7 — Ask for Help (FR-STU-002 / FR-SAG-001 / FR-SAG-002). The
@@ -163,12 +164,16 @@ export class AskForHelpService {
     await this.workspace.insertHelpMessage({ id: newId(), sessionId, role, text, kind, createdAt: this.clock.isoNow() });
   }
 
-  /** The first approved-content chunk mapped to the task's skill (grounding, not an answer). */
+  /**
+   * The first approved-content chunk grounding the task's skill (grounding, not
+   * an answer). Uses the same nearest-ancestor rule as everything else — see
+   * GroundingIndex — so a school filing material at subject level doesn't leave
+   * every student's hint request ungrounded.
+   */
   private async groundingChunk(schoolId: string, nodeId: string | null): Promise<string> {
     if (!nodeId) return "";
-    for (const item of await this.content.approvedPool(schoolId)) {
-      const mapped = (await this.graph.listMappingsByContent(item.id)).some((m) => m.nodeId === nodeId);
-      if (!mapped) continue;
+    const index = await GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
+    for (const { item } of index.sourcesFor(nodeId)) {
       const chunk = (await this.contentStore.listChunksByVersion(item.currentVersionId))[0];
       if (chunk) return `${chunk.heading} ${chunk.text}`;
     }

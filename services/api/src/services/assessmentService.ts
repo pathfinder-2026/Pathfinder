@@ -1,4 +1,5 @@
 import { AuthError, ConflictError, NotFoundError, ValidationError } from "../domain/errors";
+import { coveredNodeIds } from "../domain/assessment";
 import type {
   Assessment,
   AssessmentAttempt,
@@ -21,6 +22,7 @@ import type { ContentStore } from "../ports/contentStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
 import { graphOfNode } from "./curriculumScope";
+import { GroundingIndex } from "./grounding";
 
 const VERSION_LABELS = ["A", "B", "C", "D", "E"];
 const RESUME_WINDOW_MS = 30 * 60 * 1000;
@@ -34,6 +36,8 @@ interface GroundingUnit {
   contentItemId: string;
   text: string;
   difficulty: string;
+  /** How far up the tree the mapping sat: 0 = the concept itself (see GroundingIndex). */
+  distance: number;
 }
 
 /** FR-ASM-001–004 — Assessment Builder. */
@@ -56,15 +60,22 @@ export class AssessmentService {
    * partial draft is saved and the failure is audit-logged.
    */
   async generate(schoolId: string, teacherId: string, request: AssessmentRequest): Promise<GenerateResult> {
-    const grounding = await this.collectGrounding(schoolId, request.nodeId);
+    const nodeIds = coveredNodeIds(request);
+    const grounding = await this.collectGrounding(schoolId, nodeIds);
 
-    // Nothing can ground this node: decline upfront with an actionable fix path
-    // instead of saving a permanent zero-question draft.
+    // Nothing can ground these nodes: decline upfront with an actionable fix
+    // path instead of saving a permanent zero-question draft.
     if (grounding.length === 0) {
       return this.declineUngrounded(schoolId, teacherId, request);
     }
 
     const flags: string[] = [];
+
+    // Say so when nothing is mapped to the concepts themselves and the questions
+    // come from material filed higher up the tree (#19's accepted trade-off).
+    // The teacher is reviewing a draft grounded more broadly than they may
+    // assume, and that is theirs to know before they publish it.
+    if (grounding.every((g) => g.distance > 0)) flags.push("grounded_at_broader_level");
 
     // Plan the question types.
     const requested = request.typeMix
@@ -582,7 +593,13 @@ export class AssessmentService {
       attempt.studentId,
     );
     const parsed = JSON.parse(completion.text) as { results: AttemptGradingResult[]; overallScore: number };
-    await this.upsertMastery(assessment.schoolId, attempt.studentId, assessment.request.nodeId, parsed.overallScore);
+    // Evidence for every concept the assessment covers, not only the first. The
+    // score is the same for each, which is coarse — but a test the teacher said
+    // spans three concepts IS evidence about all three, and recording it against
+    // one of them would silently discard the other two.
+    for (const nodeId of coveredNodeIds(assessment.request)) {
+      await this.upsertMastery(assessment.schoolId, attempt.studentId, nodeId, parsed.overallScore);
+    }
     return parsed;
   }
 
@@ -632,10 +649,15 @@ export class AssessmentService {
     const unapproved = items.filter(
       (i) => i.governance.status !== "approved" && i.governance.status !== "published",
     );
+    // "Covers this skill" means the same here as it does for grounding: filed
+    // against the concept OR anywhere above it. Otherwise the refusal would say
+    // "nothing is mapped" while the subject-level syllabus sits awaiting approval.
+    const index = await this.groundingIndex(schoolId);
+    const covering = new Set(coveredNodeIds(request).flatMap((id) => index.chainFor(id)));
     const pendingContent: { id: string; title: string; status: string }[] = [];
     for (const item of unapproved) {
       const mappings = await this.graph.listMappingsByContent(item.id);
-      if (mappings.some((m) => m.nodeId === request.nodeId)) {
+      if (mappings.some((m) => covering.has(m.nodeId))) {
         pendingContent.push({ id: item.id, title: item.title, status: item.governance.status });
       }
     }
@@ -663,30 +685,31 @@ export class AssessmentService {
    * BEFORE the teacher fills in the generate form.
    */
   async groundingCapacity(schoolId: string): Promise<Record<string, number>> {
-    const capacity: Record<string, number> = {};
-    for (const item of await this.content.approvedPool(schoolId)) {
-      const mappings = await this.graph.listMappingsByContent(item.id);
-      if (mappings.length === 0) continue;
-      const sections = (await this.contentStore.listChunksByVersion(item.currentVersionId)).length;
-      for (const nodeId of new Set(mappings.map((m) => m.nodeId))) {
-        capacity[nodeId] = (capacity[nodeId] ?? 0) + sections;
-      }
-    }
-    return capacity;
+    const index = await this.groundingIndex(schoolId);
+    return index.capacity(async (item) =>
+      (await this.contentStore.listChunksByVersion(item.currentVersionId)).length,
+    );
   }
 
-  private async collectGrounding(schoolId: string, nodeId: string): Promise<GroundingUnit[]> {
-    const pool = await this.content.approvedPool(schoolId);
+  private async collectGrounding(schoolId: string, nodeIds: string[]): Promise<GroundingUnit[]> {
+    const index = await this.groundingIndex(schoolId);
     const units: GroundingUnit[] = [];
-    for (const item of pool) {
-      const mapping = (await this.graph.listMappingsByContent(item.id)).find((m) => m.nodeId === nodeId);
-      if (!mapping) continue; // approved but not mapped to this node
-      const chunks = await this.contentStore.listChunksByVersion(item.currentVersionId);
+    for (const source of index.sourcesForAny(nodeIds)) {
+      const chunks = await this.contentStore.listChunksByVersion(source.item.currentVersionId);
       for (const chunk of chunks) {
-        units.push({ contentItemId: item.id, text: `${chunk.heading} ${chunk.text}`, difficulty: mapping.difficulty });
+        units.push({
+          contentItemId: source.item.id,
+          text: `${chunk.heading} ${chunk.text}`,
+          difficulty: source.mapping.difficulty,
+          distance: source.distance,
+        });
       }
     }
     return units;
+  }
+
+  private async groundingIndex(schoolId: string): Promise<GroundingIndex> {
+    return GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
   }
 
   private async require(assessmentId: string): Promise<Assessment> {

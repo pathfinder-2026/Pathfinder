@@ -18,6 +18,7 @@ import type { DataStore } from "../ports/dataStore";
 import type { PeerStore } from "../ports/peerStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
+import { GroundingIndex } from "./grounding";
 
 export interface BuildPeerTestConfig {
   title: string;
@@ -259,13 +260,16 @@ export class PeerTestService {
     return submissions.map((s) => ({ studentId: s.studentId, score: latest.get(s.studentId) ?? s.score }));
   }
 
+  /**
+   * Sections available to ground a peer test. Uses the same nearest-ancestor
+   * rule as assessment generation (see GroundingIndex) — a school that files its
+   * material at subject level must not be told a concept has zero capacity.
+   */
   private async groundingCapacity(schoolId: string, nodeId: string): Promise<number> {
-    const pool = await this.content.approvedPool(schoolId);
+    const index = await GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
     let chunks = 0;
-    for (const item of pool) {
-      const mapped = (await this.graph.listMappingsByContent(item.id)).some((m) => m.nodeId === nodeId);
-      if (!mapped) continue;
-      chunks += (await this.contentStore.listChunksByVersion(item.currentVersionId)).length;
+    for (const source of index.sourcesFor(nodeId)) {
+      chunks += (await this.contentStore.listChunksByVersion(source.item.currentVersionId)).length;
     }
     return chunks;
   }

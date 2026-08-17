@@ -154,6 +154,8 @@ export interface AssessmentRow {
   title: string;
   status: string;
   nodeId: string;
+  /** Every concept the draft covers — `nodeId` is the first of them. */
+  nodeIds: string[];
   questionCount: number;
   shortfall: { requested: number; generated: number; reason: string } | null;
   reviewAcknowledged: boolean;
@@ -169,6 +171,8 @@ export interface AssessmentDetail {
   title: string;
   status: string;
   nodeId: string;
+  /** Every concept the draft covers — `nodeId` is the first of them. */
+  nodeIds: string[];
   shortfall: { requested: number; generated: number; reason: string } | null;
   flags: string[];
   reviewAcknowledged: boolean;
@@ -359,7 +363,7 @@ export const api = {
   // ---- Teacher: Assessment Builder + publish (TCH-4/5) ----
   listAssessments: (s: Session) => request<AssessmentRow[]>("GET", `/api/v1/schools/${s.schoolId}/assessments`, undefined, s.token),
   assessmentCapacity: (s: Session) => request<Record<string, number>>("GET", `/api/v1/schools/${s.schoolId}/assessment-capacity`, undefined, s.token),
-  generateAssessment: (s: Session, body: { title: string; nodeId: string; count: number; difficulty: string }) =>
+  generateAssessment: (s: Session, body: { title: string; nodeIds: string[]; count: number; difficulty: string }) =>
     request<GenerateResult>("POST", `/api/v1/schools/${s.schoolId}/assessments/generate`, body, s.token),
   getAssessment: (s: Session, id: string) => request<AssessmentDetail>("GET", `/api/v1/schools/${s.schoolId}/assessments/${id}`, undefined, s.token),
   listAttempts: (s: Session, assessmentId: string) =>
@@ -434,7 +438,7 @@ export const api = {
   listAgentSuggestions: (s: Session) => request<AgentSuggestionRow[]>("GET", `/api/v1/schools/${s.schoolId}/agent/suggestions`, undefined, s.token),
   agentGenerate: (s: Session, body: {
     kind: "unit_sequence" | "lesson_plan" | "differentiation" | "parent_summary" | "feedback";
-    nodeId: string; term?: string; topic?: string; classId?: string; studentId?: string;
+    nodeIds: string[]; term?: string; topic?: string; classId?: string; studentId?: string;
     observations?: { category: string; text: string }[];
   }) => request<AgentGenerateResult>("POST", `/api/v1/schools/${s.schoolId}/agent/generate`, body, s.token),
   editAgentDraft: (s: Session, id: string, content: string) =>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type ContentRow, type MappingRow, type Session, type SkillNodeRow, type SkillsResult, type UploadResult } from "../api";
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
 import { NotificationBell } from "../NotificationBell";
-import { SkillPicker } from "../SkillPicker";
+import { SkillPicker, SubjectPicker } from "../SkillPicker";
 import { CurriculumReview } from "../CurriculumReview";
 import { extractTextFromFile } from "../fileText";
 
@@ -42,7 +42,7 @@ function checklist(r: ContentRow): { label: string; why: string; done: boolean }
     { label: "Subject confirmed", why: "You check the suggested subject and topic.", done: r.classification?.status === "approved" },
     { label: "Rights confirmed", why: "You confirm it's yours to use with students.", done: r.rightsAttested },
     { label: "Approved", why: "Nothing reaches students until you approve it.", done: r.status === "approved" || r.status === "published" },
-    { label: "Mapped to skills", why: "Links it to the curriculum so it can ground assessments.", done: r.mappedNodeIds.length > 0 },
+    { label: "Filed in the curriculum", why: "Links it to a subject so it can ground lessons and assessments.", done: r.mappedNodeIds.length > 0 },
   ];
 }
 
@@ -80,6 +80,10 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // itemId (or "upload") in flight
   const [open, setOpen] = useState<string | null>(null); // expanded item
+  // Two mapping targets, because they are two different jobs (#19): the subject
+  // is where material is filed by default; a concept is an optional refinement
+  // for material that genuinely only teaches one thing.
+  const [mapSubject, setMapSubject] = useState("");
   const [mapNode, setMapNode] = useState("");
   // TCH-2/3 detail state for the expanded item
   const [detail, setDetail] = useState<{
@@ -194,10 +198,10 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     finally { setBusy(null); }
   };
 
-  const map = async (itemId: string) => {
-    if (!mapNode) return;
+  const map = async (itemId: string, nodeId: string, after: () => void) => {
+    if (!nodeId) return;
     setError(null); setBusy(itemId);
-    try { await api.mapContent(session, itemId, [mapNode]); setMapNode(""); await refresh(); }
+    try { await api.mapContent(session, itemId, [nodeId]); after(); await refresh(); }
     catch (e) { setError((e as Error).message); }
     finally { setBusy(null); }
   };
@@ -469,8 +473,8 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                 instead of quietly offering another subject's skills. */}
                             {missingCurriculumFor(r, skills) && (
                               <Banner kind="warn">
-                                No {missingCurriculumFor(r, skills)} curriculum is signed off yet, so there are no {missingCurriculumFor(r, skills)} concepts
-                                to map this to.
+                                No {missingCurriculumFor(r, skills)} curriculum is signed off yet, so there is nowhere in
+                                {" "}{missingCurriculumFor(r, skills)} to file this.
                                 {r.officialSyllabus ? (
                                   <>
                                     {" "}Because this is tagged as the {r.officialSyllabus.subject} syllabus, you can draft one from it:{" "}
@@ -483,24 +487,34 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                 )}
                               </Banner>
                             )}
-                            {/* Only while mapping is the outstanding step. Once the
-                                material is linked to the curriculum, this form is
-                                finished business — choosing a concept is something
-                                the teacher does when drafting a lesson or
-                                assessment, not when re-opening a filed document.
-                                Adding a further mapping lives under More options. */}
+                            {/* #19 — file it against the SUBJECT, which is what a
+                                teacher actually knows when they upload something:
+                                "this is Year 8 Technology". Material filed here
+                                grounds every concept beneath it, so a curriculum
+                                with 85 concepts doesn't demand 85 decisions.
+                                Narrowing to a single concept is a refinement, and
+                                lives under More options.
+
+                                Only shown while mapping is the outstanding step:
+                                once the material is linked to the curriculum this
+                                form is finished business, not something to re-open
+                                a filed document for. */}
                             {r.mappedNodeIds.length === 0 ? (
                               <>
                                 <div className="row">
-                                  <SkillPicker skills={skills} value={mapNode} onChange={setMapNode} idPrefix={`map-${r.id}`}
-                                    label="Map to a concept"
-                                    hint="Pick the subject, then narrow to the concept this material teaches." />
+                                  <SubjectPicker skills={skills} value={mapSubject} onChange={setMapSubject} idPrefix={`map-${r.id}`}
+                                    hint="Which curriculum this material belongs to. It will ground every concept in that subject." />
                                 </div>
-                                <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Map concept</Button>
+                                <Button onClick={() => map(r.id, mapSubject, () => setMapSubject(""))} disabled={busy === r.id || !mapSubject}>
+                                  Map to this subject
+                                </Button>
                               </>
                             ) : (
                               <p className="person__meta" style={{ margin: 0 }}>
-                                Mapped to {r.mappedNodeIds.length} concept{r.mappedNodeIds.length === 1 ? "" : "s"} — ready to ground lessons and assessments.
+                                Filed under {detail?.mappings.length
+                                  ? detail.mappings.map((m) => m.chain.at(-1) ?? m.nodeId).join(", ")
+                                  : `${r.mappedNodeIds.length} place${r.mappedNodeIds.length === 1 ? "" : "s"} in the curriculum`}
+                                {" "}— ready to ground lessons and assessments.
                               </p>
                             )}
                           </div>
@@ -529,16 +543,20 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
 
                         {showAdvanced && detail && (
                           <div style={{ marginTop: 4, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
-                            {/* Material can legitimately teach more than one concept;
-                                that's a deliberate extra step, not the default view. */}
-                            {(r.status === "approved" || r.status === "published") && r.mappedNodeIds.length > 0 && skills?.signedOff && (
+                            {/* The optional refinement (#19). Filing at subject level
+                                grounds everything beneath it; naming a concept
+                                NARROWS what that concept is taught from to this
+                                material alone. Worth doing for a chapter that
+                                really only covers one thing — and worth not doing
+                                by default, which is why it lives here. */}
+                            {(r.status === "approved" || r.status === "published") && skills?.signedOff && (
                               <div style={{ marginBottom: 12 }}>
                                 <div className="row">
                                   <SkillPicker skills={skills} value={mapNode} onChange={setMapNode} idPrefix={`addmap-${r.id}`}
-                                    label="Map to another concept"
-                                    hint="Only if this material genuinely teaches more than one." />
+                                    label="Also map to a specific concept"
+                                    hint="Optional. A concept with its own material is taught from that material rather than everything filed under the subject." />
                                 </div>
-                                <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Add mapping</Button>
+                                <Button onClick={() => map(r.id, mapNode, () => setMapNode(""))} disabled={busy === r.id || !mapNode}>Add mapping</Button>
                               </div>
                             )}
                             <p className="person__meta" style={{ margin: "0 0 6px" }}>

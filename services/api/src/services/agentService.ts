@@ -186,17 +186,37 @@ export class AgentService {
 
   /**
    * Approved content grounding the chosen concepts → grounding refs (snapshot) +
-   * source texts. Reaches material filed against an ancestor (subject/strand) at
-   * the nearest mapped level, the same rule assessment generation uses — see
-   * GroundingIndex.
+   * the sources with their ACTUAL TEXT. Reaches material filed against an
+   * ancestor (subject/strand) at the nearest mapped level, the same rule
+   * assessment generation uses — see GroundingIndex.
+   *
+   * The text matters: this used to send titles alone, and the remote prompt
+   * (correctly) forbids inventing beyond the supplied sources — so in
+   * production the model refused, and the refusal was saved as the "draft".
+   * The local provider's canned template hid this in every test. Text is
+   * budgeted per source and overall so a 50k-char syllabus doesn't swamp the
+   * request; every grounding item still appears as a ref even when the text
+   * budget is spent.
    */
-  private async grounding(schoolId: string, nodeIds: string[]): Promise<{ refs: GroundingRef[]; sources: string[] }> {
+  private async grounding(
+    schoolId: string,
+    nodeIds: string[],
+  ): Promise<{ refs: GroundingRef[]; sources: { title: string; text: string }[] }> {
     const index = await GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
     const refs: GroundingRef[] = [];
-    const sources: string[] = [];
+    const sources: { title: string; text: string }[] = [];
+    let budget = 24000; // chars across all sources
     for (const { item } of index.sourcesForAny(nodeIds)) {
       refs.push({ contentItemId: item.id, title: item.title, archived: false });
-      sources.push(item.title);
+      if (budget <= 0) continue;
+      const chunks = await this.contentStore.listChunksByVersion(item.currentVersionId);
+      const text = [...chunks]
+        .sort((a, b) => a.order - b.order)
+        .map((c) => `${c.heading}\n${c.text}`)
+        .join("\n\n")
+        .slice(0, Math.min(8000, budget));
+      sources.push({ title: item.title, text });
+      budget -= text.length;
     }
     return { refs, sources };
   }

@@ -152,6 +152,21 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     } catch (e) { setError((e as Error).message); }
   };
 
+  /**
+   * Remove a filing. This is how a mis-filed item gets re-filed: remove the
+   * wrong mapping and the subject picker reappears on the item (it's unmapped
+   * again). The exact path the mis-filed NESA syllabus needed in production.
+   */
+  const unmap = async (mappingId: string) => {
+    if (!window.confirm("Remove this filing? The material stops grounding that part of the curriculum until you file it again.")) return;
+    setError(null); setNotice(null);
+    try {
+      await api.removeMapping(session, mappingId);
+      setNotice("Filing removed — file the material again below.");
+      await refresh();
+    } catch (e) { setError((e as Error).message); }
+  };
+
   const override = async (mappingId: string, newNodeId: string, remapHistorical?: boolean) => {
     setError(null); setNotice(null);
     try {
@@ -625,6 +640,7 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                         ))}
                                       </select>
                                       <Button onClick={() => override(m.mappingId, overrideNode)} disabled={!overrideNode}>Override</Button>
+                                      <Button variant="ghost" onClick={() => void unmap(m.mappingId)}>Remove</Button>
                                     </li>
                                   ))}
                                 </ul>

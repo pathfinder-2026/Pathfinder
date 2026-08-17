@@ -143,8 +143,11 @@ export class AnthropicProvider implements AiProvider {
  * Output budget per purpose. 1024 suits a question, a hint or a short summary,
  * but a whole curriculum outline (many strands, each with several skills) does
  * not fit — it came back truncated to empty, surfacing as AI_RESPONSE_MALFORMED
- * when a real NESA syllabus was drafted from.
+ * when a real NESA syllabus was drafted from. Agent drafts (a full lesson plan
+ * or unit sequence) are prose of the same order — 1024 forced stubs.
  */
 function maxTokensFor(purpose: string): number {
-  return purpose === "curriculum.draft" ? 8192 : 1024;
+  if (purpose === "curriculum.draft") return 8192;
+  if (purpose === "agent.generate") return 4096;
+  return 1024;
 }

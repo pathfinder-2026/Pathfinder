@@ -182,9 +182,11 @@ export class LocalClassifierProvider implements AiProvider {
    * sources). Academic only; sensitive observations are separated by the service.
    */
   private agentDraft(input: unknown): string {
-    const f = (input ?? {}) as { kind?: string; topic?: string; term?: string; sources?: string[]; personalised?: boolean };
+    const f = (input ?? {}) as { kind?: string; topic?: string; term?: string; sources?: (string | { title: string })[]; personalised?: boolean };
     const topic = f.topic ?? "the topic";
-    const sources = (f.sources ?? []).join("; ") || "the approved content";
+    // Sources arrive as {title, text} since the agent started sending real
+    // grounding text; bare strings are tolerated for older callers.
+    const sources = (f.sources ?? []).map((s) => (typeof s === "string" ? s : s.title)).join("; ") || "the approved content";
     switch (f.kind) {
       case "unit_sequence":
         return `Draft unit sequence for ${f.term ?? "the term"} on "${topic}", grounded in ${sources}. Week 1 introduces core ideas; subsequent weeks build toward mastery with checkpoints.`;

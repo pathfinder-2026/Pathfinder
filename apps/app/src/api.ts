@@ -466,6 +466,9 @@ export const api = {
     request<MappingRow[]>("GET", `/api/v1/schools/${s.schoolId}/content/${itemId}/mappings`, undefined, s.token),
   overrideMapping: (s: Session, mappingId: string, newNodeId: string, remapHistorical?: boolean) =>
     request<OverrideOutcome>("POST", `/api/v1/schools/${s.schoolId}/mappings/${mappingId}/override`, { newNodeId, remapHistorical }, s.token),
+  /** Remove a wrong filing (audited server-side) — how a mis-filed item gets re-filed. */
+  removeMapping: (s: Session, mappingId: string) =>
+    request<{ removed: boolean }>("DELETE", `/api/v1/schools/${s.schoolId}/mappings/${mappingId}`, undefined, s.token),
 
   // ---- Teacher: reports, records, calendar (TCH-15/16/18) ----
   growthReport: (s: Session, classId: string) =>

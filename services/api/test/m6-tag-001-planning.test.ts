@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { makeMappedContent, setupAgentSchool } from "./helpers";
+import { buildContext } from "../src/context";
+import { FixedClock } from "../src/platform/clock";
+import { LocalClassifierProvider, type AiCompletionRequest, type AiProvider } from "../src/ports/aiProvider";
+import { makeMappedContent, makeTeacher, seedSchoolWithAdmin, setupSignedGraph } from "./helpers";
+import { setupAgentSchool } from "./helpers";
 
 /**
  * Milestone 6 — FR-TAG-001 / FR-TAG-002: curriculum/unit-sequence design, lesson
@@ -44,6 +48,35 @@ describe("M6 FR-TAG-001/002 — planning", () => {
     // One source covering both concepts is one reference, not two.
     expect(result.suggestion.grounding).toHaveLength(1);
     expect(result.suggestion.content).toContain("Year 8 maths textbook");
+  });
+
+  it("the AI receives the sources' ACTUAL TEXT, not just their titles", async () => {
+    // In production the remote model was refusing lesson drafts — correctly,
+    // because the prompt forbids inventing beyond the supplied sources and the
+    // service supplied only TITLES. The local provider's canned template kept
+    // every test green. This pins the contract: real text reaches the AI.
+    const seen: AiCompletionRequest[] = [];
+    const capturing: AiProvider = {
+      describe: () => ({ kind: "local", provider: "capturing" }),
+      complete: (req) => { seen.push(req); return new LocalClassifierProvider().complete(req); },
+    };
+    const ctx = buildContext({ clock: new FixedClock(), aiProvider: capturing });
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "agent-text@riverbank.edu");
+    await setupSignedGraph(ctx, school.id);
+    await makeMappedContent(ctx, school.id, teacher.user.id, "skill-add-fractions", { title: "Fractions unit pack", sections: 2 });
+
+    const result = await ctx.agent.draftLessonPlan(teacher.user.id, school.id, { nodeId: "skill-add-fractions" });
+    expect(result.status).toBe("suggested");
+
+    const call = seen.find((r) => r.purpose === "agent.generate")!;
+    expect(call).toBeDefined();
+    const sources = (call.input as { sources: { title: string; text: string }[] }).sources;
+    expect(sources).toHaveLength(1);
+    expect(sources[0]!.title).toBe("Fractions unit pack");
+    // The item's real section prose — the thing that was missing.
+    expect(sources[0]!.text).toContain("Explain the idea clearly in prose.");
+    expect(sources[0]!.text).toContain("Topic A");
   });
 
   it("edge — no capability data yet: a general differentiation plan, noted as not yet personalised", async () => {

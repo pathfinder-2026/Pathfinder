@@ -3,6 +3,7 @@ import { api, ApiError, type ContentRow, type MappingRow, type Session, type Ski
 import { Banner, Button, Card, Chip, Field, PageShell, type GovState } from "../components";
 import { NotificationBell } from "../NotificationBell";
 import { SkillPicker } from "../SkillPicker";
+import { CurriculumReview } from "../CurriculumReview";
 import { extractTextFromFile } from "../fileText";
 
 const FILE_TYPES = ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md", "link"] as const;
@@ -89,7 +90,8 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   const [overrideNode, setOverrideNode] = useState("");
   const [preview, setPreview] = useState<{ itemId: string; title: string; sections: { heading: string; text: string }[] } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [pendingCurriculum, setPendingCurriculum] = useState<Awaited<ReturnType<typeof api.draftCurriculumFromSyllabus>> | null>(null);
+  const [curricula, setCurricula] = useState<Awaited<ReturnType<typeof api.curricula>> | null>(null);
+  const [openCurriculum, setOpenCurriculum] = useState<string | null>(null);
   const [remapPrompt, setRemapPrompt] = useState<{ mappingId: string; newNodeId: string } | null>(null);
   // Official syllabus tagging (ADR-0035) — subject/year/NESA-link form for the expanded item
   const [syllabusSubject, setSyllabusSubject] = useState("");
@@ -111,7 +113,12 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     } catch (e) { setError((e as Error).message); }
   }, [session]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  const refreshCurricula = useCallback(async () => {
+    try { setCurricula(await api.curricula(session)); }
+    catch (e) { setError((e as Error).message); }
+  }, [session]);
+
+  useEffect(() => { void refresh(); void refreshCurricula(); }, [refresh, refreshCurricula]);
 
   // Load the expanded item's detail (versions, mappings, share targets).
   useEffect(() => {
@@ -217,24 +224,16 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     setError(null); setNotice(null); setBusy(itemId);
     try {
       const drafted = await api.draftCurriculumFromSyllabus(session, itemId);
-      setPendingCurriculum(drafted);
       setNotice(
         `Drafted ${drafted.skills} concepts across ${drafted.strands} topic areas for ${drafted.subject} Year ${drafted.yearLevel}. ` +
-        "It is a DRAFT — read it against the syllabus, then sign it off to make it available.",
+        "It's a DRAFT — it's open under Curricula above; read it against the syllabus, then sign it off.",
       );
-      await refresh();
+      // Open the new draft immediately: the teacher asked for a curriculum, so
+      // put them in front of it rather than telling them to go find it.
+      await Promise.all([refresh(), refreshCurricula()]);
+      setOpenCurriculum(drafted.versionId);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
-  };
-
-  const signOffCurriculum = async () => {
-    if (!pendingCurriculum) return;
-    setError(null); setNotice(null);
-    try {
-      const signed = await api.signOffCurriculum(session, pendingCurriculum.versionId);
-      setPendingCurriculum(null);
-      setNotice(`${signed.subject} Year ${signed.yearLevel} curriculum signed off — its concepts are now available to map and teach against.`);
-      await refresh();
-    } catch (e) { setError((e as Error).message); }
   };
 
   /**
@@ -303,20 +302,45 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
       lede="Only material you explicitly approve joins the pool that grounds assessments and suggestions. Each governance step below is yours to take — nothing is approved automatically.">
       {error && <Banner kind="error">{error}</Banner>}
       {notice && <Banner kind="brand">{notice}</Banner>}
-      {pendingCurriculum && (
-        // Sign-off is deliberately a separate action from drafting: the draft is
-        // AI-written from the syllabus and nothing may ground on it until a
-        // human says it matches the source.
-        <Banner kind="warn">
-          <strong>{pendingCurriculum.subject} Year {pendingCurriculum.yearLevel}</strong> is drafted but NOT signed off —
-          teachers can't map or generate against it yet. Check it reads like the syllabus, then:{" "}
-          <Button variant="primary" onClick={() => void signOffCurriculum()}>Sign off this curriculum</Button>{" "}
-          <button className="linkish" onClick={() => setPendingCurriculum(null)}>Later</button>
-        </Banner>
-      )}
       {skills && !skills.signedOff && (
         <Banner kind="warn">The skill graph isn't signed off yet — approved content can't be mapped until your administrator signs it off.</Banner>
       )}
+
+      {/* Curricula live here rather than behind their own tile: the loop is
+          approve syllabus → draft curriculum → review → sign off, and it all
+          belongs to the material a teacher is already working with. A curriculum
+          with no source document (an imported one) still needs a teacher-facing
+          home, which is why this is a list and not only an inline panel. */}
+      <Card>
+        <div className="card__head">
+          <h2 className="section">Curricula {curricula ? `— ${curricula.length}` : ""}</h2>
+          <p className="muted">What your school teaches against. Draft a new one from an approved syllabus below, then review and sign it off here.</p>
+        </div>
+        {!curricula ? <div className="muted">Loading…</div>
+          : curricula.length === 0 ? <Banner kind="brand">No curricula yet — approve a syllabus below and draft one from it.</Banner>
+          : (
+            <ul className="people">
+              {curricula.map((c) => (
+                <li className="person" key={c.versionId} style={{ display: "block" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <button className="linkish" aria-expanded={openCurriculum === c.versionId}
+                      onClick={() => setOpenCurriculum(openCurriculum === c.versionId ? null : c.versionId)}>
+                      <strong>{c.scopeLabel}</strong>
+                    </button>
+                    <span className="person__meta">{c.concepts} concepts</span>
+                    <span className="spacer" />
+                    {c.status === "signed_off"
+                      ? <Chip state="approved">Signed off</Chip>
+                      : <Chip state="draft">Draft — review to sign off</Chip>}
+                  </div>
+                  {openCurriculum === c.versionId && (
+                    <CurriculumReview session={session} versionId={c.versionId} onChanged={() => void refreshCurricula()} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+      </Card>
 
       <Card>
         <div className="card__head"><h2 className="section">Upload material</h2></div>
@@ -459,12 +483,26 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                 )}
                               </Banner>
                             )}
-                            <div className="row">
-                              <SkillPicker skills={skills} value={mapNode} onChange={setMapNode} idPrefix={`map-${r.id}`}
-                                label="Map to a concept"
-                                hint="Pick the subject, then narrow to the skill this material teaches." />
-                            </div>
-                            <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Map skill</Button>
+                            {/* Only while mapping is the outstanding step. Once the
+                                material is linked to the curriculum, this form is
+                                finished business — choosing a concept is something
+                                the teacher does when drafting a lesson or
+                                assessment, not when re-opening a filed document.
+                                Adding a further mapping lives under More options. */}
+                            {r.mappedNodeIds.length === 0 ? (
+                              <>
+                                <div className="row">
+                                  <SkillPicker skills={skills} value={mapNode} onChange={setMapNode} idPrefix={`map-${r.id}`}
+                                    label="Map to a concept"
+                                    hint="Pick the subject, then narrow to the concept this material teaches." />
+                                </div>
+                                <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Map concept</Button>
+                              </>
+                            ) : (
+                              <p className="person__meta" style={{ margin: 0 }}>
+                                Mapped to {r.mappedNodeIds.length} concept{r.mappedNodeIds.length === 1 ? "" : "s"} — ready to ground lessons and assessments.
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -491,6 +529,18 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
 
                         {showAdvanced && detail && (
                           <div style={{ marginTop: 4, borderTop: "1px solid var(--pf-border)", paddingTop: 12 }}>
+                            {/* Material can legitimately teach more than one concept;
+                                that's a deliberate extra step, not the default view. */}
+                            {(r.status === "approved" || r.status === "published") && r.mappedNodeIds.length > 0 && skills?.signedOff && (
+                              <div style={{ marginBottom: 12 }}>
+                                <div className="row">
+                                  <SkillPicker skills={skills} value={mapNode} onChange={setMapNode} idPrefix={`addmap-${r.id}`}
+                                    label="Map to another concept"
+                                    hint="Only if this material genuinely teaches more than one." />
+                                </div>
+                                <Button onClick={() => map(r.id)} disabled={busy === r.id || !mapNode}>Add mapping</Button>
+                              </div>
+                            )}
                             <p className="person__meta" style={{ margin: "0 0 6px" }}>
                               Versions: {detail.versions.map((v) => `v${v.versionNumber}${v.current ? " (current)" : ""}`).join(" · ") || "—"}
                             </p>

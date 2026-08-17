@@ -53,7 +53,7 @@ export class SkillGraphService {
       {
         purpose: "curriculum.draft",
         prompt: `Outline the ${input.subject} Year ${input.yearLevel} curriculum from this syllabus.`,
-        input: { subject: input.subject, yearLevel: input.yearLevel, sections: input.sections },
+        input: { subject: input.subject, yearLevel: input.yearLevel, sections: boundSections(input.sections) },
         containsStudentData: false,
       },
       actorId,
@@ -236,6 +236,26 @@ function numberOrNull(value: unknown): number | null {
 }
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+/** Total syllabus characters sent for drafting. */
+const DRAFT_INPUT_BUDGET = 60_000;
+
+/**
+ * Keep the syllabus text within a sane request size.
+ *
+ * A real NESA PDF extracts as ONE ~50k-character section (chunking splits on
+ * markdown headings, which a PDF has none of), so the whole document arrives as
+ * a single blob. Truncating fairly across sections beats sending an unbounded
+ * request, and keeps the front matter from crowding out the outcomes.
+ */
+function boundSections(sections: { heading: string; text: string }[]): { heading: string; text: string }[] {
+  if (sections.length === 0) return sections;
+  const perSection = Math.max(2_000, Math.floor(DRAFT_INPUT_BUDGET / sections.length));
+  return sections.map((s) => ({
+    heading: s.heading,
+    text: s.text.length > perSection ? `${s.text.slice(0, perSection)}\n…[truncated]` : s.text,
+  }));
+}
 
 /**
  * Turn a drafted outline into a valid graph source: subject → strand → skill.

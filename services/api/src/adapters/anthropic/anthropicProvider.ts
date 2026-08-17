@@ -126,7 +126,7 @@ export class AnthropicProvider implements AiProvider {
     try {
       response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 1024,
+        max_tokens: maxTokensFor(request.purpose),
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userContent }],
       });
@@ -137,4 +137,14 @@ export class AnthropicProvider implements AiProvider {
     const textBlock = response.content.find((block) => block.type === "text");
     return { text: extractCompletionText(request.purpose, textBlock?.text ?? "") };
   }
+}
+
+/**
+ * Output budget per purpose. 1024 suits a question, a hint or a short summary,
+ * but a whole curriculum outline (many strands, each with several skills) does
+ * not fit — it came back truncated to empty, surfacing as AI_RESPONSE_MALFORMED
+ * when a real NESA syllabus was drafted from.
+ */
+function maxTokensFor(purpose: string): number {
+  return purpose === "curriculum.draft" ? 8192 : 1024;
 }

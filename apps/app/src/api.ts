@@ -326,6 +326,11 @@ export const api = {
     ),
   unmapContent: (s: Session, mappingId: string) =>
     request<{ removed: boolean }>("DELETE", `/api/v1/schools/${s.schoolId}/mappings/${mappingId}`, undefined, s.token),
+  /** Retire superseded or mistaken material; `confirm` if it's still in use. */
+  archiveContent: (s: Session, itemId: string, confirm?: boolean) =>
+    request<{ archived: boolean; warning?: string; references?: string[] }>(
+      "POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/archive`, { confirm }, s.token,
+    ),
   contentSections: (s: Session, itemId: string) =>
     request<{ title: string; sections: { heading: string; text: string }[] }>(
       "GET", `/api/v1/schools/${s.schoolId}/content/${itemId}/sections`, undefined, s.token,

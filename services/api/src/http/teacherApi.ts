@@ -199,6 +199,21 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     });
   });
 
+  /**
+   * Archive a library item. The domain has supported this all along but nothing
+   * exposed it, so a teacher had no way to retire superseded or mistaken
+   * material. An item still referenced by active work needs `confirm` — the
+   * reference is kept as a labelled (archived) source rather than broken.
+   */
+  app.post("/api/v1/schools/:schoolId/content/:itemId/archive", async (req, reply) => {
+    const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await requireItemIn(schoolId, itemId);
+    const { confirm } = (req.body ?? {}) as { confirm?: boolean };
+    const result = await ctx.content.archive(itemId, auth.user.id, { confirm });
+    return reply.status(result.archived ? 200 : 409).send(result);
+  });
+
   /** Every curriculum the school has, with its scope and sign-off state. */
   app.get("/api/v1/schools/:schoolId/curricula", async (req, reply) => {
     const { schoolId } = req.params as { schoolId: string };

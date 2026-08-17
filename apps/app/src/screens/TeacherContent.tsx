@@ -237,6 +237,28 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     } catch (e) { setError((e as Error).message); }
   };
 
+  /**
+   * Retire material. Something still referenced by active work asks for
+   * confirmation first — the reference survives as a labelled archived source
+   * rather than becoming a broken link.
+   */
+  const archiveItem = async (itemId: string, confirm = false) => {
+    setError(null); setNotice(null); setBusy(itemId);
+    try {
+      const r = await api.archiveContent(session, itemId, confirm);
+      if (!r.archived && r.warning === "in-use") {
+        setBusy(null);
+        const refs = (r.references ?? []).length;
+        if (window.confirm(`This material is still used by ${refs} active item${refs === 1 ? "" : "s"}. Archive it anyway? Existing references stay, marked as archived.`)) {
+          return archiveItem(itemId, true);
+        }
+        return;
+      }
+      setNotice("Archived — it stays as a reference wherever it was already used.");
+      await refresh();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  };
+
   /** Read what you're approving — the extracted text, section by section. */
   const togglePreview = async (itemId: string) => {
     if (preview?.itemId === itemId) return setPreview(null);
@@ -409,6 +431,11 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                           <Button variant="ghost" onClick={() => void togglePreview(r.id)} disabled={busy === r.id}>
                             {preview?.itemId === r.id ? "Hide material" : "Read material"}
                           </Button>
+                          {!r.archived && (
+                            <Button variant="ghost" disabled={busy === r.id} onClick={() => void archiveItem(r.id)}>
+                              Archive
+                            </Button>
+                          )}
                         </div>
 
                         {(r.status === "approved" || r.status === "published") && skills?.signedOff && (

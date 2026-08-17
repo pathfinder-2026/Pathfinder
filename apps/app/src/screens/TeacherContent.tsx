@@ -89,6 +89,7 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
   const [overrideNode, setOverrideNode] = useState("");
   const [preview, setPreview] = useState<{ itemId: string; title: string; sections: { heading: string; text: string }[] } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [pendingCurriculum, setPendingCurriculum] = useState<Awaited<ReturnType<typeof api.draftCurriculumFromSyllabus>> | null>(null);
   const [remapPrompt, setRemapPrompt] = useState<{ mappingId: string; newNodeId: string } | null>(null);
   // Official syllabus tagging (ADR-0035) — subject/year/NESA-link form for the expanded item
   const [syllabusSubject, setSyllabusSubject] = useState("");
@@ -207,6 +208,35 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
     finally { setBusy(null); }
   };
 
+  /**
+   * Draft a curriculum from this syllabus, then offer sign-off as a separate,
+   * deliberate step — the draft is AI-written from the document and must be
+   * checked against it before any teacher maps or generates against it.
+   */
+  const draftCurriculum = async (itemId: string) => {
+    setError(null); setNotice(null); setBusy(itemId);
+    try {
+      const drafted = await api.draftCurriculumFromSyllabus(session, itemId);
+      setPendingCurriculum(drafted);
+      setNotice(
+        `Drafted ${drafted.skills} concepts across ${drafted.strands} topic areas for ${drafted.subject} Year ${drafted.yearLevel}. ` +
+        "It is a DRAFT — read it against the syllabus, then sign it off to make it available.",
+      );
+      await refresh();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  };
+
+  const signOffCurriculum = async () => {
+    if (!pendingCurriculum) return;
+    setError(null); setNotice(null);
+    try {
+      const signed = await api.signOffCurriculum(session, pendingCurriculum.versionId);
+      setPendingCurriculum(null);
+      setNotice(`${signed.subject} Year ${signed.yearLevel} curriculum signed off — its concepts are now available to map and teach against.`);
+      await refresh();
+    } catch (e) { setError((e as Error).message); }
+  };
+
   /** Read what you're approving — the extracted text, section by section. */
   const togglePreview = async (itemId: string) => {
     if (preview?.itemId === itemId) return setPreview(null);
@@ -251,6 +281,17 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
       lede="Only material you explicitly approve joins the pool that grounds assessments and suggestions. Each governance step below is yours to take — nothing is approved automatically.">
       {error && <Banner kind="error">{error}</Banner>}
       {notice && <Banner kind="brand">{notice}</Banner>}
+      {pendingCurriculum && (
+        // Sign-off is deliberately a separate action from drafting: the draft is
+        // AI-written from the syllabus and nothing may ground on it until a
+        // human says it matches the source.
+        <Banner kind="warn">
+          <strong>{pendingCurriculum.subject} Year {pendingCurriculum.yearLevel}</strong> is drafted but NOT signed off —
+          teachers can't map or generate against it yet. Check it reads like the syllabus, then:{" "}
+          <Button variant="primary" onClick={() => void signOffCurriculum()}>Sign off this curriculum</Button>{" "}
+          <button className="linkish" onClick={() => setPendingCurriculum(null)}>Later</button>
+        </Banner>
+      )}
       {skills && !skills.signedOff && (
         <Banner kind="warn">The skill graph isn't signed off yet — approved content can't be mapped until your administrator signs it off.</Banner>
       )}
@@ -377,9 +418,18 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                                 instead of quietly offering another subject's skills. */}
                             {missingCurriculumFor(r, skills) && (
                               <Banner kind="warn">
-                                This looks like {missingCurriculumFor(r, skills)} material, but no {missingCurriculumFor(r, skills)} curriculum
-                                is signed off yet — so there's nothing of that subject to map it to. Your administrator can import and sign off
-                                the {missingCurriculumFor(r, skills)} curriculum; until then you can still map it to a subject below if it genuinely fits.
+                                No {missingCurriculumFor(r, skills)} curriculum is signed off yet, so there are no {missingCurriculumFor(r, skills)} concepts
+                                to map this to.
+                                {r.officialSyllabus ? (
+                                  <>
+                                    {" "}Because this is tagged as the {r.officialSyllabus.subject} syllabus, you can draft one from it:{" "}
+                                    <Button onClick={() => void draftCurriculum(r.id)} disabled={busy === r.id}>
+                                      {busy === r.id ? "Drafting…" : "Draft curriculum from this syllabus"}
+                                    </Button>
+                                  </>
+                                ) : (
+                                  " Tag it as that subject's official syllabus under More options, then you can draft a curriculum from it."
+                                )}
                               </Banner>
                             )}
                             <div className="row">

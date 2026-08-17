@@ -207,7 +207,7 @@ export function buildContext(options: BuildContextOptions = {}): AppContext {
   const idp = options.idp ?? new LocalIdentityProvider();
 
   const contentService = new ContentService(contentStore, store, storage, scanner, clock, audit);
-  const skillGraph = new SkillGraphService(skillGraphStore, clock, audit);
+  const skillGraph = new SkillGraphService(skillGraphStore, clock, audit, ai);
   const accountService = new AccountService(store, clock, audit);
 
   return {

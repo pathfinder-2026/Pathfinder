@@ -49,6 +49,9 @@ export interface SkillGraphStore {
   getMapping(id: string): Promise<ContentMapping | undefined>;
   updateMapping(mapping: ContentMapping): Promise<void>;
   listMappingsByContent(contentItemId: string): Promise<ContentMapping[]>;
+  /** Remove a mapping — how a wrong link (e.g. a syllabus filed under the wrong
+   *  subject) is undone; the audit entry records that it happened. */
+  deleteMapping(id: string): Promise<void>;
   listMappingsByVersion(versionId: string): Promise<ContentMapping[]>;
 
   // School curriculum config

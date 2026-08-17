@@ -15,6 +15,7 @@ import type { AuditRecorder } from "../platform/audit/auditLog";
 import type { Clock } from "../platform/clock";
 import { newId } from "../platform/ids";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
+import type { AiServiceLayer } from "../platform/ai/aiServiceLayer";
 
 /**
  * Manages the skill graph as versioned trusted infrastructure (Decision 4).
@@ -27,7 +28,58 @@ export class SkillGraphService {
     private readonly store: SkillGraphStore,
     private readonly clock: Clock,
     private readonly audit: AuditRecorder,
+    /** Drafting a curriculum from a syllabus is the only AI use here. */
+    private readonly ai: AiServiceLayer,
   ) {}
+
+  /**
+   * Draft a curriculum graph FROM an approved syllabus document (ADR-0035).
+   *
+   * This is the missing link that left an approved NESA syllabus with nowhere to
+   * map: approving a document says "this material is trusted", but only a signed
+   * -off GRAPH gives teachers skills to teach against. The draft is built from
+   * the document's own extracted text — never from the model's own knowledge of
+   * the subject — and lands as a DRAFT that a human must sign off (Decision 4).
+   */
+  async draftFromSyllabus(
+    schoolId: string,
+    input: { contentItemId: string; subject: string; yearLevel: number; sections: { heading: string; text: string }[] },
+    actorId: string,
+  ): Promise<SkillGraphVersion> {
+    if (input.sections.length === 0) {
+      throw new ValidationError("This document has no extracted text to draft a curriculum from.");
+    }
+    const completion = await this.ai.run(
+      {
+        purpose: "curriculum.draft",
+        prompt: `Outline the ${input.subject} Year ${input.yearLevel} curriculum from this syllabus.`,
+        input: { subject: input.subject, yearLevel: input.yearLevel, sections: input.sections },
+        containsStudentData: false,
+      },
+      actorId,
+    );
+
+    const drafted = JSON.parse(completion.text) as { strands?: { label: string; skills?: string[] }[] };
+    const source = buildGraphSource(input.subject, input.yearLevel, drafted.strands ?? []);
+    if (source.nodes.filter((n) => n.type === "skill").length === 0) {
+      throw new ValidationError(
+        "No teachable skills could be drawn from this document — it may be a cover page or index rather than the syllabus body.",
+      );
+    }
+
+    const version = await this.importGraph(source, actorId, { subject: input.subject, yearLevel: input.yearLevel });
+    this.audit.append({
+      action: "skillgraph.drafted_from_syllabus",
+      actorId,
+      subjectType: "skill_graph",
+      subjectId: version.id,
+      metadata: {
+        contentItemId: input.contentItemId, subject: input.subject, yearLevel: input.yearLevel,
+        strands: (drafted.strands ?? []).length, skills: source.nodes.filter((n) => n.type === "skill").length,
+      },
+    });
+    return version;
+  }
 
   /**
    * Import a graph source as a new DRAFT version (validated acyclic).
@@ -184,6 +236,63 @@ function numberOrNull(value: unknown): number | null {
 }
 
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+/**
+ * Turn a drafted outline into a valid graph source: subject → strand → skill.
+ *
+ * Node ids are namespaced by subject+year because ids must be unique across
+ * every graph in the school — mastery records reference a bare node id, so a
+ * collision would merge two different subjects' evidence.
+ */
+function buildGraphSource(
+  subject: string,
+  yearLevel: number,
+  strands: { label: string; skills?: string[] }[],
+): SkillGraphSource {
+  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  const ns = `${slug(subject)}-y${yearLevel}`;
+  const subjectId = `${ns}-subject`;
+  const nodes: SkillGraphSource["nodes"] = [
+    { id: subjectId, type: "subject", label: subject, parentId: null, curriculum: "NSW" },
+  ];
+  const seen = new Set<string>([subjectId]);
+  const unique = (base: string) => {
+    let id = base;
+    for (let i = 2; seen.has(id); i++) id = `${base}-${i}`;
+    seen.add(id);
+    return id;
+  };
+
+  strands.forEach((strand, si) => {
+    const label = (strand.label ?? "").trim();
+    if (!label) return;
+    const strandId = unique(`${ns}-strand-${slug(label) || si}`);
+    nodes.push({ id: strandId, type: "strand", label, parentId: subjectId, curriculum: "NSW" });
+    for (const skill of strand.skills ?? []) {
+      const skillLabel = (skill ?? "").trim();
+      if (!skillLabel) continue;
+      nodes.push({
+        id: unique(`${ns}-skill-${slug(skillLabel)}`),
+        type: "skill", label: skillLabel, parentId: strandId, curriculum: "NSW",
+        // Foundational: a freshly drafted graph has no prerequisite edges yet, and
+        // without this every skill would be flagged "missing prerequisite" on map.
+        foundational: true,
+      });
+    }
+  });
+
+  return {
+    _meta: {
+      name: `${subject} — Year ${yearLevel} (drafted from syllabus)`,
+      curriculum: "NSW", version: "0.1", subject, yearLevel,
+      status: "draft", signedOff: false,
+      reviewerNote:
+        "AI-DRAFTED from an approved syllabus document's own text. Not reviewed: a human must check it against the source syllabus and sign it off before any teacher maps content or generates assessments against it.",
+    },
+    nodes,
+    prerequisites: [],
+  };
+}
 
 /** "Stage 4 (Year 8)" / "NSW Year 8 Mathematics" → 8. */
 function yearFromText(text: string): number | null {

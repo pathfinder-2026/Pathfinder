@@ -71,6 +71,9 @@ export class InMemorySkillGraphStore implements SkillGraphStore {
     const m = this.mappings.get(id); return m ? clone(m) : undefined;
   }
   async updateMapping(mapping: ContentMapping): Promise<void> { this.mappings.set(mapping.id, clone(mapping)); }
+  async deleteMapping(id: string): Promise<void> {
+    this.mappings.delete(id);
+  }
   async listMappingsByContent(contentItemId: string): Promise<ContentMapping[]> {
     return [...this.mappings.values()].filter((m) => m.contentItemId === contentItemId).map(clone);
   }

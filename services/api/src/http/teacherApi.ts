@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AuthError, ConflictError, NotFoundError } from "../domain/errors";
+import { AuthError, ConflictError, NotFoundError, ValidationError } from "../domain/errors";
 import type { AppContext } from "../context";
 import type { ContentItem } from "../domain/content";
 import type { Assessment } from "../domain/assessment";
@@ -142,6 +142,69 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
       title: item.title,
       sections: [...chunks].sort((a, b) => a.order - b.order).map((c) => ({ heading: c.heading, text: c.text })),
     });
+  });
+
+  /**
+   * Draft a curriculum graph FROM this approved syllabus document.
+   *
+   * Closes the loop that left an approved NESA syllabus with nowhere to map:
+   * the draft is built from the document's own text, lands as a DRAFT, and a
+   * human signs it off before any teacher can map or generate against it.
+   */
+  app.post("/api/v1/schools/:schoolId/content/:itemId/draft-curriculum", async (req, reply) => {
+    const { schoolId, itemId } = req.params as { schoolId: string; itemId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const item = await requireItemIn(schoolId, itemId);
+    const body = (req.body ?? {}) as { subject?: string; yearLevel?: number };
+    const subject = body.subject ?? item.officialSyllabus?.subject;
+    const yearLevel = body.yearLevel ?? item.officialSyllabus?.yearLevel;
+    if (!subject || yearLevel == null) {
+      throw new ValidationError("Tag this document as a subject's official syllabus first, so the curriculum knows what it covers.");
+    }
+    if (!(await ctx.content.isInApprovedPool(itemId))) {
+      throw new ConflictError("CONTENT_NOT_APPROVED", "Approve this document before drafting a curriculum from it.");
+    }
+    const chunks = await ctx.contentStore.listChunksByVersion(item.currentVersionId);
+    const version = await ctx.skillGraph.draftFromSyllabus(
+      schoolId,
+      {
+        contentItemId: itemId, subject, yearLevel,
+        sections: [...chunks].sort((a, b) => a.order - b.order).map((c) => ({ heading: c.heading, text: c.text })),
+      },
+      auth.user.id,
+    );
+    const nodes = await ctx.skillGraphStore.listNodes(version.id);
+    return reply.status(201).send({
+      versionId: version.id, name: version.name, status: version.status,
+      subject: version.subject, yearLevel: version.yearLevel,
+      skills: nodes.filter((n) => n.type === "skill").length,
+      strands: nodes.filter((n) => n.type === "strand").length,
+    });
+  });
+
+  /**
+   * Sign off a curriculum graph. Teachers may do this for their school
+   * (explicit product decision, 2026-08-16) — the audit entry records exactly
+   * who certified which version, so widening the authority doesn't weaken the
+   * trail. Nothing can be mapped or generated against an unsigned graph.
+   */
+  app.post("/api/v1/schools/:schoolId/skill-graphs/:versionId/sign-off", async (req, reply) => {
+    const { schoolId, versionId } = req.params as { schoolId: string; versionId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    const version = await ctx.skillGraph.signOff(versionId, auth.user.id);
+    await ctx.mapping.configureCurriculum(schoolId, version.curriculum);
+    return reply.send({
+      versionId: version.id, status: version.status,
+      subject: version.subject, yearLevel: version.yearLevel, signedOffBy: version.signedOffBy,
+    });
+  });
+
+  /** Remove a mapping — how a wrong link (e.g. wrong subject) is undone. */
+  app.delete("/api/v1/schools/:schoolId/mappings/:mappingId", async (req, reply) => {
+    const { schoolId, mappingId } = req.params as { schoolId: string; mappingId: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await ctx.mapping.unmap(mappingId, auth.user.id);
+    return reply.send({ removed: true });
   });
 
   app.post("/api/v1/schools/:schoolId/content/:itemId/ingest", async (req, reply) => {

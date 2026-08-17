@@ -67,6 +67,20 @@ export class MappingService {
       const version = await graphOfNode(this.graph, item.schoolId, nodeId);
       const node = version ? await this.graph.getNode(version.id, nodeId) : undefined;
       if (!version || !node) throw new NotFoundError(`Node "${nodeId}" not in any signed-off graph.`);
+
+      // An item declared to BE a subject's syllabus cannot be filed under a
+      // different subject's curriculum. This happened live: a NESA Technology
+      // syllabus was mapped to "Simplify fractions" because maths skills were
+      // the only ones on offer, putting Technology prose in the maths
+      // grounding pool.
+      const declared = item.officialSyllabus?.subject;
+      if (declared && version.subject && norm(declared) !== norm(version.subject)) {
+        throw new ConflictError(
+          "SUBJECT_MISMATCH",
+          `This is tagged as the ${declared} syllabus, so it can't be mapped into the ${version.subject} curriculum. ` +
+            `Draft and sign off a ${declared} curriculum, then map it there.`,
+        );
+      }
       const mapping: ContentMapping = {
         id: newId(),
         graphVersionId: version.id,
@@ -89,6 +103,24 @@ export class MappingService {
       });
     }
     return created;
+  }
+
+  /**
+   * Remove a mapping. The way a wrong link is undone — e.g. a syllabus filed
+   * under the wrong subject before the guard above existed. Audited, because
+   * removing a link changes what grounds future questions.
+   */
+  async unmap(mappingId: string, actorId: string): Promise<void> {
+    const mapping = await this.graph.getMapping(mappingId);
+    if (!mapping) throw new NotFoundError("Mapping not found.");
+    await this.graph.deleteMapping(mappingId);
+    this.audit.append({
+      action: "skillgraph.mapping.removed",
+      actorId,
+      subjectType: "content",
+      subjectId: mapping.contentItemId,
+      metadata: { nodeId: mapping.nodeId, graphVersionId: mapping.graphVersionId },
+    });
   }
 
   /** Content's mappings, each with its full subject→…→node chain. */
@@ -244,3 +276,5 @@ export class MappingService {
     return hasIncoming ? [] : ["missing_prerequisite"];
   }
 }
+
+const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();

@@ -73,6 +73,9 @@ export class PgSkillGraphStore implements SkillGraphStore {
     await this.sql`update content_mappings set node_id=${m.nodeId}, source=${m.source}, difficulty=${m.difficulty},
       overridden_from_node_id=${m.overriddenFromNodeId}, flags=${this.sql.json(m.flags)} where id=${m.id}`;
   }
+  async deleteMapping(id: string): Promise<void> {
+    await this.sql`delete from content_mappings where id=${id}`;
+  }
   async listMappingsByContent(contentItemId: string): Promise<ContentMapping[]> {
     return (await this.sql`select * from content_mappings where content_item_id=${contentItemId}`).map(mapMapping) as ContentMapping[];
   }

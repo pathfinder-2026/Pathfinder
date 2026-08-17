@@ -25,6 +25,11 @@ const JSON_PURPOSES: Record<string, string> = {
     'Respond with ONLY a JSON object, no prose, of the shape: {"results": [{"questionId": string, "score": number between 0 and 1, "correct": boolean}], "overallScore": number between 0 and 1}. ' +
     "For each question in the supplied INPUT, grade the studentAnswer against its modelAnswer (or its rubric, for extended_response/scenario questions with no single correct string) — score partial credit fairly rather than only exact matches. " +
     "overallScore is the mean of every per-question score. Include exactly one result per input question, in the same order.",
+  "curriculum.draft":
+    'Respond with ONLY a JSON object, no prose, of the shape: {"strands": [{"label": string, "skills": string[]}]}. ' +
+    "You are outlining a curriculum from the supplied syllabus text ALONE — use its own strand/outcome headings and the skills it actually describes. " +
+    "Do NOT add strands or skills from your own knowledge of the subject, even if you believe the real syllabus contains them: an unreviewed invention here becomes what a teacher is told the curriculum is. " +
+    "Each skill must be a short teachable statement (under 90 characters) that a student could demonstrate. Omit administrative sections (copyright, acknowledgement of country, glossary, assessment advice).",
 };
 
 /** Prose purposes and the guardrails their output must respect. */

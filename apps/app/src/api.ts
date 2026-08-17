@@ -295,6 +295,18 @@ export const api = {
   mapContent: (s: Session, itemId: string, nodeIds: string[]) =>
     request<{ id: string; nodeId: string; flags: string[] }[]>("POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/map`, { nodeIds }, s.token),
   /** `classId` narrows to the graph that class teaches (its subject × year). */
+  /** Draft a curriculum graph from this approved syllabus (lands as a DRAFT). */
+  draftCurriculumFromSyllabus: (s: Session, itemId: string, body?: { subject?: string; yearLevel?: number }) =>
+    request<{ versionId: string; name: string; status: string; subject: string | null; yearLevel: number | null; skills: number; strands: number }>(
+      "POST", `/api/v1/schools/${s.schoolId}/content/${itemId}/draft-curriculum`, body ?? {}, s.token,
+    ),
+  /** Teachers may sign off a curriculum for their school (2026-08-16 decision). */
+  signOffCurriculum: (s: Session, versionId: string) =>
+    request<{ versionId: string; status: string; subject: string | null; yearLevel: number | null }>(
+      "POST", `/api/v1/schools/${s.schoolId}/skill-graphs/${versionId}/sign-off`, {}, s.token,
+    ),
+  unmapContent: (s: Session, mappingId: string) =>
+    request<{ removed: boolean }>("DELETE", `/api/v1/schools/${s.schoolId}/mappings/${mappingId}`, undefined, s.token),
   contentSections: (s: Session, itemId: string) =>
     request<{ title: string; sections: { heading: string; text: string }[] }>(
       "GET", `/api/v1/schools/${s.schoolId}/content/${itemId}/sections`, undefined, s.token,

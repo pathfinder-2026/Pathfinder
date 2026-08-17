@@ -108,6 +108,9 @@ export class LocalClassifierProvider implements AiProvider {
     if (request.purpose === "parent.summary") {
       return { text: this.parentSummary(request.input) };
     }
+    if (request.purpose === "curriculum.draft") {
+      return { text: JSON.stringify(this.draftCurriculum(request.input)) };
+    }
     // An unknown purpose is a programmer error (e.g. a typo'd purpose string).
     // Failing loudly beats silently returning "" that becomes an empty draft
     // or a failed JSON parse far from its cause.
@@ -119,6 +122,33 @@ export class LocalClassifierProvider implements AiProvider {
    * focus areas described in everyday topic words, never clinical/diagnostic terms
    * and never raw internal labels. The service also guards the output.
    */
+  /**
+   * Draft a curriculum outline from a syllabus document's own headings.
+   *
+   * Deterministic and structural on purpose: it derives strands from top-level
+   * headings and skills from the sections beneath them, never inventing
+   * curriculum content it wasn't given. The remote provider does the same job
+   * with judgement; both produce a DRAFT that a human must sign off.
+   */
+  private draftCurriculum(input: unknown): { strands: { label: string; skills: string[] }[] } {
+    const f = (input ?? {}) as { sections?: { heading: string; text: string }[] };
+    const sections = (f.sections ?? []).filter((s) => s?.heading?.trim());
+    const strands: { label: string; skills: string[] }[] = [];
+    for (const section of sections) {
+      const label = section.heading.replace(/^#+\s*/, "").trim();
+      if (!label) continue;
+      // Sentence-leading fragments of the section become candidate skills; a
+      // section with no usable prose still yields one skill named for itself.
+      const skills = (section.text ?? "")
+        .split(/[.\n]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 12 && s.length <= 90)
+        .slice(0, 4);
+      strands.push({ label, skills: skills.length > 0 ? skills : [label] });
+    }
+    return { strands };
+  }
+
   private parentSummary(input: unknown): string {
     const f = (input ?? {}) as { name?: string; strengths?: string[]; focusAreas?: string[]; activity?: string[] };
     const who = f.name ?? "Your child";

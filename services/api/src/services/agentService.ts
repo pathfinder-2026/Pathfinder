@@ -39,6 +39,13 @@ function targetNodes(target: AgentTarget): string[] {
   return [...new Set(ids.filter((id) => !!id))];
 }
 
+/** How many of the query's meaningful words a section mentions (0 = no signal). */
+function relevance(text: string, query: string): number {
+  const words = [...new Set(query.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3))];
+  const haystack = text.toLowerCase();
+  return words.reduce((n, w) => n + (haystack.includes(w) ? 1 : 0), 0);
+}
+
 /**
  * Milestone 6 — Teacher Agent (FR-TAG-001–004). Grounds every suggestion in the
  * approved-content pool, declines honestly when there is none, and produces drafts
@@ -148,7 +155,11 @@ export class AgentService {
 
     // Grounding is mandatory. No approved source content → decline honestly
     // rather than inventing an ungrounded plan (FR-TAG-004 / DoD).
-    const { refs, sources } = await this.grounding(schoolId, nodeIds);
+    // Concept labels + the teacher's own topic words steer WHICH sections of
+    // each source are sent (see grounding()'s relevance ranking).
+    const conceptLabels = await this.nodeTopic(schoolId, nodeIds);
+    const topic = opts.topic ?? conceptLabels;
+    const { refs, sources } = await this.grounding(schoolId, nodeIds, `${topic} ${conceptLabels}`);
     if (refs.length === 0) {
       this.audit.append({ action: "agent.declined", actorId: teacherId, subjectType: "agent", subjectId: kind, metadata: { reason: "no_grounding_content", nodeIds } });
       return { status: "declined", reason: "no_grounding_content", message: DECLINE_MESSAGE };
@@ -163,7 +174,7 @@ export class AgentService {
       {
         purpose: "agent.generate",
         prompt: `Draft ${kind} grounded strictly in the approved sources.`,
-        input: { kind, term: opts.term, topic: opts.topic ?? (await this.nodeTopic(schoolId, nodeIds)), sources, personalised: opts.personalised ?? true },
+        input: { kind, term: opts.term, topic, sources, personalised: opts.personalised ?? true },
         containsStudentData: opts.containsStudentData ?? false,
       },
       teacherId,
@@ -201,6 +212,7 @@ export class AgentService {
   private async grounding(
     schoolId: string,
     nodeIds: string[],
+    query: string,
   ): Promise<{ refs: GroundingRef[]; sources: { title: string; text: string }[] }> {
     const index = await GroundingIndex.build(this.graph, schoolId, await this.content.approvedPool(schoolId));
     const refs: GroundingRef[] = [];
@@ -210,11 +222,21 @@ export class AgentService {
       refs.push({ contentItemId: item.id, title: item.title, archived: false });
       if (budget <= 0) continue;
       const chunks = await this.contentStore.listChunksByVersion(item.currentVersionId);
-      const text = [...chunks]
+      // Sections most relevant to what's being drafted go in FIRST. Sending a
+      // big document in page order spent the whole budget on its front matter
+      // (copyright, acknowledgements, contents) — the model then refused,
+      // accurately, for want of any actual subject content. Ties and no-signal
+      // chunks keep document order.
+      const ranked = [...chunks]
         .sort((a, b) => a.order - b.order)
-        .map((c) => `${c.heading}\n${c.text}`)
-        .join("\n\n")
-        .slice(0, Math.min(8000, budget));
+        .map((c, i) => ({ text: `${c.heading}\n${c.text}`, i, score: relevance(`${c.heading} ${c.text}`, query) }))
+        .sort((a, b) => b.score - a.score || a.i - b.i);
+      let text = "";
+      const cap = Math.min(8000, budget);
+      for (const c of ranked) {
+        if (text.length >= cap) break;
+        text += (text ? "\n\n" : "") + c.text.slice(0, cap - text.length);
+      }
       sources.push({ title: item.title, text });
       budget -= text.length;
     }

@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildContext } from "../src/context";
 import { FixedClock } from "../src/platform/clock";
 import { LocalClassifierProvider, type AiCompletionRequest, type AiProvider } from "../src/ports/aiProvider";
-import { makeMappedContent, makeTeacher, seedSchoolWithAdmin, setupSignedGraph } from "./helpers";
-import { setupAgentSchool } from "./helpers";
+import { makeMappedContent, makeTeacher, seedSchoolWithAdmin, setupAgentSchool, setupSignedGraph, testHash } from "./helpers";
 
 /**
  * Milestone 6 — FR-TAG-001 / FR-TAG-002: curriculum/unit-sequence design, lesson
@@ -77,6 +76,48 @@ describe("M6 FR-TAG-001/002 — planning", () => {
     // The item's real section prose — the thing that was missing.
     expect(sources[0]!.text).toContain("Explain the idea clearly in prose.");
     expect(sources[0]!.text).toContain("Topic A");
+  });
+
+  it("sections RELEVANT to the topic are sent first — front matter can't eat the text budget", async () => {
+    // The production failure shape: a big syllabus whose early sections are
+    // copyright/contents. Page order spent the whole budget before any subject
+    // content; the model then refused for want of anything to ground in.
+    const seen: AiCompletionRequest[] = [];
+    const capturing: AiProvider = {
+      describe: () => ({ kind: "local", provider: "capturing" }),
+      complete: (req) => { seen.push(req); return new LocalClassifierProvider().complete(req); },
+    };
+    const ctx = buildContext({ clock: new FixedClock(), aiProvider: capturing });
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "agent-rank@riverbank.edu");
+    await setupSignedGraph(ctx, school.id);
+    const text = [
+      "# Copyright\nAll rights reserved by the issuing authority.",
+      "# Contents\nA table listing every following section.",
+      "# Working with fractions\nAdd and subtract fractions by finding a common denominator first.",
+    ].join("\n");
+    const up = await ctx.content.uploadOne(school.id, teacher.user.id, {
+      title: "Syllabus-like pack", fileType: "pdf", sizeBytes: 1000, contentHash: testHash("rank"), source: { text },
+    });
+    if (up.status !== "accepted") throw new Error("unreachable");
+    const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+    await ctx.ingestion.ingest(item.currentVersionId, teacher.user.id);
+    await ctx.classification.classify(up.contentItemId, teacher.user.id);
+    await ctx.classification.approveClassification(up.contentItemId, teacher.user.id);
+    await ctx.content.attestRights(up.contentItemId, teacher.user.id);
+    await ctx.content.approveContent(up.contentItemId, teacher.user.id);
+    await ctx.mapping.mapContent(up.contentItemId, ["skill-add-fractions"], { difficulty: "developing" });
+
+    // The node's label is "Add and subtract fractions" — the third section
+    // matches it; the front matter doesn't.
+    await ctx.agent.draftLessonPlan(teacher.user.id, school.id, { nodeId: "skill-add-fractions" });
+    const call = seen.find((r) => r.purpose === "agent.generate")!;
+    const source = (call.input as { sources: { text: string }[] }).sources[0]!;
+    const relevant = source.text.indexOf("Working with fractions");
+    const frontMatter = source.text.indexOf("Copyright");
+    expect(relevant).toBeGreaterThanOrEqual(0);
+    // Relevance beats page order: the fractions section precedes the front matter.
+    expect(frontMatter === -1 || relevant < frontMatter).toBe(true);
   });
 
   it("edge — no capability data yet: a general differentiation plan, noted as not yet personalised", async () => {

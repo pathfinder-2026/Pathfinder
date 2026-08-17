@@ -350,21 +350,33 @@ function buildGraphSource(
     return id;
   };
 
+  const prerequisites: SkillGraphSource["prerequisites"] = [];
+
   strands.forEach((strand, si) => {
     const label = (strand.label ?? "").trim();
     if (!label) return;
     const strandId = unique(`${ns}-strand-${slug(label) || si}`);
     nodes.push({ id: strandId, type: "strand", label, parentId: subjectId, curriculum: "NSW" });
+
+    // Within a strand, a syllabus lists outcomes roughly in teaching order, and
+    // the verb signals depth: identify/describe before apply/analyse before
+    // evaluate/justify. Chain each skill to the previous one of a LOWER band, so
+    // "justify materials" sits after "identify materials" rather than beside it.
+    let previous: { id: string; band: number } | null = null;
     for (const skill of strand.skills ?? []) {
       const skillLabel = (skill ?? "").trim();
       if (!skillLabel) continue;
-      nodes.push({
-        id: unique(`${ns}-skill-${slug(skillLabel)}`),
-        type: "skill", label: skillLabel, parentId: strandId, curriculum: "NSW",
-        // Foundational: a freshly drafted graph has no prerequisite edges yet, and
-        // without this every skill would be flagged "missing prerequisite" on map.
-        foundational: true,
-      });
+      const id = unique(`${ns}-skill-${slug(skillLabel)}`);
+      const band = cognitiveBand(skillLabel);
+      // Foundational = nothing in this strand comes before it, so the
+      // missing-prerequisite flag stays meaningful instead of firing on everything.
+      const foundational = previous === null || band <= previous.band;
+      if (previous && band > previous.band) prerequisites.push({ from: previous.id, to: id });
+      nodes.push({ id, type: "skill", label: skillLabel, parentId: strandId, curriculum: "NSW", foundational });
+      // Only advance the anchor when depth increases, so a run of same-band
+      // skills all hang off the same earlier prerequisite rather than chaining
+      // into an arbitrary sequence the syllabus never claimed.
+      if (!previous || band > previous.band) previous = { id, band };
     }
   });
 
@@ -377,8 +389,24 @@ function buildGraphSource(
         "AI-DRAFTED from an approved syllabus document's own text. Not reviewed: a human must check it against the source syllabus and sign it off before any teacher maps content or generates assessments against it.",
     },
     nodes,
-    prerequisites: [],
+    prerequisites,
   };
+}
+
+/**
+ * Depth of the leading verb, Bloom-style: recall (1) → apply (2) → reason (3).
+ *
+ * This is a HEURISTIC over the syllabus's own wording, not curriculum
+ * expertise — which is exactly why the graph lands as a draft a human reviews.
+ * An unknown verb scores 2 so it neither anchors a chain nor tops it.
+ */
+function cognitiveBand(label: string): number {
+  const verb = label.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  const recall = ["identify", "describe", "outline", "list", "name", "recall", "define", "state", "recognise", "label"];
+  const reason = ["evaluate", "justify", "analyse", "compare", "critique", "design", "synthesise", "assess", "argue", "reflect"];
+  if (recall.includes(verb)) return 1;
+  if (reason.includes(verb)) return 3;
+  return 2; // apply / demonstrate / investigate / use / create …
 }
 
 /** "Stage 4 (Year 8)" / "NSW Year 8 Mathematics" → 8. */

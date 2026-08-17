@@ -81,6 +81,29 @@ describe("Drafting a curriculum from an approved syllabus", () => {
     expect(ctx.audit.find((e) => e.action === "skillgraph.signed_off").at(-1)?.actorId).toBe(teacherId);
   });
 
+  it("infers prerequisite edges from the depth of each outcome's verb", async () => {
+    const { ctx, schoolId, teacherId } = await setup();
+    // Drafted from outcomes that climb in depth: identify → use → justify.
+    const drafted = await ctx.skillGraph.draftFromSyllabus(schoolId, {
+      contentItemId: "x", subject: "Engineering", yearLevel: 8,
+      sections: [{
+        heading: "Materials",
+        text: "Identify the properties of common materials. Use materials to build a working prototype. Justify the material chosen for a given load.",
+      }],
+    }, teacherId);
+
+    const nodes = await ctx.skillGraphStore.listNodes(drafted.id);
+    const edges = await ctx.skillGraphStore.listEdges(drafted.id);
+    const byLabel = (needle: string) => nodes.find((n) => n.label.toLowerCase().startsWith(needle))!;
+
+    // "Identify…" comes first and depends on nothing.
+    expect(byLabel("identify").foundational).toBe(true);
+    // Deeper outcomes hang off the shallower one rather than floating free.
+    expect(edges.length).toBeGreaterThan(0);
+    expect(edges.some((e) => e.from === byLabel("identify").id && e.to === byLabel("use").id)).toBe(true);
+    expect(byLabel("justify").foundational).toBe(false);
+  });
+
   it("refuses to file a subject's syllabus under a DIFFERENT subject's curriculum", async () => {
     const { ctx, schoolId, teacherId } = await setup();
     const itemId = await approvedSyllabus(ctx, schoolId, teacherId);

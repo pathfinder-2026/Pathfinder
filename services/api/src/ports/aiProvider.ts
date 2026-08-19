@@ -182,18 +182,51 @@ export class LocalClassifierProvider implements AiProvider {
    * sources). Academic only; sensitive observations are separated by the service.
    */
   private agentDraft(input: unknown): string {
-    const f = (input ?? {}) as { kind?: string; topic?: string; term?: string; sources?: (string | { title: string })[]; personalised?: boolean };
+    const f = (input ?? {}) as {
+      kind?: string; topic?: string; term?: string; sources?: (string | { title: string })[];
+      personalised?: boolean;
+      classPerformance?: { concept: string; below: number; at: number; above: number }[];
+    };
     const topic = f.topic ?? "the topic";
     // Sources arrive as {title, text} since the agent started sending real
     // grounding text; bare strings are tolerated for older callers.
     const sources = (f.sources ?? []).map((s) => (typeof s === "string" ? s : s.title)).join("; ") || "the approved content";
     switch (f.kind) {
+      // Structured like the remote contract's lesson document, so the UI and
+      // tests exercise the same shape the real provider produces.
       case "unit_sequence":
-        return `Draft unit sequence for ${f.term ?? "the term"} on "${topic}", grounded in ${sources}. Week 1 introduces core ideas; subsequent weeks build toward mastery with checkpoints.`;
+        return [
+          `# Unit sequence — ${topic} (${f.term ?? "the term"})`,
+          `Grounded in ${sources}.`,
+          `## Week 1`, `Introduce the core ideas from the sources. Checkpoint: baseline check.`,
+          `## Week 2`, `Build toward mastery with practice drawn from ${sources}. Checkpoint: exit tickets.`,
+        ].join("\n\n");
       case "lesson_plan":
-        return `Draft lesson plan on "${topic}", grounded in ${sources}. Starter, guided practice, independent task, and an exit check.`;
-      case "differentiation":
-        return `Differentiation plan for "${topic}", grounded in ${sources}. ${f.personalised ? "Tiered to the class's current mastery data." : "A general three-tier plan (support / core / extension)."}`;
+        return [
+          `# Lesson plan — ${topic}`,
+          `## Learning intentions`, `- Understand ${topic}, grounded in ${sources}.`,
+          `## Success criteria`, `- I can apply ${topic} to a new example.`,
+          `## Lesson sequence`,
+          `- Starter (5 min): recall prompt from the sources.`,
+          `- Explicit teaching (15 min): worked example from ${sources}.`,
+          `- Guided practice (15 min): paired task from the sources.`,
+          `- Independent practice (15 min): individual task.`,
+          `- Exit check (10 min): one question on ${topic}.`,
+          `## Resources`, `- ${sources}`,
+          `## Differentiation`, `- Support and extension moves. [Teacher to add]`,
+        ].join("\n\n");
+      case "differentiation": {
+        const tiers = (f.classPerformance ?? [])
+          .map((p) => `- ${p.concept}: ${p.below} below / ${p.at} at / ${p.above} above mastery — start the below group on scaffolded practice.`)
+          .join("\n");
+        return [
+          `# Differentiation plan — ${topic}`,
+          `Grounded in ${sources}.`,
+          f.personalised && tiers
+            ? `## Tiered to this class's data\n${tiers}`
+            : `## General three-tier plan\n- Support / core / extension.`,
+        ].join("\n\n");
+      }
       case "parent_summary":
         return `Draft progress summary on "${topic}", grounded in ${sources}. The student has engaged with the core concepts and is progressing.`;
       case "feedback":

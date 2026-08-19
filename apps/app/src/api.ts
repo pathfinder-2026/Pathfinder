@@ -446,6 +446,8 @@ export const api = {
     nodeIds: string[]; term?: string; topic?: string; classId?: string; studentId?: string;
     observations?: { category: string; text: string }[];
   }) => request<AgentGenerateResult>("POST", `/api/v1/schools/${s.schoolId}/agent/generate`, body, s.token),
+  deleteAgentDraft: (s: Session, id: string) =>
+    request<{ deleted: boolean }>("DELETE", `/api/v1/schools/${s.schoolId}/agent/suggestions/${id}`, undefined, s.token),
   editAgentDraft: (s: Session, id: string, content: string) =>
     request<AgentSuggestionRow>("PATCH", `/api/v1/schools/${s.schoolId}/agent/suggestions/${id}`, { content }, s.token),
   helpSessions: (s: Session) =>

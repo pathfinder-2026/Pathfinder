@@ -20,6 +20,9 @@ export class PgAgentStore implements AgentStore {
       requires_extra_review=${s.requiresExtraReview},personalised=${s.personalised},
       personalisation_note=${s.personalisationNote},sent=${s.sent},sent_at=${s.sentAt},edited=${s.edited} where id=${s.id}`;
   }
+  async deleteSuggestion(id: string): Promise<void> {
+    await this.sql`delete from agent_suggestions where id=${id}`;
+  }
   async getSuggestion(id: string): Promise<AgentSuggestion | undefined> {
     const rows = await this.sql`select * from agent_suggestions where id=${id}`;
     return rows[0] ? mapSuggestion(rows[0]) : undefined;

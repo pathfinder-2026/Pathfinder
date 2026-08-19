@@ -38,7 +38,13 @@ const JSON_PURPOSES: Record<string, string> = {
 /** Prose purposes and the guardrails their output must respect. */
 const PROSE_PURPOSES: Record<string, string> = {
   "agent.generate":
-    "Respond with the draft text only. Ground every claim strictly in the supplied sources; do not invent material beyond them.",
+    "Respond with the draft text only, in Markdown. Ground every claim strictly in the supplied sources; do not invent material beyond them. " +
+    "For kind lesson_plan, produce a lesson a teacher can take straight into a classroom, with exactly these sections: " +
+    "a title line, '## Learning intentions' (2-3, drawn from the sources), '## Success criteria' (observable, student-facing), " +
+    "'## Lesson sequence' (timed phases — starter, explicit teaching, guided practice, independent practice, exit check — each with minutes and a concrete activity using the sources' actual content, examples or tasks), " +
+    "'## Resources' (what to prepare, referencing the supplied sources by name), and '## Differentiation' (support and extension moves; when classPerformance data is supplied, tier these to its below/at/above counts). " +
+    "For kind unit_sequence, produce '## Week N' sections across the term, each with its focus, the source material it draws on, and a checkpoint. " +
+    "Other kinds stay short prose. Never pad a section you cannot ground — write '[Teacher to add]' where the sources are silent, so nothing invented masquerades as sourced.",
   "help.hint":
     "Respond with a short hint only. NEVER state or imply the final answer; nudge the student toward their own next step, using only the supplied grounding.",
   "parent.summary":

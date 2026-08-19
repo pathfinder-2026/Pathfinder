@@ -120,6 +120,64 @@ describe("M6 FR-TAG-001/002 — planning", () => {
     expect(frontMatter === -1 || relevant < frontMatter).toBe(true);
   });
 
+  it("differentiation drafts receive the class's REAL per-concept mastery aggregates — no student names", async () => {
+    // "Differentiated" used to mean a boolean: the AI was told data exists but
+    // never shown any, so every plan was a generic three-tier template.
+    const seen: AiCompletionRequest[] = [];
+    const capturing: AiProvider = {
+      describe: () => ({ kind: "local", provider: "capturing" }),
+      complete: (req) => { seen.push(req); return new LocalClassifierProvider().complete(req); },
+    };
+    const ctx = buildContext({ clock: new FixedClock(), aiProvider: capturing });
+    const { school, campus } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "adaptive@riverbank.edu");
+    await setupSignedGraph(ctx, school.id);
+    await makeMappedContent(ctx, school.id, teacher.user.id, "skill-add-fractions", { title: "Fractions pack", sections: 2 });
+    const klass = await ctx.schools.createClass(school.id, campus.id, "8A");
+    const scores = [0.2, 0.4, 0.7, 0.95]; // 2 below, 1 at, 1 above mastery (threshold 0.67)
+    for (let i = 0; i < scores.length; i++) {
+      const student = await ctx.accounts.createAccount({
+        schoolId: school.id, role: "student", email: `ad-stu-${i}@riverbank.edu`, firstName: "S", lastName: `T${i}`, classId: klass.id,
+      });
+      await ctx.activityStore.insertMastery({
+        id: `m-${i}`, studentId: student.user.id, schoolId: school.id, nodeId: "skill-add-fractions",
+        level: "developing", score: scores[i]!, dataPoints: 1, lastActivityAt: new FixedClock().isoNow(), history: [],
+        assistedScore: null, synthetic: false,
+      });
+    }
+
+    const result = await ctx.agent.draftDifferentiation(teacher.user.id, school.id, { nodeId: "skill-add-fractions", classId: klass.id });
+    expect(result.status).toBe("suggested");
+    if (result.status !== "suggested") return;
+    expect(result.suggestion.personalised).toBe(true);
+
+    const call = seen.find((r) => r.purpose === "agent.generate")!;
+    const perf = (call.input as { classPerformance: { concept: string; below: number; at: number; above: number }[] }).classPerformance;
+    expect(perf).toEqual([{ concept: "Add and subtract fractions", below: 2, at: 1, above: 1 }]);
+    // Aggregates only — the AI input never carries a student name or id.
+    expect(JSON.stringify(call.input)).not.toMatch(/ad-stu-|"studentId"/);
+    // And the local provider's draft actually tiers to the data.
+    expect(result.suggestion.content).toContain("2 below / 1 at / 1 above");
+  });
+
+  it("a dead draft can be deleted — own, unsent drafts only", async () => {
+    const { ctx, schoolId, teacherId, nodeId } = await setupAgentSchool();
+    await makeMappedContent(ctx, schoolId, teacherId, nodeId, { title: "Pack", sections: 1 });
+    const result = await ctx.agent.draftLessonPlan(teacherId, schoolId, { nodeId });
+    if (result.status !== "suggested") throw new Error("unreachable");
+
+    await ctx.agent.deleteDraft(teacherId, result.suggestion.id);
+    expect(await ctx.agentStore.getSuggestion(result.suggestion.id)).toBeUndefined();
+    expect(ctx.audit.find((e) => e.action === "agent.draft.deleted")).toHaveLength(1);
+
+    // A colleague cannot delete someone else's draft.
+    const other = await ctx.agent.draftLessonPlan(teacherId, schoolId, { nodeId });
+    if (other.status !== "suggested") throw new Error("unreachable");
+    const rival = await makeTeacher(ctx, schoolId, "rival@riverbank.edu");
+    await expect(ctx.agent.deleteDraft(rival.user.id, other.suggestion.id)).rejects.toThrow();
+    expect(await ctx.agentStore.getSuggestion(other.suggestion.id)).toBeDefined();
+  });
+
   it("edge — no capability data yet: a general differentiation plan, noted as not yet personalised", async () => {
     const { ctx, schoolId, campusId, teacherId, nodeId } = await setupAgentSchool();
     await makeMappedContent(ctx, schoolId, teacherId, nodeId, { title: "Content", sections: 1 });

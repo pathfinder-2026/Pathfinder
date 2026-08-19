@@ -3,6 +3,7 @@ import { api, type AgentSuggestionRow, type Session, type SkillsResult, type Syl
 import { Banner, Button, Card, Chip, Field, PageShell } from "../components";
 import { NotificationBell } from "../NotificationBell";
 import { SkillMultiPicker } from "../SkillPicker";
+import { Markdown } from "../Markdown";
 
 /** NESA's real curriculum site (verified) — the generic fallback when no
  * syllabus is on file yet. Never a guessed subject/year-specific deep link;
@@ -10,12 +11,15 @@ import { SkillMultiPicker } from "../SkillPicker";
  * ever shown once one exists. */
 const NESA_CURRICULUM_SITE = "https://curriculum.nsw.edu.au/";
 
+// Each kind says what it MAKES and what it NEEDS — the dropdown used to be
+// bare nouns, and teachers couldn't tell what they'd get or why a draft came
+// out thin (a syllabus grounds outcomes; rich lessons need teaching material).
 const KINDS = [
-  { value: "unit_sequence", label: "Unit sequence" },
-  { value: "lesson_plan", label: "Lesson plan" },
-  { value: "differentiation", label: "Differentiated activities" },
-  { value: "parent_summary", label: "Parent progress summary" },
-  { value: "feedback", label: "Student feedback" },
+  { value: "unit_sequence", label: "Unit sequence — a term plan, week by week", hint: "Makes a week-by-week plan for the term with checkpoints. Needs the term name and approved material for the concepts." },
+  { value: "lesson_plan", label: "Lesson plan — one teachable lesson", hint: "Makes a full lesson: learning intentions, success criteria, timed sequence, resources, differentiation. Richest when actual teaching material (not just a syllabus) is filed for the concepts." },
+  { value: "differentiation", label: "Differentiated activities — tiered to your class", hint: "Makes support/core/extension activities tiered to your class's real mastery data (aggregates only — no student names leave the school)." },
+  { value: "parent_summary", label: "Parent progress summary — a draft message", hint: "Makes a plain-language progress summary for one student's parent. You review, edit and send it yourself." },
+  { value: "feedback", label: "Student feedback — a draft note", hint: "Makes strengths-and-next-steps feedback for one student. Never auto-sent." },
 ] as const;
 type Kind = (typeof KINDS)[number]["value"];
 
@@ -40,6 +44,8 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
   const [busy, setBusy] = useState(false);
   const [declined, setDeclined] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; content: string } | null>(null);
+  const [openDraftId, setOpenDraftId] = useState<string | null>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -118,6 +124,29 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
     catch (e) { setError((e as Error).message); }
   };
 
+  const deleteDraft = async (id: string) => {
+    if (!window.confirm("Delete this draft? It hasn't been sent anywhere, so nothing else is affected.")) return;
+    setError(null); setNotice(null);
+    try { await api.deleteAgentDraft(session, id); setOpenDraftId(null); setNotice("Draft deleted."); await load(); }
+    catch (e) { setError((e as Error).message); }
+  };
+
+  /**
+   * Draft → library item, through the SAME governed pipeline as an upload:
+   * the teacher walks it through approval in Content Studio, and only then can
+   * it be assigned to a class, shared, or ground assessments. The draft's
+   * markdown headings become the item's groundable sections.
+   */
+  const saveToLibrary = async (s: AgentSuggestionRow) => {
+    setError(null); setNotice(null); setSavingToLibrary(s.id);
+    try {
+      const result = await api.uploadContent(session, { title: s.title, fileType: "md", text: s.content });
+      if (result.status === "rejected") setError(`Couldn't save to library (${result.reason.replace(/_/g, " ")}): ${result.message}`);
+      else setNotice("Saved to your library — open Content Studio to walk it through the approval steps, then it can be assigned, shared, and ground assessments.");
+    } catch (e) { setError((e as Error).message); }
+    finally { setSavingToLibrary(null); }
+  };
+
   return (
     <PageShell topRight={<NotificationBell session={session} />} displayName={displayName} title="Teacher Agent" roleTag="Teacher" backLabel="Back to teacher home"
       onBack={onBack} onSignOut={onSignOut}
@@ -178,7 +207,7 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
         <div className="card__head"><h2 className="section">Draft something</h2></div>
         {skills && !skills.signedOff && <Banner kind="warn">The skill graph isn't signed off yet — agent drafts ground on a signed-off skill.</Banner>}
         <div className="row">
-          <Field label="Draft type" htmlFor="ag-kind">
+          <Field label="Draft type" htmlFor="ag-kind" hint={KINDS.find((k) => k.value === form.kind)?.hint}>
             <select id="ag-kind" className="select" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as Kind })}>
               {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
@@ -227,48 +256,76 @@ export function TeacherAgent({ session, displayName, onBack, onSignOut }: {
       </Card>
 
       <Card>
-        <div className="card__head"><h2 className="section">Your drafts</h2><p className="muted">Every draft lists all its grounding sources. Nothing here is ever sent automatically.</p></div>
+        <div className="card__head"><h2 className="section">Your drafts {suggestions ? `— ${suggestions.length}` : ""}</h2><p className="muted">Open a draft to read it as a document, edit it in your own words, or save it into your library as teaching material. Nothing here is ever sent automatically.</p></div>
         {suggestions && suggestions.length === 0 && <Banner kind="brand">No drafts yet.</Banner>}
-        {(suggestions ?? []).map((s) => (
-          <div key={s.id} style={{ border: "1px solid var(--pf-border)", borderRadius: 10, padding: 14, marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <strong>{s.title}</strong>
-              <Chip state="draft">Draft — never auto-sent</Chip>
-              {s.edited && <Chip state="pending">Edited</Chip>}
-              {s.requiresExtraReview && <Chip state="draft">Extra review needed</Chip>}
-              <span className="spacer" />
-              <button className="linkish" onClick={() => setEditing({ id: s.id, content: s.content })}>Edit</button>
-            </div>
-            {!s.personalised && s.personalisationNote && <Banner kind="warn">{s.personalisationNote}</Banner>}
-            {editing?.id === s.id ? (
-              <div style={{ marginTop: 10 }}>
-                <textarea className="input" style={{ minHeight: 120 }} value={editing.content} onChange={(e) => setEditing({ id: s.id, content: e.target.value })} aria-label="Edit draft content" />
-                <div className="btn-row">
-                  <Button variant="primary" onClick={saveEdit}>Save</Button>
-                  <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+        {(suggestions ?? []).map((s) => {
+          const expanded = openDraftId === s.id;
+          const kindLabel = KINDS.find((k) => k.value === s.kind)?.label.split(" — ")[0] ?? s.kind.replace(/_/g, " ");
+          return (
+            <div key={s.id} style={{ border: "1px solid var(--pf-border)", borderRadius: 10, marginBottom: 10, overflow: "hidden" }}>
+              {/* Collapsed by default: eight drafts used to mean eight full
+                  documents end to end — the page was unreadable. */}
+              <button className="person" style={{ width: "100%", background: "none", border: "none", font: "inherit", cursor: "pointer", textAlign: "left", padding: 14 }}
+                onClick={() => { setOpenDraftId(expanded ? null : s.id); setEditing(null); }} aria-expanded={expanded}>
+                <span aria-hidden="true" style={{ color: "var(--pf-slate)", fontSize: 12 }}>{expanded ? "▾" : "▸"}</span>
+                <strong>{s.title}</strong>
+                <span className="person__meta">{kindLabel} · {new Date(s.createdAt).toLocaleDateString()}</span>
+                {s.edited && <Chip state="pending">Edited by you</Chip>}
+                {s.requiresExtraReview && <Chip state="draft">Extra review needed</Chip>}
+                <span className="spacer" />
+                <Chip state="draft">Draft — never auto-sent</Chip>
+              </button>
+              {expanded && (
+                <div style={{ padding: "0 14px 14px" }}>
+                  {!s.personalised && s.personalisationNote && <Banner kind="warn">{s.personalisationNote}</Banner>}
+                  {editing?.id === s.id ? (
+                    <div style={{ marginTop: 4 }}>
+                      <textarea className="input" style={{ minHeight: 260, fontFamily: "monospace", fontSize: 13 }} value={editing.content}
+                        onChange={(e) => setEditing({ id: s.id, content: e.target.value })} aria-label="Edit draft content" />
+                      <div className="btn-row">
+                        <Button variant="primary" onClick={saveEdit}>Save</Button>
+                        <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 4, border: "1px solid var(--pf-border)", borderRadius: 8, padding: "14px 16px", background: "var(--pf-card)" }}>
+                      <Markdown text={s.content} />
+                    </div>
+                  )}
+                  {s.sensitiveSections.length > 0 && (
+                    <div style={{ marginTop: 10 }}>
+                      <Banner kind="warn">Behavioural/social observations — separated from the academic body, flagged for your review:</Banner>
+                      <ul className="people">
+                        {s.sensitiveSections.map((sec, i) => (
+                          <li className="person" key={i}><span className="person__meta">{sec.category}</span><span>{sec.text}</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="legend" style={{ marginTop: 10 }}>
+                    <span className="person__meta">Grounded in:</span>
+                    {s.grounding.map((g, i) => (
+                      <Chip key={i} state={g.archived ? "pending" : "approved"}>{g.title}{g.archived ? " (archived)" : ""}</Chip>
+                    ))}
+                  </div>
+                  {editing?.id !== s.id && (
+                    <div className="btn-row" style={{ marginTop: 12 }}>
+                      <Button variant="ghost" onClick={() => setEditing({ id: s.id, content: s.content })}>Edit</Button>
+                      {/* The path from "good draft" to actual teaching material:
+                          it becomes a library item and goes through the teacher's
+                          own approval steps like anything else — after which it's
+                          assignable, shareable, and grounds future assessments. */}
+                      <Button onClick={() => void saveToLibrary(s)} disabled={savingToLibrary === s.id}>
+                        {savingToLibrary === s.id ? "Saving…" : "Save to my library"}
+                      </Button>
+                      <Button variant="ghost" onClick={() => void deleteDraft(s.id)}>Delete</Button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <p style={{ fontSize: 13, whiteSpace: "pre-wrap", margin: "10px 0 0" }}>{s.content}</p>
-            )}
-            {s.sensitiveSections.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <Banner kind="warn">Behavioural/social observations — separated from the academic body, flagged for your review:</Banner>
-                <ul className="people">
-                  {s.sensitiveSections.map((sec, i) => (
-                    <li className="person" key={i}><span className="person__meta">{sec.category}</span><span>{sec.text}</span></li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="legend" style={{ marginTop: 10 }}>
-              <span className="person__meta">Grounded in:</span>
-              {s.grounding.map((g, i) => (
-                <Chip key={i} state={g.archived ? "pending" : "approved"}>{g.title}{g.archived ? " (archived)" : ""}</Chip>
-              ))}
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Card>
     </PageShell>
   );

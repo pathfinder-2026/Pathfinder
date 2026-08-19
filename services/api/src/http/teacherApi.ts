@@ -1054,6 +1054,13 @@ export function registerTeacherApi(app: FastifyInstance, ctx: AppContext): void 
     return reply.send(suggestionRow(edited));
   });
 
+  app.delete("/api/v1/schools/:schoolId/agent/suggestions/:id", async (req, reply) => {
+    const { schoolId, id } = req.params as { schoolId: string; id: string };
+    const auth = await requireTeacherOf(req, schoolId);
+    await ctx.agent.deleteDraft(auth.user.id, id);
+    return reply.send({ deleted: true });
+  });
+
   // ---- Ask-for-Help transcripts (TCH-14): assigning teacher ONLY ----
   // The M9 rule: the only path to a transcript is the assigning teacher. This
   // surface derives sessions from the teacher's own tasks, so another teacher, a

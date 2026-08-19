@@ -7,6 +7,7 @@ import {
   type SensitiveSection,
 } from "../domain/agent";
 import { ConflictError, NotFoundError } from "../domain/errors";
+import { belowMastery } from "../domain/insights";
 import type { AuditRecorder } from "../platform/audit/auditLog";
 import type { AiServiceLayer } from "../platform/ai/aiServiceLayer";
 import type { Clock } from "../platform/clock";
@@ -76,12 +77,44 @@ export class AgentService {
    * yet, produce a general plan and note it isn't personalised to real data.
    */
   async draftDifferentiation(teacherId: string, schoolId: string, input: AgentTarget & { classId: string; topic?: string }): Promise<AgentResult> {
-    const hasCapabilityData = await this.classHasMastery(schoolId, input.classId);
-    return this.generateGrounded(teacherId, schoolId, "differentiation", targetNodes(input), {
+    // The class's ACTUAL per-concept picture, as aggregates. This used to send
+    // only a boolean ("data exists"), so "differentiated" drafts were generic
+    // three-tier templates — the model had nothing to differentiate WITH.
+    // Aggregates only, never student names: teachers assign real students to
+    // tiers in Class Insights, and rosters stay out of AI calls.
+    const nodeIds = targetNodes(input);
+    const classPerformance = await this.classPerformance(schoolId, input.classId, nodeIds);
+    const hasCapabilityData = classPerformance.some((p) => p.below + p.at + p.above > 0);
+    return this.generateGrounded(teacherId, schoolId, "differentiation", nodeIds, {
       title: `Differentiation — ${input.topic ?? "topic"}`, topic: input.topic,
       personalised: hasCapabilityData,
       personalisationNote: hasCapabilityData ? null : "Not yet personalised to real student data — this class has no capability data yet.",
+      classPerformance: hasCapabilityData ? classPerformance : undefined,
     });
+  }
+
+  /** Per-concept below/at/above-mastery counts for one class (aggregates only). */
+  private async classPerformance(
+    schoolId: string,
+    classId: string,
+    nodeIds: string[],
+  ): Promise<{ concept: string; below: number; at: number; above: number }[]> {
+    const studentIds = new Set(
+      (await this.store.listMembershipsBySchool(schoolId))
+        .filter((m) => m.role === "student" && m.classId === classId)
+        .map((m) => m.userId),
+    );
+    const out: { concept: string; below: number; at: number; above: number }[] = [];
+    for (const nodeId of nodeIds) {
+      const records = (await this.activity.listMasteryByNode(schoolId, nodeId)).filter((r) => studentIds.has(r.studentId));
+      out.push({
+        concept: await this.nodeTopic(schoolId, [nodeId]),
+        below: records.filter((r) => belowMastery(r.score)).length,
+        at: records.filter((r) => !belowMastery(r.score) && r.score < 0.85).length,
+        above: records.filter((r) => r.score >= 0.85).length,
+      });
+    }
+    return out;
   }
 
   /**
@@ -101,6 +134,23 @@ export class AgentService {
     return this.generateGrounded(teacherId, schoolId, "feedback", targetNodes(input), {
       title: "Student feedback", topic: input.topic, containsStudentData: true,
       observations: input.observations,
+    });
+  }
+
+  /**
+   * Discard a draft. Drafts persist unsent, so a dead one (a superseded plan,
+   * a pre-fix refusal) otherwise sits in the list forever. Own drafts only;
+   * audited; a SENT suggestion is a record of what went out and stays.
+   */
+  async deleteDraft(teacherId: string, suggestionId: string): Promise<void> {
+    const suggestion = await this.owned(teacherId, suggestionId);
+    if (suggestion.sent) {
+      throw new ConflictError("ALREADY_SENT", "This draft was sent — it is a record now and can't be deleted.");
+    }
+    await this.agents.deleteSuggestion(suggestionId);
+    this.audit.append({
+      action: "agent.draft.deleted", actorId: teacherId, subjectType: "agent_suggestion", subjectId: suggestionId,
+      metadata: { kind: suggestion.kind },
     });
   }
 
@@ -142,6 +192,7 @@ export class AgentService {
     opts: {
       title: string; term?: string; topic?: string; containsStudentData?: boolean;
       personalised?: boolean; personalisationNote?: string | null; observations?: Observation[];
+      classPerformance?: { concept: string; below: number; at: number; above: number }[];
     },
   ): Promise<AgentResult> {
     await this.requireTeacher(teacherId, schoolId);
@@ -167,7 +218,7 @@ export class AgentService {
       {
         purpose: "agent.generate",
         prompt: `Draft ${kind} grounded strictly in the approved sources.`,
-        input: { kind, term: opts.term, topic, sources, personalised: opts.personalised ?? true },
+        input: { kind, term: opts.term, topic, sources, personalised: opts.personalised ?? true, classPerformance: opts.classPerformance },
         containsStudentData: opts.containsStudentData ?? false,
       },
       teacherId,

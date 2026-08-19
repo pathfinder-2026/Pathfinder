@@ -22,7 +22,8 @@ const JSON_PURPOSES: Record<string, string> = {
   "assessment.generate":
     'Respond with ONLY a JSON object, no prose, of the shape: {"prompt": string, "options": string[] | null, "modelAnswer": string, "rubric": string | null}. ' +
     "The question must be answerable from the supplied input alone, must assess the named skill at the stated difficulty, and must test the SUBJECT MATTER a student is learning. " +
-    "Never quiz the document's own apparatus — copyright, licensing, publication details, tables of contents, acknowledgements — even when the supplied extract contains such text; draw on whatever in the extract genuinely teaches the skill.",
+    "Never quiz the document's own apparatus — copyright, licensing, publication details, tables of contents, acknowledgements — even when the supplied extract contains such text. " +
+    'If the extract genuinely cannot support a question assessing the named skill, respond with exactly {"unsupported": true} instead — never invent content beyond the extract and never fall back to quizzing the apparatus.',
   "assessment.grade":
     'Respond with ONLY a JSON object, no prose, of the shape: {"results": [{"questionId": string, "score": number between 0 and 1, "correct": boolean}], "overallScore": number between 0 and 1}. ' +
     "For each question in the supplied INPUT, grade the studentAnswer against its modelAnswer (or its rubric, for extended_response/scenario questions with no single correct string) — score partial credit fairly rather than only exact matches. " +

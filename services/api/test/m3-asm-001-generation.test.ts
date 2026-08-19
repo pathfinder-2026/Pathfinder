@@ -207,6 +207,56 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     expect(input.skill).toBe("Add and subtract fractions");
   });
 
+  it('a section the model judges unable to support the skill ({"unsupported": true}) is skipped, not fatal', async () => {
+    // The model may now honestly answer "this extract can't support a question
+    // on that skill" (a copyright notice, a table of contents). That answer
+    // must move generation on to the next section — it used to surface as a
+    // JSON parse error that killed the whole run.
+    const local = new LocalClassifierProvider();
+    const skipping: AiProvider = {
+      describe: () => ({ kind: "local", provider: "skipping" }),
+      complete: (req) => {
+        if (req.purpose === "assessment.generate") {
+          const chunk = (req.input as { chunk: string }).chunk;
+          if (chunk.includes("Copyright")) return Promise.resolve({ text: '{"unsupported": true}' });
+        }
+        return local.complete(req);
+      },
+    };
+    const ctx = buildContext({ clock: new FixedClock(), aiProvider: skipping });
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "skip@springfield.edu");
+    await setupSignedGraph(ctx, school.id);
+    const text = [
+      "# Copyright fractions notice\nAdd fractions of rights reserved.", // ranks high but is unsupported
+      "# Adding fractions properly\nAdd and subtract fractions with a common denominator.",
+    ].join("\n");
+    const up = await ctx.content.uploadOne(school.id, teacher.user.id, {
+      title: "Two-part pack", fileType: "pdf", sizeBytes: 1000, contentHash: testHash("skip"), source: { text },
+    });
+    if (up.status !== "accepted") throw new Error("unreachable");
+    const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+    await ctx.ingestion.ingest(item.currentVersionId, teacher.user.id);
+    await ctx.classification.classify(up.contentItemId, teacher.user.id);
+    await ctx.classification.approveClassification(up.contentItemId, teacher.user.id);
+    await ctx.content.attestRights(up.contentItemId, teacher.user.id);
+    await ctx.content.approveContent(up.contentItemId, teacher.user.id);
+    await ctx.mapping.mapContent(up.contentItemId, [NODE], { difficulty: "developing" });
+
+    const res = await ctx.assessment.generate(school.id, teacher.user.id, {
+      title: "Fractions", nodeId: NODE, count: 2, difficulty: "mixed",
+    });
+    // One section refused, one delivered: a 1-question draft with an honest
+    // shortfall — never a dead "failed" run, never a question forced from the
+    // unsupported section.
+    expect(res.status).toBe("generated");
+    if (res.status !== "generated") throw new Error("unreachable");
+    expect(res.questionCount).toBe(1);
+    expect(res.shortfall).toMatchObject({ requested: 2, generated: 1 });
+    const qs = await ctx.assessmentStore.listQuestionsByAssessment(res.assessmentId);
+    expect(qs).toHaveLength(1);
+  });
+
   it("edge (NEW v1.4) — generation fails mid-run: clear failed state, no partial draft, audit-logged", async () => {
     // A provider that classifies fine but fails assessment generation.
     const failing: AiProvider = {

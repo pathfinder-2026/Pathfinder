@@ -104,50 +104,82 @@ export class AssessmentService {
 
     // Capacity: one question per grounding unit (never ungrounded).
     const toGenerate = Math.min(plannedTypes.length, grounding.length);
-    const shortfall: GenerationShortfall | null =
-      toGenerate < requested
-        ? { requested, generated: toGenerate, reason: "insufficient approved content" }
-        : null;
 
     const versionCount = Math.max(1, Math.min(request.versions ?? 1, VERSION_LABELS.length));
 
     // Draft everything in memory FIRST; only persist if all AI calls succeed.
     try {
+      // Sections the model has judged unable to support a question on THIS
+      // skill ({"unsupported": true} — e.g. a syllabus's copyright notice).
+      // Skipped for every later slot and version rather than retried: the
+      // judgement is about the text, not the attempt.
+      const unsupported = new Set<number>();
       const drafted: { label: string; questions: Omit<AssessmentQuestion, "versionId">[] }[] = [];
       for (let vi = 0; vi < versionCount; vi++) {
         const label = VERSION_LABELS[vi]!;
         const questions: Omit<AssessmentQuestion, "versionId">[] = [];
-        for (let i = 0; i < toGenerate; i++) {
-          const unit = grounding[i % grounding.length]!;
+        let cursor = 0;
+        for (let i = 0; i < toGenerate && cursor < grounding.length; i++) {
           const type = plannedTypes[i]!;
-          // The teacher's requested difficulty wins; "mixed" defers to how the
-          // material itself is levelled (the mapping's difficulty attribute).
-          const difficulty = request.difficulty !== "mixed" ? request.difficulty : unit.difficulty;
-          const completion = await this.ai.run(
-            {
-              purpose: "assessment.generate",
-              prompt: `Draft a ${type} question assessing "${skill}", grounded in approved content.`,
-              input: { chunk: unit.text, type, skill, difficulty, seed: label },
-              containsStudentData: false,
-            },
-            teacherId,
-          );
-          const q = JSON.parse(completion.text) as { prompt: string; options: string[] | null; modelAnswer: string; rubric: string | null };
+          let q: { prompt: string; options: string[] | null; modelAnswer: string; rubric: string | null } | null = null;
+          let unitIdx = -1;
+          // Walk the (relevance-ordered) sections until one yields a question.
+          while (q === null && cursor < grounding.length) {
+            unitIdx = cursor++;
+            if (unsupported.has(unitIdx)) continue;
+            const unit = grounding[unitIdx]!;
+            // The teacher's requested difficulty wins; "mixed" defers to how
+            // the material itself is levelled (the mapping's difficulty).
+            const difficulty = request.difficulty !== "mixed" ? request.difficulty : unit.difficulty;
+            const completion = await this.ai.run(
+              {
+                purpose: "assessment.generate",
+                prompt: `Draft a ${type} question assessing "${skill}", grounded in approved content.`,
+                input: { chunk: unit.text, type, skill, difficulty, seed: label },
+                containsStudentData: false,
+              },
+              teacherId,
+            );
+            const parsed = JSON.parse(completion.text) as
+              | { unsupported: true }
+              | { prompt: string; options: string[] | null; modelAnswer: string; rubric: string | null };
+            if ("unsupported" in parsed && parsed.unsupported) {
+              unsupported.add(unitIdx);
+              continue;
+            }
+            q = parsed as { prompt: string; options: string[] | null; modelAnswer: string; rubric: string | null };
+          }
+          if (q === null) break; // every remaining section was unsupported — honest shortfall below
+          const unit = grounding[unitIdx]!;
           questions.push({
             id: newId(),
-            order: i,
+            order: questions.length,
             type,
             prompt: q.prompt,
             options: q.options,
             modelAnswer: q.modelAnswer,
             rubric: q.rubric,
-            difficulty,
+            difficulty: request.difficulty !== "mixed" ? request.difficulty : unit.difficulty,
             groundingContentIds: [unit.contentItemId],
             reviewed: false,
           });
         }
         drafted.push({ label, questions });
       }
+
+      // Questions were planned but every section was judged unsupported for
+      // this skill: the same honest decline as having no mapped material, not
+      // an empty persisted draft. (toGenerate === 0 is different — e.g. every
+      // requested type was unsuitable — and keeps its flagged empty draft.)
+      if (toGenerate > 0 && (drafted[0]?.questions.length ?? 0) === 0) {
+        return this.declineUngrounded(schoolId, teacherId, request);
+      }
+
+      const generated = drafted[0]!.questions.length;
+      const shortfall: GenerationShortfall | null =
+        generated < requested
+          ? { requested, generated, reason: "insufficient approved content" }
+          : null;
 
       // Persist the draft assessment.
       const now = this.clock.isoNow();
@@ -178,9 +210,9 @@ export class AssessmentService {
         actorId: teacherId,
         subjectType: "assessment",
         subjectId: assessment.id,
-        metadata: { requested, generated: toGenerate, versions: versionCount, flags },
+        metadata: { requested, generated, versions: versionCount, flags },
       });
-      return { status: "generated", assessmentId: assessment.id, questionCount: toGenerate, shortfall, flags };
+      return { status: "generated", assessmentId: assessment.id, questionCount: generated, shortfall, flags };
     } catch (err) {
       // Mid-run failure: no partial draft saved; audited (FR-GOV-002).
       this.audit.append({

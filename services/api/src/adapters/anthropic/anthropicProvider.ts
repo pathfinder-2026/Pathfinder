@@ -149,5 +149,9 @@ export class AnthropicProvider implements AiProvider {
 function maxTokensFor(purpose: string): number {
   if (purpose === "curriculum.draft") return 8192;
   if (purpose === "agent.generate") return 4096;
+  // A single question is small, but its model answer + marking rubric are not:
+  // real rubrics ran right up to 1024, and a truncated response has no closing
+  // brace — surfacing as AI_RESPONSE_MALFORMED and a dead generation run.
+  if (purpose === "assessment.generate") return 2048;
   return 1024;
 }

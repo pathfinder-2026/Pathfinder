@@ -219,6 +219,9 @@ describe("FR-ASM-001 grounded assessment generation", () => {
         if (req.purpose === "assessment.generate") {
           const chunk = (req.input as { chunk: string }).chunk;
           if (chunk.includes("Copyright")) return Promise.resolve({ text: '{"unsupported": true}' });
+          // A truncated/garbled reply for the middle section — must skip that
+          // section, never kill the run (it used to fail the whole generation).
+          if (chunk.includes("Garbled")) return Promise.resolve({ text: '{"prompt": "cut off mid-' });
         }
         return local.complete(req);
       },
@@ -229,6 +232,7 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     await setupSignedGraph(ctx, school.id);
     const text = [
       "# Copyright fractions notice\nAdd fractions of rights reserved.", // ranks high but is unsupported
+      "# Garbled fractions section\nAdd and subtract fractions here too.", // provider reply is truncated JSON
       "# Adding fractions properly\nAdd and subtract fractions with a common denominator.",
     ].join("\n");
     const up = await ctx.content.uploadOne(school.id, teacher.user.id, {
@@ -246,9 +250,9 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     const res = await ctx.assessment.generate(school.id, teacher.user.id, {
       title: "Fractions", nodeId: NODE, count: 2, difficulty: "mixed",
     });
-    // One section refused, one delivered: a 1-question draft with an honest
-    // shortfall — never a dead "failed" run, never a question forced from the
-    // unsupported section.
+    // One section refused, one garbled, one delivered: a 1-question draft with
+    // an honest shortfall — never a dead "failed" run, never a question forced
+    // from the unsupported section.
     expect(res.status).toBe("generated");
     if (res.status !== "generated") throw new Error("unreachable");
     expect(res.questionCount).toBe(1);

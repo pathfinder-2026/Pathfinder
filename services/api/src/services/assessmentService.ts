@@ -114,6 +114,7 @@ export class AssessmentService {
       // Skipped for every later slot and version rather than retried: the
       // judgement is about the text, not the attempt.
       const unsupported = new Set<number>();
+      let lastMalformed: Error | null = null;
       const drafted: { label: string; questions: Omit<AssessmentQuestion, "versionId">[] }[] = [];
       for (let vi = 0; vi < versionCount; vi++) {
         const label = VERSION_LABELS[vi]!;
@@ -131,18 +132,32 @@ export class AssessmentService {
             // The teacher's requested difficulty wins; "mixed" defers to how
             // the material itself is levelled (the mapping's difficulty).
             const difficulty = request.difficulty !== "mixed" ? request.difficulty : unit.difficulty;
-            const completion = await this.ai.run(
-              {
-                purpose: "assessment.generate",
-                prompt: `Draft a ${type} question assessing "${skill}", grounded in approved content.`,
-                input: { chunk: unit.text, type, skill, difficulty, seed: label },
-                containsStudentData: false,
-              },
-              teacherId,
-            );
-            const parsed = JSON.parse(completion.text) as
+            let parsed:
               | { unsupported: true }
               | { prompt: string; options: string[] | null; modelAnswer: string; rubric: string | null };
+            try {
+              const completion = await this.ai.run(
+                {
+                  purpose: "assessment.generate",
+                  prompt: `Draft a ${type} question assessing "${skill}", grounded in approved content.`,
+                  input: { chunk: unit.text, type, skill, difficulty, seed: label },
+                  containsStudentData: false,
+                },
+                teacherId,
+              );
+              parsed = JSON.parse(completion.text);
+            } catch (err) {
+              // One section's malformed response skips THAT SECTION, the same
+              // as an explicit "unsupported" — one bad reply used to kill the
+              // whole run. A real provider outage (rate limit, network) still
+              // aborts: only the malformed-response code is survivable.
+              if ((err as { code?: string }).code === "AI_RESPONSE_MALFORMED" || err instanceof SyntaxError) {
+                lastMalformed = err as Error;
+                unsupported.add(unitIdx);
+                continue;
+              }
+              throw err;
+            }
             if ("unsupported" in parsed && parsed.unsupported) {
               unsupported.add(unitIdx);
               continue;
@@ -167,11 +182,14 @@ export class AssessmentService {
         drafted.push({ label, questions });
       }
 
-      // Questions were planned but every section was judged unsupported for
-      // this skill: the same honest decline as having no mapped material, not
-      // an empty persisted draft. (toGenerate === 0 is different — e.g. every
+      // Questions were planned but none could be drawn. If malformed responses
+      // were part of why, it's a retryable failure, not a verdict on the
+      // material; otherwise every section was judged unsupported for this
+      // skill — the same honest decline as having no mapped material, not an
+      // empty persisted draft. (toGenerate === 0 is different — e.g. every
       // requested type was unsuitable — and keeps its flagged empty draft.)
       if (toGenerate > 0 && (drafted[0]?.questions.length ?? 0) === 0) {
+        if (lastMalformed) throw lastMalformed;
         return this.declineUngrounded(schoolId, teacherId, request);
       }
 

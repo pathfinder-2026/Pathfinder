@@ -230,6 +230,39 @@ designed around that reality rather than around a fetch that doesn't exist.
   link, since NESA's page structure varies per subject and per-subject URLs
   were never verified.
 
+## ADR-0036 — Social/alumni network deferred; graduation is a role transition, not deletion
+Product-owner question (2026-08-19): should Pathfinder grow a school social
+network — a governed, school-scoped feed for students that retains graduates as
+an alumni community — now, or later? **Decision: later, and as a separate
+product on the same school-identity backbone — not a feature inside Pathfinder.**
+
+- **Why not now — focus.** Pathfinder's wedge is governed AI for teaching
+  (nothing reaches students unapproved; everything grounded and audited), and
+  it is at the demo-ready stage with no paying schools yet. A social layer is a
+  second product's worth of scope, moderation operations, and risk.
+- **Why not now — safety posture.** The platform is deliberately
+  anti-social-network today: no student-to-student messaging, help transcripts
+  visible only to the assigning teacher, safeguarding alerts on a separate
+  channel, parents verified before seeing anything. Student feeds would invert
+  that posture and take on 24/7 content-moderation duty, eSafety Commissioner
+  expectations, and image-sharing liability. A half-governed social network
+  would damage the trust the core product sells.
+- **Why the alumni half is worth keeping.** Schools genuinely value alumni
+  networks (fundraising, mentoring, community); alumni are adults, so most of
+  the minor-safeguarding burden does not apply; and the school-scoped identity
+  graph Pathfinder already maintains (accounts, memberships, classes, year
+  groups, proven cross-school isolation) is exactly the substrate such a
+  product needs. Sequencing: win the teaching platform → schools trust the
+  data custodianship → alumni network becomes a natural expansion product for
+  schools already on the platform, launching into a warm install base instead
+  of an empty graph.
+- **What this costs today: one modeling rule.** When year-roll / graduation
+  handling is eventually built, a graduating student is a **membership role
+  transition** (`student` → e.g. `alumni`), never an account deletion. The
+  membership model already supports new roles; data-subject erasure remains
+  the separate, existing right it is today. Nothing else is built, reserved,
+  or scaffolded ahead of need.
+
 ## ADR-0032 — Email delivery adapter behind the notification port (SES seam)
 No email transport existed: invites only ever reached the in-memory notification
 channel, so nothing was actually delivered (the admin UI's copyable invite links

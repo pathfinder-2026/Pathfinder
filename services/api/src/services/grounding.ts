@@ -135,6 +135,20 @@ export class GroundingIndex {
   }
 }
 
+/**
+ * How many of the query's meaningful words a piece of text mentions (0 = no
+ * signal). The shared steering rule for WHICH parts of a big source get used:
+ * a syllabus's copyright notice scores 0 against "Add and subtract fractions",
+ * so subject content beats front matter wherever this orders candidates.
+ * Callers must treat ties as "keep original order" so a no-signal source
+ * degrades to document order, never to shuffle.
+ */
+export function relevance(text: string, query: string): number {
+  const words = [...new Set(query.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3))];
+  const haystack = text.toLowerCase();
+  return words.reduce((n, w) => n + (haystack.includes(w) ? 1 : 0), 0);
+}
+
 /** [self, parent, …, subject]; `seen` guards a malformed graph from looping. */
 function chainOf(node: SkillNode, byId: Map<string, SkillNode>): string[] {
   const chain: string[] = [];

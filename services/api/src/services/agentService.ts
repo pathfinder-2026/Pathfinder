@@ -18,7 +18,7 @@ import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { AgentStore } from "../ports/agentStore";
 import type { ContentService } from "./contentService";
 import { graphOfNode } from "./curriculumScope";
-import { GroundingIndex } from "./grounding";
+import { GroundingIndex, relevance } from "./grounding";
 
 const DECLINE_MESSAGE =
   "No approved content grounds this request, so I won't invent an ungrounded plan. Upload and approve relevant content first.";
@@ -37,13 +37,6 @@ export interface AgentTarget {
 function targetNodes(target: AgentTarget): string[] {
   const ids = target.nodeIds?.length ? target.nodeIds : target.nodeId ? [target.nodeId] : [];
   return [...new Set(ids.filter((id) => !!id))];
-}
-
-/** How many of the query's meaningful words a section mentions (0 = no signal). */
-function relevance(text: string, query: string): number {
-  const words = [...new Set(query.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3))];
-  const haystack = text.toLowerCase();
-  return words.reduce((n, w) => n + (haystack.includes(w) ? 1 : 0), 0);
 }
 
 /**

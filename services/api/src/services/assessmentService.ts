@@ -22,7 +22,7 @@ import type { ContentStore } from "../ports/contentStore";
 import type { SkillGraphStore } from "../ports/skillGraphStore";
 import type { ContentService } from "./contentService";
 import { graphOfNode } from "./curriculumScope";
-import { GroundingIndex } from "./grounding";
+import { GroundingIndex, relevance } from "./grounding";
 
 const VERSION_LABELS = ["A", "B", "C", "D", "E"];
 const RESUME_WINDOW_MS = 30 * 60 * 1000;
@@ -61,7 +61,13 @@ export class AssessmentService {
    */
   async generate(schoolId: string, teacherId: string, request: AssessmentRequest): Promise<GenerateResult> {
     const nodeIds = coveredNodeIds(request);
-    const grounding = await this.collectGrounding(schoolId, nodeIds);
+    // The concepts' labels steer both WHICH sections ground the questions
+    // (relevance ranking in collectGrounding) and WHAT each question must
+    // assess (the `skill` field in the generation input).
+    const skillLabels: string[] = [];
+    for (const id of nodeIds) skillLabels.push(await this.nodeLabel(schoolId, id));
+    const skill = skillLabels.join(", ");
+    const grounding = await this.collectGrounding(schoolId, nodeIds, `${skill} ${request.title}`);
 
     // Nothing can ground these nodes: decline upfront with an actionable fix
     // path instead of saving a permanent zero-question draft.
@@ -114,11 +120,14 @@ export class AssessmentService {
         for (let i = 0; i < toGenerate; i++) {
           const unit = grounding[i % grounding.length]!;
           const type = plannedTypes[i]!;
+          // The teacher's requested difficulty wins; "mixed" defers to how the
+          // material itself is levelled (the mapping's difficulty attribute).
+          const difficulty = request.difficulty !== "mixed" ? request.difficulty : unit.difficulty;
           const completion = await this.ai.run(
             {
               purpose: "assessment.generate",
-              prompt: `Draft a ${type} question grounded in approved content.`,
-              input: { chunk: unit.text, type, difficulty: unit.difficulty, seed: label },
+              prompt: `Draft a ${type} question assessing "${skill}", grounded in approved content.`,
+              input: { chunk: unit.text, type, skill, difficulty, seed: label },
               containsStudentData: false,
             },
             teacherId,
@@ -132,7 +141,7 @@ export class AssessmentService {
             options: q.options,
             modelAnswer: q.modelAnswer,
             rubric: q.rubric,
-            difficulty: unit.difficulty,
+            difficulty,
             groundingContentIds: [unit.contentItemId],
             reviewed: false,
           });
@@ -211,7 +220,10 @@ export class AssessmentService {
     const rationale = tailoringRationale(input.action, input.reason, difficulty, targetNodeId, input.nodeId);
 
     const request: AssessmentRequest = {
-      title: `Tailored ${input.action} — ${input.nodeId}`,
+      // The TARGET node's human label — the title used to print the raw node id
+      // ("Tailored remediation — skill-add-fractions"), the same leak the agent
+      // drafts had. Falls back to the id only if the node isn't in any graph.
+      title: `Tailored ${input.action} — ${await this.nodeLabel(schoolId, targetNodeId)}`,
       nodeId: targetNodeId,
       count: 5,
       difficulty,
@@ -219,6 +231,13 @@ export class AssessmentService {
       tailoringRationale: rationale,
     };
     return this.generate(schoolId, teacherId, request);
+  }
+
+  /** A node's human label, across every signed-off graph; the bare id only as a last resort. */
+  private async nodeLabel(schoolId: string, nodeId: string): Promise<string> {
+    const version = await graphOfNode(this.graph, schoolId, nodeId);
+    if (!version) return nodeId;
+    return (await this.graph.getNode(version.id, nodeId))?.label ?? nodeId;
   }
 
   /** For "extension" (and the related "progression"), the next skill along a prerequisite edge — falls back to the same node if the graph has no follow-on. */
@@ -691,12 +710,12 @@ export class AssessmentService {
     );
   }
 
-  private async collectGrounding(schoolId: string, nodeIds: string[]): Promise<GroundingUnit[]> {
+  private async collectGrounding(schoolId: string, nodeIds: string[], query: string): Promise<GroundingUnit[]> {
     const index = await this.groundingIndex(schoolId);
     const units: GroundingUnit[] = [];
     for (const source of index.sourcesForAny(nodeIds)) {
       const chunks = await this.contentStore.listChunksByVersion(source.item.currentVersionId);
-      for (const chunk of chunks) {
+      for (const chunk of [...chunks].sort((a, b) => a.order - b.order)) {
         units.push({
           contentItemId: source.item.id,
           text: `${chunk.heading} ${chunk.text}`,
@@ -705,7 +724,15 @@ export class AssessmentService {
         });
       }
     }
-    return units;
+    // The sections most relevant to the chosen concepts generate FIRST.
+    // Questions are drawn one-per-unit in order, so page order handed a
+    // syllabus's front matter to the generator before any subject content —
+    // teachers got questions quizzing the copyright notice. Ties keep document
+    // order, so material with no keyword overlap degrades to the old behaviour.
+    return units
+      .map((u, i) => ({ u, i, score: relevance(u.text, query) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .map((x) => x.u);
   }
 
   private async groundingIndex(schoolId: string): Promise<GroundingIndex> {

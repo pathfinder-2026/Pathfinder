@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildContext } from "../src/context";
 import { FixedClock } from "../src/platform/clock";
-import { LocalClassifierProvider, type AiProvider } from "../src/ports/aiProvider";
+import { LocalClassifierProvider, type AiCompletionRequest, type AiProvider } from "../src/ports/aiProvider";
 import {
   makeHarness,
   makeMappedContent,
@@ -159,6 +159,52 @@ describe("FR-ASM-001 grounded assessment generation", () => {
     expect(res.status).toBe("generated");
     if (res.status !== "generated") throw new Error("unreachable");
     expect(res.questionCount).toBe(5); // 2 + 3, neither item double-counted
+  });
+
+  it("questions come from sections RELEVANT to the concept — and the AI is told what skill to assess", async () => {
+    // The production failure: a syllabus whose first sections are copyright and
+    // licensing generated questions quizzing the copyright notice. Two causes,
+    // both pinned here: units were consumed in page order, and the generation
+    // input never named the skill being assessed.
+    const seen: AiCompletionRequest[] = [];
+    const capturing: AiProvider = {
+      describe: () => ({ kind: "local", provider: "capturing" }),
+      complete: (req) => { seen.push(req); return new LocalClassifierProvider().complete(req); },
+    };
+    const ctx = buildContext({ clock: new FixedClock(), aiProvider: capturing });
+    const { school } = await seedSchoolWithAdmin(ctx);
+    const teacher = await makeTeacher(ctx, school.id, "rank@springfield.edu");
+    await setupSignedGraph(ctx, school.id);
+    const text = [
+      "# Copyright\nAll rights reserved. Copies found elsewhere are not authorised.",
+      "# Contents\nA table listing the sections of this document.",
+      "# Working with fractions\nAdd and subtract fractions by finding a common denominator first.",
+    ].join("\n");
+    const up = await ctx.content.uploadOne(school.id, teacher.user.id, {
+      title: "Syllabus-like pack", fileType: "pdf", sizeBytes: 1000, contentHash: testHash("qrank"), source: { text },
+    });
+    if (up.status !== "accepted") throw new Error("unreachable");
+    const item = (await ctx.contentStore.getContentItem(up.contentItemId))!;
+    await ctx.ingestion.ingest(item.currentVersionId, teacher.user.id);
+    await ctx.classification.classify(up.contentItemId, teacher.user.id);
+    await ctx.classification.approveClassification(up.contentItemId, teacher.user.id);
+    await ctx.content.attestRights(up.contentItemId, teacher.user.id);
+    await ctx.content.approveContent(up.contentItemId, teacher.user.id);
+    // Filed at SUBJECT level, the #19 default — grounding reaches the concept via ancestry.
+    await ctx.mapping.mapContent(up.contentItemId, ["subj-maths"], { difficulty: "developing" });
+
+    const res = await ctx.assessment.generate(school.id, teacher.user.id, {
+      title: "Fractions check", nodeId: NODE, count: 1, difficulty: "mixed",
+    });
+    expect(res.status).toBe("generated");
+
+    const call = seen.find((r) => r.purpose === "assessment.generate")!;
+    const input = call.input as { chunk: string; skill: string };
+    // The one question drew on the fractions section, not the front matter…
+    expect(input.chunk).toContain("common denominator");
+    expect(input.chunk).not.toContain("Copyright");
+    // …and the model was told what the question is FOR.
+    expect(input.skill).toBe("Add and subtract fractions");
   });
 
   it("edge (NEW v1.4) — generation fails mid-run: clear failed state, no partial draft, audit-logged", async () => {

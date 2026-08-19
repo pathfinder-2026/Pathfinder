@@ -439,12 +439,21 @@ export function TeacherContent({ session, displayName, onBack, onSignOut }: {
                     </button>
                     {expanded && state === "broken" && (
                       // Recovery card: nothing else is actionable until the file
-                      // is readable, so nothing else is shown.
+                      // is readable — except retiring it. Hiding Archive here
+                      // made unreadable items the only ones a teacher couldn't
+                      // remove from the library.
                       <div style={{ padding: "0 14px 14px" }}>
                         <Banner kind="warn">
                           We couldn't read this file, so it can't be approved or used to ground anything.
                           Upload a new version of the material — a text-based PDF, .docx, .txt or .md works best.
                         </Banner>
+                        <div className="btn-row" style={{ marginTop: 10 }}>
+                          {!r.archived && (
+                            <Button variant="ghost" disabled={busy === r.id} onClick={() => void archiveItem(r.id)}>
+                              Archive
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     )}
                     {expanded && state !== "broken" && (
